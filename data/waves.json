@@ -25,5 +25,11 @@
 	"spawn_left_x": 300,
 	"spawn_left_y": 250,
 	"spawn_right_x": 1900,
-	"spawn_right_y": 250
+	"spawn_right_y": 250,
+	"burst_target_size": 100,
+	"burst_gap": 18.0,
+	"burst_gap_jitter": 4.0,
+	"burst_signal_lead": 2.5,
+	"burst_chunk": 50,
+	"burst_chunk_interval": 0.5
 }

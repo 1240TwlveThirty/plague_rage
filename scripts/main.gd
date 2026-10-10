@@ -17,6 +17,9 @@ const TEMP_SLOT_BASE := 1 << 24   # временные slot_idx новых юн�
 # Залп: true — стреляет только лучник, чья точка падения не дальше range_far от него самого;
 # false — стреляют все лучники отряда, дальность считается от центра отряда.
 const ARCHER_OWN_RANGE := false
+const SCOUT_SHOWN := false        # true: в передышке видны маркеры разведки и строка HUD «Дальше: ...»
+const BURSTS_ENABLED := true      # false: прежние подволны (subwave_*) со всех сторон сразу
+const SIGNAL_SOUND_PATH := "res://audio/horn.ogg"   # звук сигнала всплеска; файла нет — без звука
 const ARCHERS_FOLLOW := false     # true: лучники идут за пехотой (как раньше) — для бенчей и регрессии
 # Приказы отряда
 const ORDER_ATTACK := 0   # как раньше: юниты идут на врага в VIEW_RANGE
@@ -250,11 +253,29 @@ const SIDE_TOP := 0     # стороны появления орды
 const SIDE_LEFT := 1
 const SIDE_RIGHT := 2
 const SIDE_ARROWS := ["↑", "←", "→"]
+const VIEW_HALF_H := 540.0   # и половина высоты
+const SIDE_WORDS := ["сверху", "слева", "справа"]
 const VIEW_HALF_W := 960.0   # половина ширины экрана в px мира (камера по центру поля): для маркеров разведки у края экрана
 var wave_plan: Array = []              # состав следующей (в бою — текущей) волны: записи {type, side, count}
 var wave_plan_for := 0                 # для какой волны построен wave_plan
 var wave_left := PackedInt32Array()    # сколько ещё не появилось по каждой записи плана
 var wave_kills_by_type := PackedInt32Array()   # убито за волну по типу юнита
+var scout_shown := SCOUT_SHOWN         # тесты переопределяют
+var bursts_enabled := BURSTS_ENABLED   # бенчи переопределяют до старта волны
+var wave_bursts: Array = []            # всплески волны wave_plan_for: {t_start, side, records [{type, count}]}
+var wave_t := 0.0                      # секунд с начала волны (Space)
+var burst_idx := 0                     # следующий всплеск, который ещё не начал появляться
+var burst_signal_n := 0                # скольким всплескам уже дан сигнал
+var burst_active := false              # всплеск burst_idx появляется кусками
+var burst_rec := 0                     # запись всплеска, из которой идёт очередной кусок
+var burst_rec_left := 0                # сколько осталось в этой записи
+var burst_placed := 0                  # сколько юнитов всплеска уже появилось (место в сетке блока)
+var burst_chunk_t := 0.0               # до следующего куска, с
+var burst_msg := ""                    # надпись «Всплеск: ...»
+var burst_msg_until := 0.0             # до какого wave_t она видна
+var burst_label: Label
+var signal_player: AudioStreamPlayer   # null, если звукового файла нет
+static var signal_warned := false      # предупреждение об отсутствии звука — один раз за запуск игры (R сцену пересоздаёт)
 var sort_keys := PackedInt64Array()           # scratch для _reflow_squad
 var squad_aspect := PackedVector2Array()      # пропорция строя (ширина, глубина): пехота 20/15, лучники 25/4
 var shop_label := PackedStringArray()
@@ -301,6 +322,14 @@ func _ready() -> void:
 	_setup_camera()
 	_setup_fps_label()
 	queue_redraw()   # отладочные маркеры ворот и дороги (_draw)
+	# Звук сигнала всплеска: если файла нет — тихо, одно предупреждение за запуск.
+	if ResourceLoader.exists(SIGNAL_SOUND_PATH):
+		signal_player = AudioStreamPlayer.new()
+		signal_player.stream = load(SIGNAL_SOUND_PATH)
+		add_child(signal_player)
+	elif not signal_warned:
+		signal_warned = true
+		push_warning("Нет звука сигнала %s: всплески без звука" % SIGNAL_SOUND_PATH)
 
 
 # Фон: карта замка. Если файла нет — без фона, с предупреждением.
@@ -375,6 +404,26 @@ func _draw() -> void:
 			draw_line(tip, tip - face * 8.0 - lat * 5.0, Color.WHITE, 2.0)
 			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), "%d × %d · %d юн." % [g.width, g.rows, g.n],
 				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
+	# Сигнал всплеска: пульсирующая золотая полоса вдоль края экрана и мигающий (2 Гц) треугольник 48 px у своей стороны
+	var view_lo := FIELD * 0.5 - Vector2(VIEW_HALF_W, VIEW_HALF_H)
+	var view_size := Vector2(VIEW_HALF_W, VIEW_HALF_H) * 2.0
+	for side in _burst_signals():
+		var pulse := 0.5 + 0.5 * sin(wave_t * 2.0 * TAU)
+		var strip := Rect2(view_lo, Vector2(view_size.x, 24.0))
+		var icon_at := Vector2(wave_cfg.spawn_center_x, 150.0)
+		var icon_dir := Vector2.DOWN
+		if side == SIDE_LEFT:
+			strip = Rect2(view_lo, Vector2(24.0, view_size.y))
+			icon_at = Vector2(view_lo.x + 120.0, wave_cfg.spawn_left_y)
+			icon_dir = Vector2.RIGHT
+		elif side == SIDE_RIGHT:
+			strip = Rect2(view_lo + Vector2(view_size.x - 24.0, 0.0), Vector2(24.0, view_size.y))
+			icon_at = Vector2(view_lo.x + view_size.x - 120.0, wave_cfg.spawn_right_y)
+			icon_dir = Vector2.LEFT
+		draw_rect(strip, Color(1.0, 0.8, 0.2, 0.35 * pulse))
+		if fmod(wave_t * 2.0, 1.0) < 0.5:
+			var icon_lat := Vector2(-icon_dir.y, icon_dir.x)
+			draw_colored_polygon(PackedVector2Array([icon_at + icon_dir * 24.0, icon_at - icon_dir * 24.0 + icon_lat * 24.0, icon_at - icon_dir * 24.0 - icon_lat * 24.0]), Color(1.0, 0.8, 0.2, 0.95))
 	# Разведка в передышке: у каждой активной стороны треугольник внутрь поля и состав (цвет типа, число)
 	for mk in _recon_markers():
 		var d: Vector2 = mk.dir
@@ -454,7 +503,8 @@ func _load_waves() -> bool:
 	if not _require_numbers(d, ["count_base", "count_step", "count_cap", "hp_growth", "dmg_growth", "subwave_size",
 			"subwave_interval", "max_alive", "spawn_center_x", "spawn_front_y", "spawn_columns", "spawn_spacing",
 			"wave_bonus_gold", "gold_per_kill", "start_gold", "runner_from_wave", "runner_share_early", "runner_share", "sides_from_wave",
-			"side_prob", "knight_from_wave", "knight_per_wave", "knight_cap", "spawn_left_x", "spawn_left_y", "spawn_right_x", "spawn_right_y"], WAVES_PATH):
+			"side_prob", "knight_from_wave", "knight_per_wave", "knight_cap", "spawn_left_x", "spawn_left_y", "spawn_right_x", "spawn_right_y",
+			"burst_target_size", "burst_gap", "burst_gap_jitter", "burst_signal_lead", "burst_chunk", "burst_chunk_interval"], WAVES_PATH):
 		return false
 	wave_cfg = d
 	return true
@@ -608,7 +658,7 @@ func _plan_text() -> String:
 # Верх: (spawn_center_x, 150); левая и правая — в 120 px от края экрана на высоте своей точки появления.
 func _recon_markers() -> Array:
 	var out := []
-	if not waves_enabled or wave_state != WS_RESPITE:
+	if not scout_shown or not waves_enabled or wave_state != WS_RESPITE:
 		return out
 	var at := [Vector2(wave_cfg.spawn_center_x, 150.0), Vector2(FIELD.x * 0.5 - VIEW_HALF_W + 120.0, wave_cfg.spawn_left_y),
 		Vector2(FIELD.x * 0.5 + VIEW_HALF_W - 120.0, wave_cfg.spawn_right_y)]
@@ -623,6 +673,110 @@ func _recon_markers() -> Array:
 	return out
 
 
+# Всплески волны w по её плану: каждая сторона делит свои записи на ceil(всего на стороне / burst_target_size)
+# порций поровну (остаток — первым порциям). Порции всех сторон перемешиваются (свой генератор,
+# seed = spawn_seed + w * 7919); порция k начинается в burst_signal_lead + k * burst_gap ± burst_gap_jitter
+# (первая — без разброса), но не раньше чем через 6 с после предыдущей.
+# Результат: [{t_start, side, records [{type, count}]}]; сумма по всплескам равна плану по каждой паре (сторона, тип).
+func _plan_bursts(w: int, plan: Array) -> Array:
+	var portions := []
+	for side in 3:
+		var total := 0
+		for r in plan:
+			if r.side == side:
+				total += r.count
+		if total == 0:
+			continue
+		var n_side := maxi(ceili(total / float(wave_cfg.burst_target_size)), 1)
+		for q in n_side:
+			var records := []
+			for r in plan:
+				if r.side == side:
+					var part: int = r.count / n_side + (1 if q < r.count % n_side else 0)
+					if part > 0:
+						records.append({"type": r.type, "count": part})
+			if not records.is_empty():
+				portions.append({"t_start": 0.0, "side": side, "records": records})
+	var rng := RandomNumberGenerator.new()
+	rng.seed = spawn_seed + w * 7919
+	for k in range(portions.size() - 1, 0, -1):   # перемешивание Фишера — Йетса
+		var j := rng.randi_range(0, k)
+		var tmp = portions[k]
+		portions[k] = portions[j]
+		portions[j] = tmp
+	var prev := 0.0
+	for k in portions.size():
+		var t: float = wave_cfg.burst_signal_lead
+		if k > 0:
+			t = maxf(t + k * wave_cfg.burst_gap + rng.randf_range(-wave_cfg.burst_gap_jitter, wave_cfg.burst_gap_jitter), prev + 6.0)
+		portions[k].t_start = t
+		prev = t
+	return portions
+
+
+func _burst_size(b: Dictionary) -> int:
+	var n := 0
+	for r in b.records:
+		n += r.count
+	return n
+
+
+# Стороны, по которым сейчас дан сигнал: всплеск объявлен, но ещё не начал появляться. В передышке пусто.
+func _burst_signals() -> Array:
+	var out := []
+	if not waves_enabled or not bursts_enabled or wave_state != WS_BATTLE:
+		return out
+	for k in range(burst_idx + (1 if burst_active else 0), burst_signal_n):
+		if not out.has(wave_bursts[k].side):
+			out.append(wave_bursts[k].side)
+	return out
+
+
+# Ход волны всплесками. Сигнал — за burst_signal_lead секунд до t_start. Всплеск начинается, когда пришло его время
+# и после него живых зомби будет не больше max_alive (нет места — ждёт, сигнал уже дан). Порция выходит кусками
+# по burst_chunk юнитов раз в burst_chunk_interval; куски продолжают одну сетку блока своей стороны.
+func _update_bursts(delta: float) -> void:
+	wave_t += delta
+	while burst_signal_n < wave_bursts.size() and wave_t >= wave_bursts[burst_signal_n].t_start - wave_cfg.burst_signal_lead:
+		burst_msg = "Всплеск: %s" % SIDE_WORDS[wave_bursts[burst_signal_n].side]
+		burst_msg_until = wave_t + 3.0
+		burst_signal_n += 1
+		ui_t = 0.0   # надпись и иконка сразу
+		if signal_player != null:
+			signal_player.play()
+	if not burst_active and burst_idx < wave_bursts.size() and wave_t >= wave_bursts[burst_idx].t_start:
+		var size := _burst_size(wave_bursts[burst_idx])
+		if zombie_alive + size <= int(wave_cfg.max_alive) and count + size <= MAX_UNITS:
+			burst_active = true
+			burst_rec = 0
+			burst_rec_left = wave_bursts[burst_idx].records[0].count
+			burst_placed = 0
+			burst_chunk_t = 0.0
+	if not burst_active:
+		return
+	burst_chunk_t -= delta
+	if burst_chunk_t > 0.0:
+		return
+	var b: Dictionary = wave_bursts[burst_idx]
+	var room := int(wave_cfg.burst_chunk)
+	while room > 0 and burst_rec < b.records.size():
+		var n := mini(room, burst_rec_left)
+		_spawn_block(n, b.records[burst_rec].type, b.side, burst_placed)
+		burst_placed += n
+		burst_rec_left -= n
+		wave_remaining -= n
+		room -= n
+		if burst_rec_left == 0:
+			burst_rec += 1
+			if burst_rec < b.records.size():
+				burst_rec_left = b.records[burst_rec].count
+	burst_chunk_t = wave_cfg.burst_chunk_interval
+	if burst_rec >= b.records.size():
+		burst_active = false
+		burst_idx += 1
+		queue_redraw()   # иконка этого всплеска гаснет
+
+
 # Space в передышке: следующая волна. Сила зомби растёт с номером волны.
 func _start_wave() -> void:
 	if not waves_enabled or wave_state != WS_RESPITE:
@@ -632,6 +786,7 @@ func _start_wave() -> void:
 	if wave_plan_for != wave_number:   # план строится в начале передышки; сюда — если номер волны сменили в обход
 		wave_plan = _plan_wave(wave_number)
 		wave_plan_for = wave_number
+		wave_bursts = _plan_bursts(wave_number, wave_plan)
 	wave_left.resize(wave_plan.size())
 	wave_remaining = 0
 	for k in wave_plan.size():
@@ -645,6 +800,12 @@ func _start_wave() -> void:
 	arrows_hit = 0
 	arrows_out_of_range = 0
 	subwave_timer = 0.0
+	wave_t = 0.0
+	burst_idx = 0
+	burst_signal_n = 0
+	burst_active = false
+	burst_msg = ""
+	burst_msg_until = 0.0
 	_show_banner("")
 	queue_redraw()   # маркеры разведки скрываются
 
@@ -654,6 +815,11 @@ func _start_wave() -> void:
 # Волна пройдена: все появились и все убиты -> бонус, лечение армии, передышка.
 func _update_waves(delta: float) -> void:
 	if not waves_enabled or wave_state != WS_BATTLE:
+		return
+	if bursts_enabled:
+		_update_bursts(delta)
+		if wave_remaining == 0 and zombie_alive == 0:
+			_wave_cleared()
 		return
 	subwave_timer -= delta
 	if wave_remaining > 0 and subwave_timer <= 0.0:
@@ -741,8 +907,9 @@ func _wave_cleared() -> void:
 			hp[i] = type_hp[unit_type[i]]   # бесплатное лечение армии
 	wave_state = WS_RESPITE
 	_free_empty_squads()
-	wave_plan = _plan_wave(wave_number + 1)   # разведка: состав следующей волны известен с начала передышки
+	wave_plan = _plan_wave(wave_number + 1)   # состав и всплески следующей волны известны с начала передышки
 	wave_plan_for = wave_number + 1
+	wave_bursts = _plan_bursts(wave_plan_for, wave_plan)
 	var summary := "Волна %d пройдена: убито %d, +%d золота. Space — волна %d" % [
 		wave_number, wave_kills, int(wave_cfg.wave_bonus_gold), wave_number + 1]
 	var killed := _kills_text()
@@ -1366,6 +1533,7 @@ func _setup_data() -> void:
 	wave_kills_by_type.fill(0)
 	wave_plan = _plan_wave(1) if waves_enabled else []
 	wave_plan_for = 1
+	wave_bursts = _plan_bursts(1, wave_plan)
 	for s in START_SQUADS:
 		var min_speed := INF
 		for i in count:
@@ -1436,6 +1604,18 @@ func _setup_fps_label() -> void:
 	hud_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	hud_label.add_theme_constant_override("outline_size", 6)
 	layer.add_child(hud_label)
+	# Сигнал всплеска: надпись вверху по центру, под HUD (без чисел и типов)
+	burst_label = Label.new()
+	burst_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	burst_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	burst_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	burst_label.position.y = 72.0
+	burst_label.add_theme_font_size_override("font_size", 30)
+	burst_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.2))
+	burst_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	burst_label.add_theme_constant_override("outline_size", 8)
+	burst_label.visible = false
+	layer.add_child(burst_label)
 	# Магазин справа (виден только в передышке)
 	shop_panel = VBoxContainer.new()
 	shop_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
@@ -1548,8 +1728,10 @@ func _update_ui() -> void:
 		return
 	hud_label.text = "Волна %d · зомби: %d · ворота: %d/%d · золото: %d" % [
 		wave_number, zombie_alive + wave_remaining, ceili(maxf(gate_hp, 0.0)), roundi(gate_hp_max), floori(gold)]
-	if waves_enabled and wave_state == WS_RESPITE:
+	if scout_shown and waves_enabled and wave_state == WS_RESPITE:
 		hud_label.text += "\n" + _plan_text()   # разведка
+	burst_label.text = burst_msg
+	burst_label.visible = wave_state == WS_BATTLE and burst_msg != "" and wave_t < burst_msg_until
 	if hud_msg != "":
 		hud_label.text += "\n" + hud_msg
 	shop_panel.visible = wave_state == WS_RESPITE
