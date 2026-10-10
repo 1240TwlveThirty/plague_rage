@@ -31,5 +31,13 @@
 	"burst_gap_jitter": 4.0,
 	"burst_signal_lead": 2.5,
 	"burst_chunk": 50,
-	"burst_chunk_interval": 0.5
+	"burst_chunk_interval": 0.5,
+	"layers": [
+		{"gap": 10.0, "gap_jitter": 1.5, "signal_lead": 1.5, "pair_prob": 0.15, "group_max": 2, "side_weight_top": 0.5, "side_weight_left": 0.25, "side_weight_right": 0.25,
+			"sides_from_wave": 3, "burst_target_size": 100, "burst_count_min": 2, "burst_count_max": 8},
+		{"gap": 6.0, "gap_jitter": 1.0, "signal_lead": 1.0, "pair_prob": 0.30, "group_max": 3, "side_weight_top": 0.4, "side_weight_left": 0.3, "side_weight_right": 0.3,
+			"sides_from_wave": 3, "burst_target_size": 125, "burst_count_min": 3, "burst_count_max": 8},
+		{"gap": 4.0, "gap_jitter": 0.5, "signal_lead": 0.5, "pair_prob": 0.45, "group_max": 3, "side_weight_top": 0.34, "side_weight_left": 0.33, "side_weight_right": 0.33,
+			"sides_from_wave": 3, "burst_target_size": 200, "burst_count_min": 4, "burst_count_max": 10}
+	]
 }

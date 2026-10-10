@@ -19,6 +19,10 @@ const TEMP_SLOT_BASE := 1 << 24   # временные slot_idx новых юн�
 const ARCHER_OWN_RANGE := false
 const SCOUT_SHOWN := false        # true: в передышке видны маркеры разведки и строка HUD «Дальше: ...»
 const BURSTS_ENABLED := true      # false: прежние подволны (subwave_*) со всех сторон сразу
+const BURSTS_LAYERED := true      # всплески по слою: стороны по весам, группы, темп и сигнал из waves.json layers; false — как раньше
+const DEBUG_LAYER := 1            # номер слоя 1-3 (позже его задаст каркас забега)
+const SIGNAL_TEXT_SHOWN := false  # надпись «Всплеск: ...» при сигнале (при BURSTS_LAYERED)
+const SIGNAL_ICONS_SHOWN := false # треугольники у стороны при сигнале (при BURSTS_LAYERED)
 const SIGNAL_SOUND_PATH := "res://audio/horn.ogg"   # звук сигнала всплеска; файла нет — без звука
 const ARCHERS_FOLLOW := false     # true: лучники идут за пехотой (как раньше) — для бенчей и регрессии
 # Приказы отряда
@@ -262,6 +266,16 @@ var wave_left := PackedInt32Array()    # сколько ещё не появил
 var wave_kills_by_type := PackedInt32Array()   # убито за волну по типу юнита
 var scout_shown := SCOUT_SHOWN         # тесты переопределяют
 var bursts_enabled := BURSTS_ENABLED   # бенчи переопределяют до старта волны
+var bursts_layered := BURSTS_LAYERED   # бенчи переопределяют до _setup_data
+var debug_layer := DEBUG_LAYER         # и слой тоже
+var burst_pending := 0                 # слои: ещё не появившиеся юниты уже начавшихся всплесков
+var burst_live := 0                    # слои: сколько всплесков сейчас появляется
+var signal_redraw_until := 0.0         # до какого wave_t полоса сигнала меняется (перерисовка каждый кадр)
+const ARRIVALS_WINDOW := 300           # тиков в окне arrivals_10s_max (10 с)
+var arrivals_ring := PackedInt32Array()   # PROFILE: сколько зомби появилось в каждом из последних тиков
+var arrivals_sum := 0
+var arrivals_now := 0                  # появилось в текущем тике
+var arrivals_10s_max := 0              # PROFILE: максимум появившихся за любые 10 с волны
 var wave_bursts: Array = []            # всплески волны wave_plan_for: {t_start, side, records [{type, count}]}
 var wave_t := 0.0                      # секунд с начала волны (Space)
 var burst_idx := 0                     # следующий всплеск, который ещё не начал появляться
@@ -407,6 +421,29 @@ func _draw() -> void:
 	# Сигнал всплеска: пульсирующая золотая полоса вдоль края экрана и мигающий (2 Гц) треугольник 48 px у своей стороны
 	var view_lo := FIELD * 0.5 - Vector2(VIEW_HALF_W, VIEW_HALF_H)
 	var view_size := Vector2(VIEW_HALF_W, VIEW_HALF_H) * 2.0
+	# Слои: мягкая красная полоса у края экрана своей стороны — 0.30 у края, плавно до 0 на 100 px вглубь (10 ступеней)
+	for side in 3:
+		var sa := _signal_alpha(side)
+		if sa <= 0.0:
+			continue
+		for q in 10:
+			var band := Rect2(view_lo + Vector2(0.0, q * 10.0), Vector2(view_size.x, 10.0))
+			if side == SIDE_LEFT:
+				band = Rect2(view_lo + Vector2(q * 10.0, 0.0), Vector2(10.0, view_size.y))
+			elif side == SIDE_RIGHT:
+				band = Rect2(view_lo + Vector2(view_size.x - (q + 1) * 10.0, 0.0), Vector2(10.0, view_size.y))
+			draw_rect(band, Color(0.85, 0.12, 0.12, sa * (1.0 - q / 10.0)))
+		if SIGNAL_ICONS_SHOWN and fmod(wave_t * 2.0, 1.0) < 0.5:
+			var tri_at := Vector2(wave_cfg.spawn_center_x, 150.0)
+			var tri_dir := Vector2.DOWN
+			if side == SIDE_LEFT:
+				tri_at = Vector2(view_lo.x + 120.0, wave_cfg.spawn_left_y)
+				tri_dir = Vector2.RIGHT
+			elif side == SIDE_RIGHT:
+				tri_at = Vector2(view_lo.x + view_size.x - 120.0, wave_cfg.spawn_right_y)
+				tri_dir = Vector2.LEFT
+			var tri_lat := Vector2(-tri_dir.y, tri_dir.x)
+			draw_colored_polygon(PackedVector2Array([tri_at + tri_dir * 24.0, tri_at - tri_dir * 24.0 + tri_lat * 24.0, tri_at - tri_dir * 24.0 - tri_lat * 24.0]), Color(0.85, 0.12, 0.12, 0.95))
 	for side in _burst_signals():
 		var pulse := 0.5 + 0.5 * sin(wave_t * 2.0 * TAU)
 		var strip := Rect2(view_lo, Vector2(view_size.x, 24.0))
@@ -506,6 +543,20 @@ func _load_waves() -> bool:
 			"side_prob", "knight_from_wave", "knight_per_wave", "knight_cap", "spawn_left_x", "spawn_left_y", "spawn_right_x", "spawn_right_y",
 			"burst_target_size", "burst_gap", "burst_gap_jitter", "burst_signal_lead", "burst_chunk", "burst_chunk_interval"], WAVES_PATH):
 		return false
+	if not d.get("layers") is Array or d.layers.size() != 3:
+		push_error("%s: нет массива layers из трёх слоёв" % WAVES_PATH)
+		return false
+	for q in 3:
+		var layer = d.layers[q]
+		if not layer is Dictionary or not _require_numbers(layer, ["gap", "gap_jitter", "signal_lead", "pair_prob", "group_max", "side_weight_top", "side_weight_left",
+				"side_weight_right", "sides_from_wave", "burst_target_size", "burst_count_min", "burst_count_max"], "%s, слой %d" % [WAVES_PATH, q + 1]):
+			if not layer is Dictionary:
+				push_error("%s: слой %d не объект" % [WAVES_PATH, q + 1])
+			return false
+		if layer.side_weight_top < 0.0 or layer.side_weight_left < 0.0 or layer.side_weight_right < 0.0 \
+				or layer.side_weight_top + layer.side_weight_left + layer.side_weight_right <= 0.0:
+			push_error("%s, слой %d: веса сторон должны быть >= 0, а их сумма > 0" % [WAVES_PATH, q + 1])
+			return false
 	wave_cfg = d
 	return true
 
@@ -679,6 +730,8 @@ func _recon_markers() -> Array:
 # (первая — без разброса), но не раньше чем через 6 с после предыдущей.
 # Результат: [{t_start, side, records [{type, count}]}]; сумма по всплескам равна плану по каждой паре (сторона, тип).
 func _plan_bursts(w: int, plan: Array) -> Array:
+	if bursts_layered:
+		return _plan_bursts_layered(w, plan)
 	var portions := []
 	for side in 3:
 		var total := 0
@@ -714,6 +767,178 @@ func _plan_bursts(w: int, plan: Array) -> Array:
 	return portions
 
 
+# Слой темпа: gap, сигнал, группы, веса сторон, размер и число всплесков (waves.json layers, номер debug_layer).
+func _layer() -> Dictionary:
+	return wave_cfg.layers[clampi(debug_layer, 1, 3) - 1]
+
+
+# Всплески волны w по слою. Число N = clamp(ceil(всего / burst_target_size), burst_count_min, burst_count_max).
+# Сторона каждого всплеска — взвешенный случайный выбор (свой генератор, seed = spawn_seed + w * 7919):
+# верх допустим всегда, левая и правая — с волны sides_from_wave слоя. Крестьяне и рыцари делятся поровну между
+# всеми всплесками (остаток — первым), бегуны — только между боковыми (боковых нет — между всеми).
+# Группы: следующий всплеск присоединяется к текущей группе с вероятностью pair_prob, если его стороны в группе
+# ещё нет и группа меньше group_max. Группа g стартует в signal_lead + g * gap ± gap_jitter (первая — без разброса),
+# не раньше чем через max(2, 0.6 * gap) после предыдущей; всплески группы из нескольких — с разбросом ±0.3 с.
+# Результат в порядке t_start: [{t_start, t_group, group, order (как выпал), side, records [{type, count}]}].
+func _plan_bursts_layered(w: int, plan: Array) -> Array:
+	var layer := _layer()
+	var by_type := {}
+	var total := 0
+	for r in plan:
+		by_type[r.type] = by_type.get(r.type, 0) + r.count
+		total += r.count
+	if total == 0:
+		return []
+	var n := clampi(ceili(total / float(layer.burst_target_size)), int(layer.burst_count_min), int(layer.burst_count_max))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = spawn_seed + w * 7919
+	var lateral_ok := w >= int(layer.sides_from_wave)
+	var weights := [float(layer.side_weight_top), float(layer.side_weight_left) if lateral_ok else 0.0, float(layer.side_weight_right) if lateral_ok else 0.0]
+	if weights[0] + weights[1] + weights[2] <= 0.0:
+		weights[0] = 1.0   # все допустимые веса нулевые: остаётся верх
+	var sides := PackedInt32Array()
+	var lateral := 0
+	for k in n:
+		var x: float = rng.randf() * (weights[0] + weights[1] + weights[2])
+		var side := SIDE_TOP
+		if x >= weights[0]:
+			side = SIDE_LEFT if x < weights[0] + weights[1] else SIDE_RIGHT
+		sides.append(side)
+		if side != SIDE_TOP:
+			lateral += 1
+	var bursts := []
+	var lat_k := 0   # номер среди боковых всплесков
+	for k in n:
+		var records := []
+		for type in [zombie_type, knight_type, runner_type]:
+			var c: int = by_type.get(type, 0)
+			var part := c / n + (1 if k < c % n else 0)
+			if type == runner_type and lateral > 0:
+				part = 0
+				if sides[k] != SIDE_TOP:
+					part = c / lateral + (1 if lat_k < c % lateral else 0)
+			if part > 0:
+				records.append({"type": type, "count": part})
+		if sides[k] != SIDE_TOP:
+			lat_k += 1
+		if not records.is_empty():
+			bursts.append({"t_start": 0.0, "t_group": 0.0, "group": 0, "order": bursts.size(), "side": sides[k], "records": records})
+	# группы и время
+	var group := 0
+	var group_sides := []
+	var group_first := 0
+	var t_group: float = layer.signal_lead
+	var min_step := maxf(2.0, 0.6 * layer.gap)
+	for k in bursts.size():
+		if k > 0:
+			var join: bool = rng.randf() < layer.pair_prob
+			if join and not group_sides.has(bursts[k].side) and group_sides.size() < int(layer.group_max):
+				pass
+			else:
+				_spread_group(bursts, group_first, k, rng)
+				group += 1
+				group_sides = []
+				group_first = k
+				t_group = maxf(layer.signal_lead + group * layer.gap + rng.randf_range(-layer.gap_jitter, layer.gap_jitter), t_group + min_step)
+		group_sides.append(bursts[k].side)
+		bursts[k].group = group
+		bursts[k].t_group = t_group
+		bursts[k].t_start = t_group
+	_spread_group(bursts, group_first, bursts.size(), rng)
+	bursts.sort_custom(func(a, b): return a.t_start < b.t_start if a.t_start != b.t_start else a.group < b.group)
+	return bursts
+
+
+# Всплески одной группы [first, last) из нескольких сторон стартуют с разбросом ±0.3 с вокруг времени группы.
+func _spread_group(bursts: Array, first: int, last: int, rng: RandomNumberGenerator) -> void:
+	if last - first < 2:
+		return
+	for k in range(first, last):
+		bursts[k].t_start = bursts[k].t_group + rng.randf_range(-0.3, 0.3)
+
+
+# Ход волны по слою. Сигнал группы — за signal_lead до её времени (звук один раз на группу). Всплески стартуют
+# по порядку t_start, когда пришло время и есть место по max_alive с учётом уже идущих; несколько всплесков могут
+# появляться одновременно, каждый своей сеткой блока. Куски — по burst_chunk раз в burst_chunk_interval.
+func _update_bursts_layered(delta: float) -> void:
+	wave_t += delta
+	var lead: float = _layer().signal_lead
+	while burst_signal_n < wave_bursts.size() and wave_t >= wave_bursts[burst_signal_n].t_group - lead:
+		var g: int = wave_bursts[burst_signal_n].group
+		var words := PackedStringArray()
+		while burst_signal_n < wave_bursts.size() and wave_bursts[burst_signal_n].group == g:
+			words.append(SIDE_WORDS[wave_bursts[burst_signal_n].side])
+			burst_signal_n += 1
+		if SIGNAL_TEXT_SHOWN:
+			burst_msg = "Всплеск: %s" % ", ".join(words)
+			burst_msg_until = wave_t + 3.0
+			ui_t = 0.0
+		if signal_player != null:
+			signal_player.play()
+		queue_redraw()   # полоса появляется сразу
+	while burst_idx < wave_bursts.size() and wave_t >= wave_bursts[burst_idx].t_start:
+		var b: Dictionary = wave_bursts[burst_idx]
+		var size := _burst_size(b)
+		if zombie_alive + burst_pending + size > int(wave_cfg.max_alive) or count + burst_pending + size > MAX_UNITS:
+			break   # нет места: ждёт, следующие — за ним
+		b.state = 1
+		b.started = wave_t
+		b.rec = 0
+		b.left = b.records[0].count
+		b.placed = 0
+		b.chunk_t = 0.0
+		burst_pending += size
+		burst_live += 1
+		burst_idx += 1
+		signal_redraw_until = wave_t + 0.7   # полоса держится 0.4 с после старта и гаснет за 0.2 с
+	if burst_live == 0:
+		return
+	for k in burst_idx:
+		var b: Dictionary = wave_bursts[k]
+		if b.state != 1:
+			continue
+		b.chunk_t -= delta
+		if b.chunk_t > 0.0:
+			continue
+		var room := int(wave_cfg.burst_chunk)
+		while room > 0 and b.rec < b.records.size():
+			var n := mini(room, b.left)
+			_spawn_block(n, b.records[b.rec].type, b.side, b.placed)
+			b.placed += n
+			b.left -= n
+			wave_remaining -= n
+			burst_pending -= n
+			room -= n
+			if b.left == 0:
+				b.rec += 1
+				if b.rec < b.records.size():
+					b.left = b.records[b.rec].count
+		b.chunk_t = wave_cfg.burst_chunk_interval
+		if b.rec >= b.records.size():
+			b.state = 2
+			burst_live -= 1
+
+
+# Сила красной полосы сигнала у стороны side (0..0.30): горит с сигнала группы до 0.4 с после старта своего
+# всплеска, затем гаснет за 0.2 с. Вне боя и без слоёв — 0.
+func _signal_alpha(side: int) -> float:
+	if not waves_enabled or not bursts_enabled or not bursts_layered or wave_state != WS_BATTLE:
+		return 0.0
+	var a := 0.0
+	for k in burst_signal_n:
+		var b: Dictionary = wave_bursts[k]
+		if b.side != side:
+			continue
+		if b.state == 0:
+			return 0.30
+		var dt: float = wave_t - b.started
+		if dt <= 0.4:
+			return 0.30
+		if dt < 0.6:
+			a = maxf(a, 0.30 * (1.0 - (dt - 0.4) / 0.2))
+	return a
+
+
 func _burst_size(b: Dictionary) -> int:
 	var n := 0
 	for r in b.records:
@@ -724,7 +949,7 @@ func _burst_size(b: Dictionary) -> int:
 # Стороны, по которым сейчас дан сигнал: всплеск объявлен, но ещё не начал появляться. В передышке пусто.
 func _burst_signals() -> Array:
 	var out := []
-	if not waves_enabled or not bursts_enabled or wave_state != WS_BATTLE:
+	if not waves_enabled or not bursts_enabled or bursts_layered or wave_state != WS_BATTLE:
 		return out
 	for k in range(burst_idx + (1 if burst_active else 0), burst_signal_n):
 		if not out.has(wave_bursts[k].side):
@@ -804,6 +1029,17 @@ func _start_wave() -> void:
 	burst_idx = 0
 	burst_signal_n = 0
 	burst_active = false
+	burst_pending = 0
+	burst_live = 0
+	signal_redraw_until = 0.0
+	for b in wave_bursts:   # слои: состояние всплеска хранится в его записи
+		b.state = 0
+		b.started = -1.0
+	arrivals_ring.resize(ARRIVALS_WINDOW)
+	arrivals_ring.fill(0)
+	arrivals_sum = 0
+	arrivals_now = 0
+	arrivals_10s_max = 0
 	burst_msg = ""
 	burst_msg_until = 0.0
 	_show_banner("")
@@ -817,7 +1053,16 @@ func _update_waves(delta: float) -> void:
 	if not waves_enabled or wave_state != WS_BATTLE:
 		return
 	if bursts_enabled:
-		_update_bursts(delta)
+		if bursts_layered:
+			_update_bursts_layered(delta)
+		else:
+			_update_bursts(delta)
+		if profile:   # отладка: максимум появившихся за любые 10 с
+			var slot := tick_counter % ARRIVALS_WINDOW
+			arrivals_sum += arrivals_now - arrivals_ring[slot]
+			arrivals_ring[slot] = arrivals_now
+			arrivals_now = 0
+			arrivals_10s_max = maxi(arrivals_10s_max, arrivals_sum)
 		if wave_remaining == 0 and zombie_alive == 0:
 			_wave_cleared()
 		return
@@ -883,6 +1128,7 @@ func _spawn_zombie(p: Vector2, type: int) -> void:
 	unit_slot[i] = Vector2.ZERO
 	unit_rand[i] = unit_rng.randf()
 	hp[i] = type_hp[type] * wave_hp_mult
+	arrivals_now += 1
 	cooldown[i] = unit_rand[i] * type_cooldown[type]
 	unit_state[i] = ST_IDLE
 	unit_slot_changed_t[i] = -1000.0
@@ -1829,6 +2075,8 @@ func _process(delta: float) -> void:
 		ui_t = 0.1
 		_update_ui()
 		queue_redraw()   # маркеры целей отрядов
+	if wave_state == WS_BATTLE and wave_t < signal_redraw_until:
+		queue_redraw()   # полоса сигнала гаснет плавно
 	if hud_msg_t > 0.0:
 		hud_msg_t -= delta
 		if hud_msg_t <= 0.0:
@@ -1869,7 +2117,7 @@ func _process(delta: float) -> void:
 		var parts := []
 		for q in 6:
 			parts.append("%s %.2f" % [PROF_NAMES[q], prof_avg[q]])
-		fps_label.text += "\nфазы, мс/тик: " + ", ".join(parts)
+		fps_label.text += "\nфазы, мс/тик: " + ", ".join(parts) + " | появилось за 10 с, максимум: %d" % arrivals_10s_max
 	if gate_hp != drawn_gate_hp:
 		queue_redraw()   # полоса HP ворот
 
