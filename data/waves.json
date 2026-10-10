@@ -13,5 +13,17 @@
 	"spawn_spacing": 6,
 	"wave_bonus_gold": 20,
 	"gold_per_kill": 2.0,
-	"start_gold": 100
+	"start_gold": 100,
+	"runner_from_wave": 3,
+	"runner_share_early": 0.10,
+	"runner_share": 0.20,
+	"sides_from_wave": 5,
+	"side_prob": 0.7,
+	"knight_from_wave": 7,
+	"knight_per_wave": 0.8,
+	"knight_cap": 60,
+	"spawn_left_x": 300,
+	"spawn_left_y": 250,
+	"spawn_right_x": 1900,
+	"spawn_right_y": 250
 }

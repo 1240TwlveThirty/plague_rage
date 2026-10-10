@@ -161,6 +161,8 @@ var type_volley_period := PackedFloat32Array()  # период цикла зал
 var type_draw_time := PackedFloat32Array()      # натяжение перед залпом, с
 var type_spread := PackedFloat32Array()         # разброс: радиус = spread * дистанция
 var type_arrow_dmg := PackedFloat32Array()
+var type_bounty_mult := PackedFloat32Array()   # золото за убитого = gold_per_kill * это
+var type_chase := PackedByteArray()            # орда: 1 = идёт к врагу в VIEW_RANGE; 0 = идёт мимо, бьёт только в дальности атаки
 
 # --- Лучники: отряды, грубая сетка зомби, стрелы-события ---
 var squad_follow := PackedInt32Array()      # номер ведущего отряда или -1
@@ -242,6 +244,17 @@ var unit_rng := RandomNumberGenerator.new()   # unit_rand, джиттер спа
 var infantry_type := -1
 var archer_type := -1
 var zombie_type := -1
+var runner_type := -1
+var knight_type := -1
+const SIDE_TOP := 0     # стороны появления орды
+const SIDE_LEFT := 1
+const SIDE_RIGHT := 2
+const SIDE_ARROWS := ["↑", "←", "→"]
+const VIEW_HALF_W := 960.0   # половина ширины экрана в px мира (камера по центру поля): для маркеров разведки у края экрана
+var wave_plan: Array = []              # состав следующей (в бою — текущей) волны: записи {type, side, count}
+var wave_plan_for := 0                 # для какой волны построен wave_plan
+var wave_left := PackedInt32Array()    # сколько ещё не появилось по каждой записи плана
+var wave_kills_by_type := PackedInt32Array()   # убито за волну по типу юнита
 var sort_keys := PackedInt64Array()           # scratch для _reflow_squad
 var squad_aspect := PackedVector2Array()      # пропорция строя (ширина, глубина): пехота 20/15, лучники 25/4
 var shop_label := PackedStringArray()
@@ -362,6 +375,18 @@ func _draw() -> void:
 			draw_line(tip, tip - face * 8.0 - lat * 5.0, Color.WHITE, 2.0)
 			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), "%d × %d · %d юн." % [g.width, g.rows, g.n],
 				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
+	# Разведка в передышке: у каждой активной стороны треугольник внутрь поля и состав (цвет типа, число)
+	for mk in _recon_markers():
+		var d: Vector2 = mk.dir
+		var side_lat := Vector2(-d.y, d.x)
+		var at: Vector2 = mk.pos
+		draw_colored_polygon(PackedVector2Array([at + d * 16.0, at - d * 8.0 + side_lat * 12.0, at - d * 8.0 - side_lat * 12.0]), Color(1.0, 0.35, 0.25, 0.9))
+		var items: Array = mk.items
+		var x0 := at.x - 22.0 - items.size() * 78.0 if mk.side == SIDE_RIGHT else at.x + 22.0   # справа список идёт влево от маркера
+		for q in items.size():
+			var cell := Vector2(x0 + q * 78.0, at.y - 7.0)
+			draw_rect(Rect2(cell, Vector2(14, 14)), type_color[items[q][0]])
+			draw_string(ThemeDB.fallback_font, cell + Vector2(18.0, 13.0), "×%d" % items[q][1], HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color.WHITE)
 	if not DEBUG_COLORS:
 		return
 	draw_circle(GATE_POS, 8.0, Color(1.0, 0.85, 0.2, 0.8))
@@ -428,7 +453,8 @@ func _load_waves() -> bool:
 		return false
 	if not _require_numbers(d, ["count_base", "count_step", "count_cap", "hp_growth", "dmg_growth", "subwave_size",
 			"subwave_interval", "max_alive", "spawn_center_x", "spawn_front_y", "spawn_columns", "spawn_spacing",
-			"wave_bonus_gold", "gold_per_kill", "start_gold"], WAVES_PATH):
+			"wave_bonus_gold", "gold_per_kill", "start_gold", "runner_from_wave", "runner_share_early", "runner_share", "sides_from_wave",
+			"side_prob", "knight_from_wave", "knight_per_wave", "knight_cap", "spawn_left_x", "spawn_left_y", "spawn_right_x", "spawn_right_y"], WAVES_PATH):
 		return false
 	wave_cfg = d
 	return true
@@ -499,69 +525,213 @@ func _wave_count(w: int) -> int:
 	return mini(int(wave_cfg.count_cap), roundi(wave_cfg.count_base + wave_cfg.count_step * (w - 1)))
 
 
+# Состав волны w: записи {type, side, count}, сумма count = _wave_count(w).
+# Бегуны: доля runner_share_early на волнах [runner_from_wave, sides_from_wave), runner_share дальше.
+# Рыцари с knight_from_wave: (w - knight_from_wave + 1) * knight_per_wave * 2, не больше knight_cap. Остальные — крестьяне.
+# Стороны: верх всегда; с sides_from_wave левая и правая включаются с вероятностью side_prob каждая
+# (свой генератор, seed = spawn_seed + w; обе выключены — включается случайная из двух).
+# Бегуны идут на боковые стороны поровну (боковых нет — сверху); крестьяне и рыцари — по весам: верх 2, боковая 1.
+func _plan_wave(w: int) -> Array:
+	var total := _wave_count(w)
+	var share := 0.0
+	if w >= int(wave_cfg.sides_from_wave):
+		share = wave_cfg.runner_share
+	elif w >= int(wave_cfg.runner_from_wave):
+		share = wave_cfg.runner_share_early
+	var runners := mini(roundi(total * share), total)
+	var knights := 0
+	if w >= int(wave_cfg.knight_from_wave):
+		knights = mini(mini(roundi((w - int(wave_cfg.knight_from_wave) + 1) * wave_cfg.knight_per_wave * 2.0), int(wave_cfg.knight_cap)), total - runners)
+	var peasants := total - runners - knights
+	var sides: Array[int] = []   # активные боковые стороны
+	if w >= int(wave_cfg.sides_from_wave):
+		var rng := RandomNumberGenerator.new()
+		rng.seed = spawn_seed + w
+		var left: bool = rng.randf() < wave_cfg.side_prob
+		var right: bool = rng.randf() < wave_cfg.side_prob
+		if not left and not right:
+			if rng.randi() % 2 == 0:
+				left = true
+			else:
+				right = true
+		if left:
+			sides.append(SIDE_LEFT)
+		if right:
+			sides.append(SIDE_RIGHT)
+	var plan := []
+	# крестьяне и рыцари: боковой стороне 1 часть из (2 + число боковых), верху — остальное
+	for part in [[zombie_type, peasants], [knight_type, knights]]:
+		var n: int = part[1]
+		var each := roundi(n / float(2 + sides.size())) if not sides.is_empty() else 0
+		_plan_add(plan, part[0], SIDE_TOP, n - each * sides.size())
+		for side in sides:
+			_plan_add(plan, part[0], side, each)
+	# бегуны: поровну на боковые (лишний — первой), без боковых — сверху
+	if sides.is_empty():
+		_plan_add(plan, runner_type, SIDE_TOP, runners)
+	else:
+		var each_r := runners / sides.size()
+		for q in sides.size():
+			_plan_add(plan, runner_type, sides[q], each_r + (runners - each_r * sides.size() if q == 0 else 0))
+	return plan
+
+
+func _plan_add(plan: Array, type: int, side: int, n: int) -> void:
+	if n > 0:
+		plan.append({"type": type, "side": side, "count": n})
+
+
+# Строка разведки для HUD: «Дальше: волна N · ↑ 150 · ← 60 · → 40 (бегуны 20, рыцари 4)».
+func _plan_text() -> String:
+	var by_side := [0, 0, 0]
+	var runners := 0
+	var knights := 0
+	for r in wave_plan:
+		by_side[r.side] += r.count
+		if r.type == runner_type:
+			runners += r.count
+		elif r.type == knight_type:
+			knights += r.count
+	var text := "Дальше: волна %d" % wave_plan_for
+	for side in 3:
+		if by_side[side] > 0:
+			text += " · %s %d" % [SIDE_ARROWS[side], by_side[side]]
+	var extra := PackedStringArray()
+	if runners > 0:
+		extra.append("бегуны %d" % runners)
+	if knights > 0:
+		extra.append("рыцари %d" % knights)
+	return text if extra.is_empty() else text + " (%s)" % ", ".join(extra)
+
+
+# Маркеры разведки (только в передышке): на сторону — точка у края, направление внутрь поля и состав [тип, число].
+# Верх: (spawn_center_x, 150); левая и правая — в 120 px от края экрана на высоте своей точки появления.
+func _recon_markers() -> Array:
+	var out := []
+	if not waves_enabled or wave_state != WS_RESPITE:
+		return out
+	var at := [Vector2(wave_cfg.spawn_center_x, 150.0), Vector2(FIELD.x * 0.5 - VIEW_HALF_W + 120.0, wave_cfg.spawn_left_y),
+		Vector2(FIELD.x * 0.5 + VIEW_HALF_W - 120.0, wave_cfg.spawn_right_y)]
+	var dirs := [Vector2.DOWN, Vector2.RIGHT, Vector2.LEFT]
+	for side in 3:
+		var items := []
+		for r in wave_plan:
+			if r.side == side:
+				items.append([r.type, r.count])
+		if not items.is_empty():
+			out.append({"side": side, "pos": at[side], "dir": dirs[side], "items": items})
+	return out
+
+
 # Space в передышке: следующая волна. Сила зомби растёт с номером волны.
 func _start_wave() -> void:
 	if not waves_enabled or wave_state != WS_RESPITE:
 		return
 	wave_number += 1
 	wave_state = WS_BATTLE
-	wave_remaining = _wave_count(wave_number)
+	if wave_plan_for != wave_number:   # план строится в начале передышки; сюда — если номер волны сменили в обход
+		wave_plan = _plan_wave(wave_number)
+		wave_plan_for = wave_number
+	wave_left.resize(wave_plan.size())
+	wave_remaining = 0
+	for k in wave_plan.size():
+		wave_left[k] = wave_plan[k].count
+		wave_remaining += wave_left[k]
 	wave_hp_mult = 1.0 + wave_cfg.hp_growth * (wave_number - 1)
 	team_dmg_mult[1] = 1.0 + wave_cfg.dmg_growth * (wave_number - 1)
 	wave_kills = 0
+	wave_kills_by_type.fill(0)
 	arrows_fired = 0   # в отладочной строке — за текущую волну
 	arrows_hit = 0
 	arrows_out_of_range = 0
 	subwave_timer = 0.0
 	_show_banner("")
+	queue_redraw()   # маркеры разведки скрываются
 
 
-# Подволны: блок spawn_columns в ширину, раз в subwave_interval, пока живых зомби не больше max_alive.
+# Подволны: раз в subwave_interval по каждой записи плана появляется subwave_size * (count записи / вся волна)
+# юнитов (не меньше 1, пока запись не исчерпана), если живых зомби после этого не больше max_alive.
 # Волна пройдена: все появились и все убиты -> бонус, лечение армии, передышка.
 func _update_waves(delta: float) -> void:
 	if not waves_enabled or wave_state != WS_BATTLE:
 		return
 	subwave_timer -= delta
-	var sub := int(wave_cfg.subwave_size)
-	if wave_remaining > 0 and subwave_timer <= 0.0 and zombie_alive + sub <= int(wave_cfg.max_alive):
-		var n := mini(sub, wave_remaining)
-		if count + n <= MAX_UNITS:
-			_spawn_block(n)
-			wave_remaining -= n
+	if wave_remaining > 0 and subwave_timer <= 0.0:
+		var total := 0
+		for r in wave_plan:
+			total += r.count
+		var batch := 0
+		for k in wave_plan.size():
+			batch += mini(maxi(roundi(wave_cfg.subwave_size * wave_plan[k].count / float(total)), 1), wave_left[k])
+		if zombie_alive + batch <= int(wave_cfg.max_alive) and count + batch <= MAX_UNITS:
+			var placed := [0, 0, 0]   # сколько уже поставлено на сторону в этой подволне: блоки записей идут друг за другом
+			for k in wave_plan.size():
+				var n := mini(maxi(roundi(wave_cfg.subwave_size * wave_plan[k].count / float(total)), 1), wave_left[k])
+				if n > 0:
+					var side: int = wave_plan[k].side
+					_spawn_block(n, wave_plan[k].type, side, placed[side])
+					placed[side] += n
+					wave_left[k] -= n
+			wave_remaining -= batch
 			subwave_timer = wave_cfg.subwave_interval
 	if wave_remaining == 0 and zombie_alive == 0:
 		_wave_cleared()
 
 
-func _spawn_block(n: int) -> void:
+# Блок появления: spawn_columns в ширину, ряды назад от переднего края. Сверху — как раньше (лицом вниз);
+# слева и справа — тот же блок с центром переднего ряда в (spawn_left/right_x, y), лицом к HORDE_GOAL.
+# first — с какого места блока начинать (если на этой стороне в подволне уже кто-то появился).
+func _spawn_block(n: int, type: int, side: int, first: int) -> void:
 	var cols := int(wave_cfg.spawn_columns)
 	var sp: float = wave_cfg.spawn_spacing
-	for k in n:
-		var col := k % cols
-		var row := k / cols
-		var p := Vector2(wave_cfg.spawn_center_x + (col - (cols - 1) * 0.5) * sp, wave_cfg.spawn_front_y - row * sp)
+	var lim := Vector2(FIELD.x, WALL_Y - 20.0)   # новые зомби в поле и не ниже WALL_Y - 20
+	var centre := Vector2.ZERO
+	var face := Vector2.DOWN
+	if side != SIDE_TOP:
+		centre = Vector2(wave_cfg.spawn_left_x, wave_cfg.spawn_left_y) if side == SIDE_LEFT else Vector2(wave_cfg.spawn_right_x, wave_cfg.spawn_right_y)
+		face = (HORDE_GOAL - centre).normalized()
+	var lat := Vector2(-face.y, face.x)
+	for q in range(first, first + n):
+		var col := q % cols
+		var row := q / cols
+		var p: Vector2
+		if side == SIDE_TOP:
+			p = Vector2(wave_cfg.spawn_center_x + (col - (cols - 1) * 0.5) * sp, wave_cfg.spawn_front_y - row * sp)
+		else:
+			p = centre + lat * ((col - (cols - 1) * 0.5) * sp) - face * (row * sp)
 		p += Vector2(unit_rng.randf_range(-1.0, 1.0), unit_rng.randf_range(-1.0, 1.0))
-		_spawn_zombie(p.clamp(Vector2.ZERO, FIELD))
+		_spawn_zombie(p.clamp(Vector2.ZERO, lim), type)
 
 
-# Новый зомби в индекс count: все поля как у зомби на старте; cooldown рассинхронизирован по unit_rand.
-func _spawn_zombie(p: Vector2) -> void:
+# Новый юнит орды типа type в индекс count; cooldown рассинхронизирован по unit_rand.
+func _spawn_zombie(p: Vector2, type: int) -> void:
 	var i := count
 	count += 1
 	pos[i] = p
 	prev_pos[i] = p
 	vel[i] = Vector2.ZERO
 	team[i] = 1
-	unit_type[i] = zombie_type
+	unit_type[i] = type
 	unit_squad[i] = -1
 	unit_slot_idx[i] = -1
 	unit_slot[i] = Vector2.ZERO
 	unit_rand[i] = unit_rng.randf()
-	hp[i] = type_hp[zombie_type] * wave_hp_mult
-	cooldown[i] = unit_rand[i] * type_cooldown[zombie_type]
+	hp[i] = type_hp[type] * wave_hp_mult
+	cooldown[i] = unit_rand[i] * type_cooldown[type]
 	unit_state[i] = ST_IDLE
 	unit_slot_changed_t[i] = -1000.0
 	zombie_alive += 1
+
+
+# Состав убитых за волну: «убито: крестьяне 90, бегуны 20, рыцари 4» (типы без убитых не показываются).
+func _kills_text() -> String:
+	var parts := PackedStringArray()
+	var names := ["крестьяне", "бегуны", "рыцари"]
+	var types := [zombie_type, runner_type, knight_type]
+	for q in 3:
+		if wave_kills_by_type[types[q]] > 0:
+			parts.append("%s %d" % [names[q], wave_kills_by_type[types[q]]])
+	return "" if parts.is_empty() else "убито: " + ", ".join(parts)
 
 
 func _wave_cleared() -> void:
@@ -571,9 +741,13 @@ func _wave_cleared() -> void:
 			hp[i] = type_hp[unit_type[i]]   # бесплатное лечение армии
 	wave_state = WS_RESPITE
 	_free_empty_squads()
-	_show_banner("Волна %d пройдена: убито %d, +%d золота. Space — волна %d" % [
-		wave_number, wave_kills, int(wave_cfg.wave_bonus_gold), wave_number + 1], _entry_text(wave_number))
-
+	wave_plan = _plan_wave(wave_number + 1)   # разведка: состав следующей волны известен с начала передышки
+	wave_plan_for = wave_number + 1
+	var summary := "Волна %d пройдена: убито %d, +%d золота. Space — волна %d" % [
+		wave_number, wave_kills, int(wave_cfg.wave_bonus_gold), wave_number + 1]
+	var killed := _kills_text()
+	_show_banner(summary if killed == "" else summary + "\n" + killed, _entry_text(wave_number))
+	queue_redraw()   # маркеры разведки
 
 # --- Магазин ------------------------------------------------------------------
 
@@ -973,6 +1147,8 @@ func _load_types() -> bool:
 	type_spread.resize(n)
 	type_arrow_dmg.resize(n)
 	type_label.resize(n)
+	type_bounty_mult.resize(n)
+	type_chase.resize(n)
 	var ids := {}
 	for t in n:
 		var e = data[t]
@@ -980,7 +1156,7 @@ func _load_types() -> bool:
 			push_error("%s: тип #%d без поля name" % [UNIT_TYPES_PATH, t])
 			return false
 		if not _require_numbers(e, ["hp", "damage", "range", "cooldown", "speed", "block_mult", "leash_start", "leash_end",
-				"range_far", "volley_period", "draw_time", "spread", "arrow_dmg"], "%s, тип \"%s\"" % [UNIT_TYPES_PATH, e.name]):
+				"range_far", "volley_period", "draw_time", "spread", "arrow_dmg", "bounty_mult", "chase"], "%s, тип \"%s\"" % [UNIT_TYPES_PATH, e.name]):
 			return false
 		if not e.get("label") is String:
 			push_error("%s: у типа \"%s\" нет строкового поля label" % [UNIT_TYPES_PATH, e.name])
@@ -1011,6 +1187,8 @@ func _load_types() -> bool:
 		type_spread[t] = e.spread
 		type_arrow_dmg[t] = e.arrow_dmg
 		type_label[t] = e.label
+		type_bounty_mult[t] = e.bounty_mult
+		type_chase[t] = 1 if e.chase != 0 else 0
 	type_id = ids   # заполняем только при полном успехе
 	return true
 
@@ -1030,7 +1208,9 @@ func _setup_data() -> void:
 	var infantry := _type_of("infantry")   # отряд 0
 	var archer := _type_of("archer")       # отряд 1
 	var peasant := _type_of("peasant")     # орда зомби
-	if infantry == -1 or archer == -1 or peasant == -1 or not _load_castle() or not _load_waves() or not _load_shop() or not _load_story():
+	var runner := _type_of("runner")
+	var knight := _type_of("fallen_knight")
+	if infantry == -1 or archer == -1 or peasant == -1 or runner == -1 or knight == -1 or not _load_castle() or not _load_waves() or not _load_shop() or not _load_story():
 		type_id = {}
 		set_physics_process(false)
 		set_process(false)
@@ -1038,6 +1218,8 @@ func _setup_data() -> void:
 	infantry_type = infantry
 	archer_type = archer
 	zombie_type = peasant
+	runner_type = runner
+	knight_type = knight
 	_load_record()
 	# Все массивы юнитов — один раз на MAX_UNITS; живые юниты всегда в [0, count).
 	pos.resize(MAX_UNITS)
@@ -1180,6 +1362,10 @@ func _setup_data() -> void:
 	wave_hp_mult = 1.0
 	team_dmg_mult = PackedFloat32Array([1.0, 1.0])
 	wave_state = WS_RESPITE if waves_enabled else WS_BATTLE
+	wave_kills_by_type.resize(type_hp.size())
+	wave_kills_by_type.fill(0)
+	wave_plan = _plan_wave(1) if waves_enabled else []
+	wave_plan_for = 1
 	for s in START_SQUADS:
 		var min_speed := INF
 		for i in count:
@@ -1362,6 +1548,8 @@ func _update_ui() -> void:
 		return
 	hud_label.text = "Волна %d · зомби: %d · ворота: %d/%d · золото: %d" % [
 		wave_number, zombie_alive + wave_remaining, ceili(maxf(gate_hp, 0.0)), roundi(gate_hp_max), floori(gold)]
+	if waves_enabled and wave_state == WS_RESPITE:
+		hud_label.text += "\n" + _plan_text()   # разведка
 	if hud_msg != "":
 		hud_label.text += "\n" + hud_msg
 	shop_panel.visible = wave_state == WS_RESPITE
@@ -1557,6 +1745,9 @@ func _update_unit(i: int, delta: float) -> void:
 	var order := squad_order[unit_squad[i]] if unit_squad[i] >= 0 else ORDER_ATTACK
 	if order == ORDER_RETREAT:
 		best = -1
+	# Орда без преследования (chase = 0): враг виден, но вне дальности атаки — идёт дальше к цели, как будто врага нет.
+	if best != -1 and unit_squad[i] == -1 and type_chase[t] == 0 and best_d > type_range_sq[t]:
+		best = -1
 
 	# Здесь только решение: скорость, удар, перезарядка. Ход делает _move_units каждый тик.
 	var v := Vector2.ZERO   # в дальности атаки стоим на месте
@@ -1656,7 +1847,8 @@ func _remove_dead() -> void:
 			if team[i] == 1:   # убит зомби: счёт волны и золото
 				zombie_alive -= 1
 				wave_kills += 1
-				gold += wave_cfg.gold_per_kill
+				gold += wave_cfg.gold_per_kill * type_bounty_mult[unit_type[i]]
+				wave_kills_by_type[unit_type[i]] += 1
 			if unit_squad[i] >= 0:
 				squad_dirty[unit_squad[i]] = 1
 				squad_n[unit_squad[i]] -= 1
