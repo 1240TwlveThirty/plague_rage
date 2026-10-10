@@ -29,6 +29,9 @@ const BANNER_WIDTH := 700.0                   # ширина баннера, px:
 const STORY_COLOR := Color(1.0, 0.88, 0.6)    # цвет текста дневника в баннере
 const SQUAD_MAX := 8                          # ёмкость всех массивов отрядов (выделяются один раз)
 const START_SQUADS := 2                       # отряды 0 (пехота) и 1 (лучники) есть всегда и не освобождаются
+const ROTATE_STEP := PI / 12.0                # Shift + колесо: поворот отряда на месте, 15°
+const BANNER_TOP := 120.0                     # верхняя граница баннера, px от верха экрана
+const BANNER_BG_ALPHA := 0.55                 # непрозрачность фона баннера
 const DRAG_MIN := 24.0                       # px: короче — обычный клик, длиннее — расстановка строя по линии
 const FORM_MARGIN := 12.0                     # строй при расстановке не ниже WALL_Y - FORM_MARGIN
 const SORT_OFFSET := 1 << 20                  # сдвиг ключа сортировки _place_formation: координата * 16 всегда > 0
@@ -203,13 +206,16 @@ var gate_dmg_mult := 0.0
 var team_dmg_mult := PackedFloat32Array([1.0, 1.0])   # множитель урона команды (team 1 растёт с волнами)
 var gate_hits := 0               # статистика
 var gate_damage_total := 0.0     # статистика
-var banner: VBoxContainer
+var banner: PanelContainer             # полупрозрачный фон, внутри — колонка из четырёх подписей
+var banner_any := false                # в баннере есть текст
+var banner_hidden := false             # скрыт клавишей H (до следующего текста)
 var banner_labels: Array[Label] = []   # заголовок, текст, дневник, подсказка
 var banner_parts := PackedStringArray(["", "", "", ""])   # что сейчас в баннере (тесты читают и без интерфейса)
 var squad_user_width := PackedInt32Array()   # ширина строя, заданная перетаскиванием; 0 = авто (squad_aspect)
 var drag_active := false               # идёт перетаскивание ЛКМ по карте
 var drag_start := Vector2.ZERO         # мировые координаты нажатия
 var drag_cur := Vector2.ZERO           # и курсора сейчас
+var drag_flip := false                 # F во время протяжки: лицо строя наоборот
 var story_path := STORY_PATH           # тесты подменяют
 var story_intro := ""
 var story_entries := {}                # номер волны -> запись дневника
@@ -315,9 +321,22 @@ func _draw() -> void:
 		if squad_used[s] == 1 and squad_n[s] > 0 and squad_team[s] == 0:
 			var r := 9.0 if s == selected_squad else 5.0
 			draw_arc(squad_target[s], r, 0.0, TAU, 24, type_color[squad_type[s]], 2.0)
-	# Предпросмотр расстановки: контур блока (красный, если строй сдвинут или растянут), яркий передний ряд, подпись
+	# Лицо отрядов игрока: шеврон у середины переднего ряда (у невыбранных полупрозрачный)
+	for s in SQUAD_MAX:
+		if squad_used[s] == 1 and squad_n[s] > 0 and squad_team[s] == 0:
+			var f_dir := Vector2.from_angle(squad_angle[s])
+			var f_lat := Vector2(-f_dir.y, f_dir.x)
+			var fc := _front_centre(s) + f_dir * 6.0
+			draw_colored_polygon(PackedVector2Array([fc + f_dir * 10.0, fc + f_lat * 5.0, fc - f_lat * 5.0]),
+				Color(type_color[squad_type[s]], 1.0 if s == selected_squad else 0.4))
+	# Дальность стрельбы выбранного отряда лучников
+	var ring := _range_ring_radius(selected_squad)
+	if ring > 0.0:
+		draw_arc(squad_pos[selected_squad], ring, 0.0, TAU, 96, Color(type_color[squad_type[selected_squad]], 0.35), 1.0)
+	# Предпросмотр расстановки: контур блока (красный, если блок не помещается и будет сдвинут), яркий передний ряд,
+	# стрелка лица, подпись
 	if drag_active and drag_start.distance_to(drag_cur) >= DRAG_MIN and squad_follow[selected_squad] < 0:
-		var g := _formation_geometry(selected_squad, drag_start, drag_cur)
+		var g := _formation_geometry(selected_squad, drag_start, drag_cur, drag_flip)
 		if g.n > 0:
 			var face := Vector2.from_angle(g.angle)
 			var lat := Vector2(-face.y, face.x)
@@ -330,6 +349,10 @@ func _draw() -> void:
 			box.append(box[0])
 			draw_polyline(box, Color(1.0, 0.2, 0.2, 0.9) if g.adjusted else Color(col, 0.7), 2.0)
 			draw_line(g.front - lat * hw, g.front + lat * hw, col.lightened(0.5), 3.0)
+			var tip: Vector2 = g.front + face * 30.0   # стрелка лица
+			draw_line(g.front, tip, Color.WHITE, 2.0)
+			draw_line(tip, tip - face * 8.0 + lat * 5.0, Color.WHITE, 2.0)
+			draw_line(tip, tip - face * 8.0 - lat * 5.0, Color.WHITE, 2.0)
 			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), "%d × %d · %d юн." % [g.width, g.rows, g.n],
 				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
 	if not DEBUG_COLORS:
@@ -339,6 +362,18 @@ func _draw() -> void:
 	while y <= WALL_Y:
 		draw_circle(Vector2(ROAD_X, y), 3.0, Color(1.0, 1.0, 1.0, 0.5))
 		y += 60.0
+
+
+# Середина переднего ряда отряда в мире (по сетке слотов).
+func _front_centre(s: int) -> Vector2:
+	return squad_pos[s] + Vector2(squad_front_x[s], -squad_center_off[s].y).rotated(squad_angle[s])
+
+
+# Радиус кольца дальности для отряда s: range_far, если это занятый непустой стреляющий отряд, иначе 0.
+func _range_ring_radius(s: int) -> float:
+	if squad_used[s] == 0 or squad_n[s] == 0:
+		return 0.0
+	return type_range_far[squad_type[s]]
 
 
 # Общий загрузчик data/*.json: файл есть и JSON читается. При ошибке push_error и null.
@@ -467,6 +502,8 @@ func _start_wave() -> void:
 	wave_hp_mult = 1.0 + wave_cfg.hp_growth * (wave_number - 1)
 	team_dmg_mult[1] = 1.0 + wave_cfg.dmg_growth * (wave_number - 1)
 	wave_kills = 0
+	arrows_fired = 0   # в отладочной строке — за текущую волну
+	arrows_hit = 0
 	subwave_timer = 0.0
 	_show_banner("")
 
@@ -799,9 +836,42 @@ func _show_banner(text: String, story := "", hint := "", title := "") -> void:
 		banner_labels[k].text = banner_parts[k]
 		banner_labels[k].visible = banner_parts[k] != ""
 		any = any or banner_parts[k] != ""
+	banner_any = any
+	banner_hidden = false   # новый текст показывается, даже если прошлый скрыли клавишей H
 	banner.visible = any
-	# размер по содержимому и снова по центру: иначе после длинного текста баннер остаётся высоким
-	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+	# размер по содержимому, по центру сверху: иначе после длинного текста баннер остаётся высоким
+	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
+	banner.position.y = BANNER_TOP
+
+
+# H в передышке: скрыть или показать баннер.
+func _toggle_banner() -> void:
+	if wave_state != WS_RESPITE:
+		return
+	banner_hidden = not banner_hidden
+	if banner != null:
+		banner.visible = banner_any and not banner_hidden
+
+
+# F вне протяжки: выбранный отряд разворачивается «кругом» на месте (слоты в мире не двигаются).
+func _cmd_about_face() -> bool:
+	var s := selected_squad
+	if squad_used[s] == 0 or squad_n[s] == 0 or squad_follow[s] >= 0:
+		return false
+	_about_face(s)
+	queue_redraw()
+	return true
+
+
+# Shift + колесо: выбранный отряд поворачивается на месте на steps * 15° вокруг центра живых слотов (squad_pos).
+# Цель отряда не меняется; при «отходе» команда игнорируется.
+func _cmd_rotate(steps: int) -> bool:
+	var s := selected_squad
+	if squad_used[s] == 0 or squad_n[s] == 0 or squad_follow[s] >= 0 or squad_order[s] == ORDER_RETREAT:
+		return false
+	squad_angle[s] = wrapf(squad_angle[s] + steps * ROTATE_STEP, -PI, PI)
+	queue_redraw()
+	return true
 
 
 # --- Дневник --------------------------------------------------------------------
@@ -1136,16 +1206,20 @@ func _setup_fps_label() -> void:
 	var layer := CanvasLayer.new()
 	fps_label = Label.new()
 	layer.add_child(fps_label)
-	# Баннер по центру экрана: заголовок, текст, дневник, подсказка; ширина BANNER_WIDTH, перенос по словам
-	banner = VBoxContainer.new()
-	banner.set_anchors_preset(Control.PRESET_CENTER)
-	banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	banner.grow_vertical = Control.GROW_DIRECTION_BOTH
-	banner.alignment = BoxContainer.ALIGNMENT_CENTER
+	# Баннер по центру сверху (верх на BANNER_TOP): заголовок, текст, дневник, подсказка на полупрозрачном фоне;
+	# ширина BANNER_WIDTH вместе с полями, перенос по словам
+	banner = PanelContainer.new()
+	var banner_bg := StyleBoxFlat.new()
+	banner_bg.bg_color = Color(0.0, 0.0, 0.0, BANNER_BG_ALPHA)
+	banner_bg.set_content_margin_all(16.0)
+	banner.add_theme_stylebox_override("panel", banner_bg)
 	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE   # клики по карте проходят сквозь баннер
+	var banner_box := VBoxContainer.new()
+	banner_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner.add_child(banner_box)
 	for k in 4:
 		var l := Label.new()
-		l.custom_minimum_size.x = BANNER_WIDTH
+		l.custom_minimum_size.x = BANNER_WIDTH - 32.0
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.add_theme_font_size_override("font_size", 44 if k == 0 else 36)
@@ -1154,7 +1228,7 @@ func _setup_fps_label() -> void:
 		if k == 2:
 			l.add_theme_color_override("font_color", STORY_COLOR)
 		l.visible = false
-		banner.add_child(l)
+		banner_box.add_child(l)
 		banner_labels.append(l)
 	banner.visible = false
 	layer.add_child(banner)
@@ -1411,8 +1485,8 @@ func _process(delta: float) -> void:
 	multimesh.visible_instance_count = count
 	multimesh.buffer = buf          # один вызов вместо UNIT_COUNT
 	draw_ms = (Time.get_ticks_usec() - t) / 1000.0
-	fps_label.text = "FPS: %d | units: %d | sim avg: %.1f peak: %.1f | grid: %.1f ms | цвет: F%d | ворота: %.0f" % [
-		Engine.get_frames_per_second(), count, sim_avg, sim_peak, grid_ms, color_mode + 1, gate_hp]
+	fps_label.text = "FPS: %d | units: %d | sim avg: %.1f peak: %.1f | grid: %.1f ms | цвет: F%d | ворота: %.0f | стрелы за волну: %d/%d" % [
+		Engine.get_frames_per_second(), count, sim_avg, sim_peak, grid_ms, color_mode + 1, gate_hp, arrows_fired, arrows_hit]
 	if profile:
 		var parts := []
 		for q in 6:
@@ -1789,57 +1863,86 @@ func _reflow_squad(s: int) -> void:
 	_mark_slot_changes(s)
 
 
-# Строй по линии A–B (это передний ряд). Лицо — перпендикуляр к AB в сторону от текущего центра отряда
-# (центр на линии — вверх, к зомби). Ширина по длине линии, не меньше ceil(n / ROWS_MAX) и не больше WIDTH_MAX.
-# Блок целиком в поле и не ниже WALL_Y - FORM_MARGIN: центр сдвигается на минимум; не помещается — шире и мельче.
+# Строй по протяжке A -> B. A — якорь: первая точка переднего ряда всегда в A, строй растёт назад от линии.
+# Лицо: front = (d.y, -d.x) для d = B - A (слева направо по экрану — лицом вверх, справа налево — вниз);
+# flip (клавиша F во время протяжки) — наоборот. Ось колонок слота (локальная +y) = (-face.y, face.x):
+# без flip она совпадает с направлением A -> B, поэтому колонка 0 стоит в A.
+# Ширина w = clamp(round(L / SLOT_SPACING) + 1, ceil(n / ROWS_MAX), WIDTH_MAX): короткая линия растягивается
+# только за курсор. Не помещается в поле или ниже WALL_Y - FORM_MARGIN — сначала длиннее за курсор (меньше рядов);
+# если и так нет — adjusted (красный предпросмотр) и блок сдвигается вдоль лица на минимум (A уезжает).
 # Возвращает n, width, rows, user_width (в squad_user_width), angle, centre (блока), front (середина переднего ряда),
-# adjusted (строй растянут или сдвинут).
-func _formation_geometry(s: int, a: Vector2, b: Vector2) -> Dictionary:
-	var n := 0
-	for i in count:
-		if unit_squad[i] == s:
-			n += 1
-	var mid := (a + b) * 0.5
-	var face := (b - a).normalized().orthogonal()
-	var side := face.dot(squad_pos[s] - mid)
-	if absf(side) > 0.5:
-		if side > 0.0:
-			face = -face
-	elif face.y > 0.001 or (absf(face.y) <= 0.001 and face.x < 0.0):
-		face = -face   # вертикальная линия через центр: лицом вправо
-	var lat := Vector2(-face.y, face.x)   # ось колонок: локальная +y слота
-	var want := roundi(a.distance_to(b) / SLOT_SPACING) + 1
-	var user_width := clampi(want, ceili(n / float(ROWS_MAX)), WIDTH_MAX)
-	var adjusted := user_width > want   # линия короче нужной: растянута вокруг середины AB
-	var width := maxi(mini(user_width, n), 1)
-	var lim := Vector2(FIELD.x, WALL_Y - FORM_MARGIN)
-	var rows := 1
-	var hd := 0.0
-	var ext := Vector2.ZERO
-	while true:
-		rows = maxi(ceili(n / float(width)), 1)
-		var hw := (width - 1) * SLOT_SPACING * 0.5
-		hd = (rows - 1) * SLOT_SPACING * 0.5
-		ext = Vector2(absf(lat.x) * hw + absf(face.x) * hd, absf(lat.y) * hw + absf(face.y) * hd)   # полуразмеры по осям поля
-		if (ext.x * 2.0 <= lim.x and ext.y * 2.0 <= lim.y) or width >= mini(WIDTH_MAX, n):
-			break
-		width += 1   # не помещается: меньше рядов за счёт ширины
-		user_width = width
-		adjusted = true
-	var centre := mid - face * hd
-	var fit := Vector2(clampf(centre.x, minf(ext.x, lim.x * 0.5), maxf(lim.x - ext.x, lim.x * 0.5)),
-		clampf(centre.y, minf(ext.y, lim.y * 0.5), maxf(lim.y - ext.y, lim.y * 0.5)))
-	if fit.distance_to(centre) > 0.01:
-		adjusted = true
+# a и b (концы переднего ряда), adjusted.
+func _formation_geometry(s: int, a: Vector2, b: Vector2, flip := false) -> Dictionary:
+	var n := squad_n[s]
+	var d := b - a
+	var dir := d.normalized()
+	var face := Vector2(d.y, -d.x).normalized()
+	if flip:
+		face = -face
+	var w_min := maxi(ceili(n / float(ROWS_MAX)), 1)
+	var length := maxf(d.length(), (w_min - 1) * SLOT_SPACING)
+	var user_width := clampi(roundi(length / SLOT_SPACING) + 1, w_min, WIDTH_MAX)
+	var w_top := maxi(mini(WIDTH_MAX, n), 1)
+	var width := mini(user_width, w_top)
+	var adjusted := false
+	var shift := Vector2.ZERO
+	if not _block_shift(a, dir, face, width, n).is_zero_approx():
+		var w := width + 1
+		while w <= w_top and not _block_shift(a, dir, face, w, n).is_zero_approx():
+			w += 1
+		if w <= w_top:
+			width = w   # длиннее за курсор: меньше рядов, A на месте
+			user_width = w
+		else:
+			adjusted = true
+			shift = _block_shift(a, dir, face, width, n)
+	var rows := maxi(ceili(n / float(width)), 1)
+	var a_eff := a + shift
+	var b_eff := a_eff + dir * (width - 1) * SLOT_SPACING
+	var front := (a_eff + b_eff) * 0.5
 	return {"n": n, "width": width, "rows": rows, "user_width": user_width, "angle": face.angle(),
-		"centre": fit, "front": fit + face * hd, "adjusted": adjusted}
+		"centre": front - face * (rows - 1) * SLOT_SPACING * 0.5, "front": front, "a": a_eff, "b": b_eff, "adjusted": adjusted}
 
 
-# Расстановка отряда по линии A–B: строй занимает место сразу, юниты бегут к слотам (как всегда, скорость x1.3).
+# На сколько сдвинуть блок (передний ряд от a вдоль dir, width колонок, ряды назад от лица), чтобы все слоты
+# были в поле и не ниже WALL_Y - FORM_MARGIN. Ноль — помещается. Сдвиг ищется вдоль лица (минимальный);
+# если вдоль лица не решить (блок вылез вбок), — минимальный по осям поля.
+func _block_shift(a: Vector2, dir: Vector2, face: Vector2, width: int, n: int) -> Vector2:
+	var rows := maxi(ceili(n / float(width)), 1)
+	var along := dir * (width - 1) * SLOT_SPACING
+	var back := -face * (rows - 1) * SLOT_SPACING
+	var lo := a.min(a + along).min(a + back).min(a + along + back)
+	var hi := a.max(a + along).max(a + back).max(a + along + back)
+	var lim := Vector2(FIELD.x, WALL_Y - FORM_MARGIN)
+	var need := Vector2.ZERO   # минимальный сдвиг по осям поля
+	var t_lo := -INF
+	var t_hi := INF
+	var feasible := true
+	for axis in 2:
+		if lo[axis] < -0.01:
+			need[axis] = -lo[axis]
+		elif hi[axis] > lim[axis] + 0.01:
+			need[axis] = lim[axis] - hi[axis]
+		var f: float = face[axis]
+		if absf(f) < 0.000001:
+			feasible = feasible and need[axis] == 0.0
+		else:
+			var t1 := -lo[axis] / f
+			var t2 := (lim[axis] - hi[axis]) / f
+			t_lo = maxf(t_lo, minf(t1, t2))
+			t_hi = minf(t_hi, maxf(t1, t2))
+	if need == Vector2.ZERO:
+		return Vector2.ZERO
+	if feasible and t_lo <= t_hi:
+		return face * clampf(0.0, t_lo, t_hi)
+	return need
+
+# Расстановка отряда по протяжке A -> B (flip — лицо наоборот): строй занимает место сразу, юниты бегут к слотам
+# (как всегда, скорость x1.3).
 # Слоты раздаются без пересечения путей: юниты сортируются поперёк нового строя и делятся на width колонок
 # (глубины отличаются не больше чем на 1), внутри колонки — спереди назад.
-func _place_formation(s: int, a: Vector2, b: Vector2) -> void:
-	var g := _formation_geometry(s, a, b)
+func _place_formation(s: int, a: Vector2, b: Vector2, flip := false) -> void:
+	var g := _formation_geometry(s, a, b, flip)
 	var n: int = g.n
 	if n == 0:
 		return
@@ -2228,6 +2331,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var p := (make_input_local(event) as InputEventMouseButton).position   # мировые координаты
 		if event.pressed:
 			drag_active = true
+			drag_flip = false
 			drag_start = p
 			drag_cur = p
 		elif drag_active:
@@ -2236,11 +2340,15 @@ func _unhandled_input(event: InputEvent) -> void:
 				if drag_start.distance_to(p) < DRAG_MIN:
 					squad_target[selected_squad] = drag_start   # короткий клик: цель отряда, как раньше
 				else:
-					_place_formation(selected_squad, drag_start, p)
+					_place_formation(selected_squad, drag_start, p, drag_flip)
 			queue_redraw()
 	elif event is InputEventMouseMotion and drag_active:
 		drag_cur = (make_input_local(event) as InputEventMouseMotion).position
 		queue_redraw()   # предпросмотр перерисовывается только во время перетаскивания
+	elif event is InputEventMouseButton and event.pressed and event.shift_pressed and event.button_index in [
+			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_LEFT, MOUSE_BUTTON_WHEEL_RIGHT]:
+		# Shift + колесо: поворот на месте (с Shift система может прислать горизонтальное колесо); без Shift колесо не занято
+		_cmd_rotate(-1 if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_LEFT] else 1)
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		drag_active = false   # ПКМ отменяет перетаскивание
 		queue_redraw()
@@ -2249,6 +2357,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_ESCAPE:
 				drag_active = false   # Esc отменяет перетаскивание
 				queue_redraw()
+			KEY_F:
+				if drag_active:
+					drag_flip = not drag_flip   # во время протяжки: лицо строя наоборот
+					queue_redraw()
+				else:
+					_cmd_about_face()
+			KEY_H:
+				_toggle_banner()
 			KEY_T:
 				squad_user_width[selected_squad] = 0   # ширина строя снова авто
 			KEY_R:
