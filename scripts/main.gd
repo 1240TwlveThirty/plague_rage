@@ -24,6 +24,12 @@ const ORDER_NAMES := ["атака", "держать", "отход"]
 const UNIT_TYPES_PATH := "res://data/unit_types.json"
 const CASTLE_PATH := "res://data/castle.json"
 const RECORD_PATH := "user://record.json"   # рекорд best_wave (не геймплейные данные)
+const STORY_PATH := "res://data/story.json"   # дневник: тексты баннеров (на механику не влияет)
+const BANNER_WIDTH := 700.0                   # ширина баннера, px: длинный текст переносится по словам
+const STORY_COLOR := Color(1.0, 0.88, 0.6)    # цвет текста дневника в баннере
+const DRAG_MIN := 24.0                        # px: короче — обычный клик, длиннее — расстановка строя по линии
+const FORM_MARGIN := 12.0                     # строй при расстановке не ниже WALL_Y - FORM_MARGIN
+const SORT_OFFSET := 1 << 20                  # сдвиг ключа сортировки _place_formation: координата * 16 всегда > 0
 # Состояние боя
 const WS_BATTLE := 0    # идёт бой
 const WS_DEFEAT := 1    # ворота пали
@@ -192,7 +198,18 @@ var gate_dmg_mult := 0.0
 var team_dmg_mult := PackedFloat32Array([1.0, 1.0])   # множитель урона команды (team 1 растёт с волнами)
 var gate_hits := 0               # статистика
 var gate_damage_total := 0.0     # статистика
-var banner: Label
+var banner: VBoxContainer
+var banner_labels: Array[Label] = []   # заголовок, текст, дневник, подсказка
+var banner_parts := PackedStringArray(["", "", "", ""])   # что сейчас в баннере (тесты читают и без интерфейса)
+var squad_user_width := PackedInt32Array()   # ширина строя, заданная перетаскиванием; 0 = авто (squad_aspect)
+var drag_active := false               # идёт перетаскивание ЛКМ по карте
+var drag_start := Vector2.ZERO         # мировые координаты нажатия
+var drag_cur := Vector2.ZERO           # и курсора сейчас
+var story_path := STORY_PATH           # тесты подменяют
+var story_intro := ""
+var story_entries := {}                # номер волны -> запись дневника
+var story_end_wave := PackedInt32Array()    # концовки: min_wave
+var story_end_text := PackedStringArray()   # и текст с {wave}
 var drawn_gate_hp := -1.0        # последнее нарисованное HP ворот (перерисовка полосы только при изменении)
 
 # --- Волны и экономика (data/waves.json, data/shop.json) ---
@@ -287,6 +304,23 @@ func _draw() -> void:
 		if squad_team[s] == 0:
 			var r := 9.0 if s == selected_squad else 5.0
 			draw_arc(squad_target[s], r, 0.0, TAU, 24, type_color[squad_type[s]], 2.0)
+	# Предпросмотр расстановки: контур блока (красный, если строй сдвинут или растянут), яркий передний ряд, подпись
+	if drag_active and drag_start.distance_to(drag_cur) >= DRAG_MIN and squad_follow[selected_squad] < 0:
+		var g := _formation_geometry(selected_squad, drag_start, drag_cur)
+		if g.n > 0:
+			var face := Vector2.from_angle(g.angle)
+			var lat := Vector2(-face.y, face.x)
+			var hw: float = (g.width - 1) * SLOT_SPACING * 0.5 + SLOT_SPACING * 0.5
+			var hd: float = (g.rows - 1) * SLOT_SPACING * 0.5 + SLOT_SPACING * 0.5
+			var c: Vector2 = g.centre
+			var box := PackedVector2Array([c - lat * hw + face * hd, c + lat * hw + face * hd, c + lat * hw - face * hd, c - lat * hw - face * hd])
+			var col := type_color[squad_type[selected_squad]]
+			draw_colored_polygon(box, Color(col, 0.25))
+			box.append(box[0])
+			draw_polyline(box, Color(1.0, 0.2, 0.2, 0.9) if g.adjusted else Color(col, 0.7), 2.0)
+			draw_line(g.front - lat * hw, g.front + lat * hw, col.lightened(0.5), 3.0)
+			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), "%d × %d · %d юн." % [g.width, g.rows, g.n],
+				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
 	if not DEBUG_COLORS:
 		return
 	draw_circle(GATE_POS, 8.0, Color(1.0, 0.85, 0.2, 0.8))
@@ -481,7 +515,7 @@ func _wave_cleared() -> void:
 			hp[i] = type_hp[unit_type[i]]   # бесплатное лечение армии
 	wave_state = WS_RESPITE
 	_show_banner("Волна %d пройдена: убито %d, +%d золота. Space — волна %d" % [
-		wave_number, wave_kills, int(wave_cfg.wave_bonus_gold), wave_number + 1])
+		wave_number, wave_kills, int(wave_cfg.wave_bonus_gold), wave_number + 1], _entry_text(wave_number))
 
 
 # --- Магазин ------------------------------------------------------------------
@@ -558,14 +592,89 @@ func _on_defeat() -> void:
 	set_physics_process(false)
 	best_wave = maxi(best_wave, wave_number)
 	_save_record()
-	_show_banner("Ворота пали на волне %d. Рекорд: %d. R — заново" % [wave_number, best_wave])
+	_show_banner("", _ending_text(wave_number), "Рекорд: день %d. R — заново" % best_wave)
 
 
-func _show_banner(text: String) -> void:
+# Баннер: заголовок, текст, дневник (другим цветом), подсказка. Пустая часть скрыта; всё пусто — баннер скрыт.
+func _show_banner(text: String, story := "", hint := "", title := "") -> void:
+	banner_parts = PackedStringArray([title, text, story, hint])
 	if banner == null:
 		return
-	banner.text = text
-	banner.visible = text != ""
+	var any := false
+	for k in banner_labels.size():
+		banner_labels[k].text = banner_parts[k]
+		banner_labels[k].visible = banner_parts[k] != ""
+		any = any or banner_parts[k] != ""
+	banner.visible = any
+	# размер по содержимому и снова по центру: иначе после длинного текста баннер остаётся высоким
+	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+
+
+# --- Дневник --------------------------------------------------------------------
+
+# story.json: intro (строка), entries [{wave, text}], endings [{min_wave, text}]. Значений по умолчанию нет.
+func _load_story() -> bool:
+	var d = _load_json(story_path)
+	if d == null:
+		return false
+	if not d is Dictionary:
+		push_error("%s: ожидается JSON-объект" % story_path)
+		return false
+	if not d.get("intro") is String:
+		push_error("%s: нет строкового поля intro" % story_path)
+		return false
+	if not d.get("entries") is Array or not d.get("endings") is Array:
+		push_error("%s: нет массивов entries и endings" % story_path)
+		return false
+	var entries := {}
+	for e in d.entries:
+		if not e is Dictionary or not _is_whole(e.get("wave")) or not e.get("text") is String:
+			push_error("%s: запись entries без целого wave или строки text" % story_path)
+			return false
+		if entries.has(int(e.wave)):
+			push_error("%s: в entries волна %d повторяется" % [story_path, int(e.wave)])
+			return false
+		entries[int(e.wave)] = e.text
+	var end_wave := PackedInt32Array()
+	var end_text := PackedStringArray()
+	for e in d.endings:
+		if not e is Dictionary or not _is_whole(e.get("min_wave")) or not e.get("text") is String:
+			push_error("%s: запись endings без целого min_wave или строки text" % story_path)
+			return false
+		if end_wave.has(int(e.min_wave)):
+			push_error("%s: в endings min_wave %d повторяется" % [story_path, int(e.min_wave)])
+			return false
+		end_wave.append(int(e.min_wave))
+		end_text.append(e.text)
+	var lowest := INF
+	for w in end_wave:
+		lowest = minf(lowest, w)
+	if lowest > 0:
+		push_error("%s: в endings нет концовки с min_wave 0" % story_path)
+		return false
+	story_intro = d.intro
+	story_entries = entries
+	story_end_wave = end_wave
+	story_end_text = end_text
+	return true
+
+
+func _is_whole(v: Variant) -> bool:
+	return (v is float or v is int) and v == floorf(v)
+
+
+# Запись дневника после волны w или "" (на волну не больше одной записи).
+func _entry_text(w: int) -> String:
+	return story_entries.get(w, "")
+
+
+# Концовка с наибольшим min_wave <= w; {wave} — день (номер волны).
+func _ending_text(w: int) -> String:
+	var best := -1
+	for k in story_end_wave.size():
+		if story_end_wave[k] <= w and (best < 0 or story_end_wave[k] > story_end_wave[best]):
+			best = k
+	return "" if best < 0 else story_end_text[best].replace("{wave}", str(w))
 
 
 func _load_types() -> bool:
@@ -649,7 +758,7 @@ func _setup_data() -> void:
 	var infantry := _type_of("infantry")   # отряд 0
 	var archer := _type_of("archer")       # отряд 1
 	var peasant := _type_of("peasant")     # орда зомби
-	if infantry == -1 or archer == -1 or peasant == -1 or not _load_castle() or not _load_waves() or not _load_shop():
+	if infantry == -1 or archer == -1 or peasant == -1 or not _load_castle() or not _load_waves() or not _load_shop() or not _load_story():
 		type_id = {}
 		set_physics_process(false)
 		set_process(false)
@@ -716,6 +825,8 @@ func _setup_data() -> void:
 	squad_front_row.resize(squad_count)
 	squad_follow = PackedInt32Array([-1, 0 if archers_follow else -1])
 	squad_order = PackedByteArray([ORDER_ATTACK, ORDER_ATTACK])
+	squad_user_width.resize(squad_count)
+	squad_user_width.fill(0)
 	selected_squad = 0
 	squad_ranged = PackedByteArray([0, 1])
 	squad_type = PackedInt32Array([infantry, archer])
@@ -828,15 +939,26 @@ func _setup_fps_label() -> void:
 	var layer := CanvasLayer.new()
 	fps_label = Label.new()
 	layer.add_child(fps_label)
-	# Баннер по центру экрана (поражение, позже — волны)
-	banner = Label.new()
+	# Баннер по центру экрана: заголовок, текст, дневник, подсказка; ширина BANNER_WIDTH, перенос по словам
+	banner = VBoxContainer.new()
 	banner.set_anchors_preset(Control.PRESET_CENTER)
-	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	banner.grow_vertical = Control.GROW_DIRECTION_BOTH
-	banner.add_theme_font_size_override("font_size", 36)
-	banner.add_theme_color_override("font_outline_color", Color.BLACK)
-	banner.add_theme_constant_override("outline_size", 8)
+	banner.alignment = BoxContainer.ALIGNMENT_CENTER
+	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE   # клики по карте проходят сквозь баннер
+	for k in 4:
+		var l := Label.new()
+		l.custom_minimum_size.x = BANNER_WIDTH
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.add_theme_font_size_override("font_size", 44 if k == 0 else 36)
+		l.add_theme_color_override("font_outline_color", Color.BLACK)
+		l.add_theme_constant_override("outline_size", 8)
+		if k == 2:
+			l.add_theme_color_override("font_color", STORY_COLOR)
+		l.visible = false
+		banner.add_child(l)
+		banner_labels.append(l)
 	banner.visible = false
 	layer.add_child(banner)
 	# HUD сверху по центру
@@ -890,7 +1012,7 @@ func _setup_fps_label() -> void:
 	add_child(layer)
 	_update_squad_panel()
 	if wave_state == WS_RESPITE:
-		_show_banner("Расставь отряды. Space — начать волну 1")
+		_show_banner("", story_intro, "Расставь отряды. Space — начать волну 1", "Дневник военачальника")
 	_update_ui()
 
 
@@ -1368,7 +1490,23 @@ func _needs_reflow(s: int) -> bool:
 		if h > 0:
 			lo = mini(lo, h)
 			hi = maxi(hi, h)
+	if squad_user_width[s] > 0:
+		# Ширина задана игроком: перестройка, как только занятых колонок не столько, сколько нужно.
+		var occupied := 0
+		for col in width:
+			if col_map[col] > 0:
+				occupied += 1
+		if occupied != _target_width(s, n):
+			return true
 	return hi - lo > 3 or n < 0.7 * squad_reflow_n[s]
+
+
+# Ширина сетки для n живых: заданная игроком (не шире n, рядов не больше ROWS_MAX) или по пропорции squad_aspect.
+func _target_width(s: int, n: int) -> int:
+	if squad_user_width[s] > 0:
+		return clampi(mini(squad_user_width[s], n), ceili(n / float(ROWS_MAX)), WIDTH_MAX)
+	var asp := squad_aspect[s]
+	return clampi(maxi(ceili(sqrt(n * asp.x / asp.y)), ceili(n / float(ROWS_MAX))), 1, WIDTH_MAX)
 
 
 # Перестройка глубины: живые (колонка за колонкой по старым слотам, новые юниты с временными
@@ -1391,8 +1529,7 @@ func _reflow_squad(s: int) -> void:
 	sort_keys.sort()
 	for m in n:
 		reflow_order[m] = int(sort_keys[m] & ((1 << 13) - 1))
-	var asp := squad_aspect[s]
-	var new_width := clampi(maxi(ceili(sqrt(n * asp.x / asp.y)), ceili(n / float(ROWS_MAX))), 1, WIDTH_MAX)
+	var new_width := _target_width(s, n)
 	var base := n / new_width
 	var extra := n % new_width
 	var m := 0
@@ -1405,6 +1542,102 @@ func _reflow_squad(s: int) -> void:
 	squad_reflow_n[s] = n
 	_reanchor(s)
 	_mark_slot_changes(s)
+
+
+# Строй по линии A–B (это передний ряд). Лицо — перпендикуляр к AB в сторону от текущего центра отряда
+# (центр на линии — вверх, к зомби). Ширина по длине линии, не меньше ceil(n / ROWS_MAX) и не больше WIDTH_MAX.
+# Блок целиком в поле и не ниже WALL_Y - FORM_MARGIN: центр сдвигается на минимум; не помещается — шире и мельче.
+# Возвращает n, width, rows, user_width (в squad_user_width), angle, centre (блока), front (середина переднего ряда),
+# adjusted (строй растянут или сдвинут).
+func _formation_geometry(s: int, a: Vector2, b: Vector2) -> Dictionary:
+	var n := 0
+	for i in count:
+		if unit_squad[i] == s:
+			n += 1
+	var mid := (a + b) * 0.5
+	var face := (b - a).normalized().orthogonal()
+	var side := face.dot(squad_pos[s] - mid)
+	if absf(side) > 0.5:
+		if side > 0.0:
+			face = -face
+	elif face.y > 0.001 or (absf(face.y) <= 0.001 and face.x < 0.0):
+		face = -face   # вертикальная линия через центр: лицом вправо
+	var lat := Vector2(-face.y, face.x)   # ось колонок: локальная +y слота
+	var want := roundi(a.distance_to(b) / SLOT_SPACING) + 1
+	var user_width := clampi(want, ceili(n / float(ROWS_MAX)), WIDTH_MAX)
+	var adjusted := user_width > want   # линия короче нужной: растянута вокруг середины AB
+	var width := maxi(mini(user_width, n), 1)
+	var lim := Vector2(FIELD.x, WALL_Y - FORM_MARGIN)
+	var rows := 1
+	var hd := 0.0
+	var ext := Vector2.ZERO
+	while true:
+		rows = maxi(ceili(n / float(width)), 1)
+		var hw := (width - 1) * SLOT_SPACING * 0.5
+		hd = (rows - 1) * SLOT_SPACING * 0.5
+		ext = Vector2(absf(lat.x) * hw + absf(face.x) * hd, absf(lat.y) * hw + absf(face.y) * hd)   # полуразмеры по осям поля
+		if (ext.x * 2.0 <= lim.x and ext.y * 2.0 <= lim.y) or width >= mini(WIDTH_MAX, n):
+			break
+		width += 1   # не помещается: меньше рядов за счёт ширины
+		user_width = width
+		adjusted = true
+	var centre := mid - face * hd
+	var fit := Vector2(clampf(centre.x, minf(ext.x, lim.x * 0.5), maxf(lim.x - ext.x, lim.x * 0.5)),
+		clampf(centre.y, minf(ext.y, lim.y * 0.5), maxf(lim.y - ext.y, lim.y * 0.5)))
+	if fit.distance_to(centre) > 0.01:
+		adjusted = true
+	return {"n": n, "width": width, "rows": rows, "user_width": user_width, "angle": face.angle(),
+		"centre": fit, "front": fit + face * hd, "adjusted": adjusted}
+
+
+# Расстановка отряда по линии A–B: строй занимает место сразу, юниты бегут к слотам (как всегда, скорость x1.3).
+# Слоты раздаются без пересечения путей: юниты сортируются поперёк нового строя и делятся на width колонок
+# (глубины отличаются не больше чем на 1), внутри колонки — спереди назад.
+func _place_formation(s: int, a: Vector2, b: Vector2) -> void:
+	var g := _formation_geometry(s, a, b)
+	var n: int = g.n
+	if n == 0:
+		return
+	var width: int = g.width
+	var angle: float = g.angle
+	var centre: Vector2 = g.centre
+	squad_user_width[s] = g.user_width
+	_snapshot_slots(s)
+	# Проход 1: по local.y (поперёк строя); индекс юнита в младших 32 битах.
+	sort_keys.fill(0x7FFFFFFFFFFFFFFF)
+	var m := 0
+	for i in count:
+		if unit_squad[i] == s:
+			var local := (pos[i] - centre).rotated(-angle)
+			sort_keys[m] = ((int(local.y * 16.0) + SORT_OFFSET) << 32) | i
+			m += 1
+	sort_keys.sort()
+	# Проход 2: ключ (колонка, local.x от переднего к заднему).
+	var base := n / width
+	var extra := n % width
+	m = 0
+	for col in width:
+		for q in base + (1 if col < extra else 0):
+			var i := int(sort_keys[m] & 0xFFFFFFFF)
+			var local_x := (pos[i] - centre).rotated(-angle).x
+			sort_keys[m] = (((col << 24) | (SORT_OFFSET - int(local_x * 16.0))) << 32) | i
+			m += 1
+	sort_keys.sort()
+	squad_width[s] = width
+	squad_rows[s] = g.rows
+	squad_reflow_n[s] = n
+	squad_angle[s] = angle
+	m = 0
+	for col in width:
+		for row in base + (1 if col < extra else 0):
+			_set_line_slot(int(sort_keys[m] & 0xFFFFFFFF), row * width + col, width)
+			m += 1
+	_reanchor(s)
+	# Якорь — центр живых слотов; середина переднего ряда (слот-вектор 0) должна попасть в g.front.
+	squad_pos[s] = g.front + squad_center_off[s].rotated(angle)
+	squad_target[s] = squad_pos[s]
+	_mark_slot_changes(s)
+	queue_redraw()
 
 
 # Для раскраски F4: запомнить slot_idx юнитов отряда перед перестройкой...
@@ -1735,12 +1968,33 @@ func _process_arrows() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	# Сюда приходят только события, не съеденные интерфейсом: клик по панели карту не трогает.
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		if squad_follow[selected_squad] < 0:   # ведомому цель задаёт ведущий
-			squad_target[selected_squad] = (make_input_local(event) as InputEventMouseButton).position   # мировые координаты клика
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		var p := (make_input_local(event) as InputEventMouseButton).position   # мировые координаты
+		if event.pressed:
+			drag_active = true
+			drag_start = p
+			drag_cur = p
+		elif drag_active:
+			drag_active = false
+			if squad_follow[selected_squad] < 0:   # ведомому цель и строй задаёт ведущий
+				if drag_start.distance_to(p) < DRAG_MIN:
+					squad_target[selected_squad] = drag_start   # короткий клик: цель отряда, как раньше
+				else:
+					_place_formation(selected_squad, drag_start, p)
 			queue_redraw()
+	elif event is InputEventMouseMotion and drag_active:
+		drag_cur = (make_input_local(event) as InputEventMouseMotion).position
+		queue_redraw()   # предпросмотр перерисовывается только во время перетаскивания
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		drag_active = false   # ПКМ отменяет перетаскивание
+		queue_redraw()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
+			KEY_ESCAPE:
+				drag_active = false   # Esc отменяет перетаскивание
+				queue_redraw()
+			KEY_T:
+				squad_user_width[selected_squad] = 0   # ширина строя снова авто
 			KEY_R:
 				if wave_state == WS_DEFEAT:
 					get_tree().reload_current_scene()   # полный сброс: сцена создаётся заново
