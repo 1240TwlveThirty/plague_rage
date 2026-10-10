@@ -27,7 +27,9 @@ const RECORD_PATH := "user://record.json"   # рекорд best_wave (не ге�
 const STORY_PATH := "res://data/story.json"   # дневник: тексты баннеров (на механику не влияет)
 const BANNER_WIDTH := 700.0                   # ширина баннера, px: длинный текст переносится по словам
 const STORY_COLOR := Color(1.0, 0.88, 0.6)    # цвет текста дневника в баннере
-const DRAG_MIN := 24.0                        # px: короче — обычный клик, длиннее — расстановка строя по линии
+const SQUAD_MAX := 8                          # ёмкость всех массивов отрядов (выделяются один раз)
+const START_SQUADS := 2                       # отряды 0 (пехота) и 1 (лучники) есть всегда и не освобождаются
+const DRAG_MIN := 24.0                       # px: короче — обычный клик, длиннее — расстановка строя по линии
 const FORM_MARGIN := 12.0                     # строй при расстановке не ниже WALL_Y - FORM_MARGIN
 const SORT_OFFSET := 1 << 20                  # сдвиг ключа сортировки _place_formation: координата * 16 всегда > 0
 # Состояние боя
@@ -109,7 +111,8 @@ var unit_rand := PackedFloat32Array()   # 0..1 на юнита, выдаётся
 var squad_pos := PackedVector2Array()
 var squad_target := PackedVector2Array()
 var squad_angle := PackedFloat32Array()
-var squad_count := 0
+var squad_used := PackedByteArray()     # 1 = индекс отряда занят (0 и 1 заняты всегда)
+var squad_n := PackedInt32Array()       # живых юнитов в отряде
 var squad_team := PackedByteArray()
 var squad_stop_dist := PackedFloat32Array()   # отряд стоит, когда до цели не больше этого
 var unit_squad := PackedInt32Array()    # -1 = без отряда
@@ -159,6 +162,8 @@ var squad_type := PackedInt32Array()        # тип юнитов отряда (
 var squad_volley_mode := PackedByteArray()  # MODE_VOLLEY / MODE_SINGLE
 var squad_volley_t := PackedFloat32Array()  # время с начала цикла залпа
 var squad_volley_fired := PackedByteArray() # 1 = в этом цикле уже выстрелили (идёт перезарядка)
+var squad_arrows_fired := PackedInt32Array()   # статистика по отряду: выпущено стрел
+var squad_mode_switches := PackedInt32Array()  # статистика по отряду: смены режима стрельбы
 var coarse_zcount := PackedInt32Array()      # зомби в грубой клетке
 var coarse_sum := PackedVector2Array()      # сумма их позиций (центр масс = сумма / число)
 var coarse_start := PackedInt32Array()
@@ -244,6 +249,12 @@ var squad_order := PackedByteArray()          # ORDER_* на отряд
 var selected_squad := 0
 var squad_panel: VBoxContainer
 var squad_buttons: Array[Button] = []
+var squad_rows_ui: Array[HBoxContainer] = []   # строки панели, по одной на индекс отряда
+var squad_swatches: Array[ColorRect] = []
+var squad_actions: HBoxContainer          # кнопки «+ Отряд», «Разделить», «Слить» (только в передышке)
+var squad_panel_sig := -1                 # какие строки панели видны (перевёрстка только при изменении)
+var hud_msg := ""                         # сообщение в HUD (отказ команды), гаснет через hud_msg_t секунд
+var hud_msg_t := 0.0
 var panel_t := 0.0                            # таймер обновления левой панели (4 Гц)
 
 # --- Отрисовка ---
@@ -300,8 +311,8 @@ func _draw() -> void:
 		draw_rect(Rect2(bar.position, Vector2(bar.size.x * f, bar.size.y)), Color.RED.lerp(Color.LIME_GREEN, f))
 	drawn_gate_hp = gate_hp
 	# Цели отрядов игрока: кружок цвета типа, у выбранного крупнее (и в релизе)
-	for s in squad_count:
-		if squad_team[s] == 0:
+	for s in SQUAD_MAX:
+		if squad_used[s] == 1 and squad_n[s] > 0 and squad_team[s] == 0:
 			var r := 9.0 if s == selected_squad else 5.0
 			draw_arc(squad_target[s], r, 0.0, TAU, 24, type_color[squad_type[s]], 2.0)
 	# Предпросмотр расстановки: контур блока (красный, если строй сдвинут или растянут), яркий передний ряд, подпись
@@ -514,6 +525,7 @@ func _wave_cleared() -> void:
 		if team[i] == 0:
 			hp[i] = type_hp[unit_type[i]]   # бесплатное лечение армии
 	wave_state = WS_RESPITE
+	_free_empty_squads()
 	_show_banner("Волна %d пройдена: убито %d, +%d золота. Space — волна %d" % [
 		wave_number, wave_kills, int(wave_cfg.wave_bonus_gold), wave_number + 1], _entry_text(wave_number))
 
@@ -549,9 +561,9 @@ func _buy(k: int) -> bool:
 	shop_bought[k] += 1
 	match SHOP_ITEMS[k]:
 		"inf_pack":
-			_squad_add_units(0, infantry_type, int(shop_param[k]))
+			_squad_add_units(_buy_target(infantry_type), infantry_type, int(shop_param[k]))
 		"archer_pack":
-			_squad_add_units(1, archer_type, int(shop_param[k]))
+			_squad_add_units(_buy_target(archer_type), archer_type, int(shop_param[k]))
 		"weapons":
 			type_damage[infantry_type] *= shop_param[k]
 			type_arrow_dmg[archer_type] *= shop_param[k]
@@ -562,13 +574,30 @@ func _buy(k: int) -> bool:
 	return true
 
 
+# Куда идёт покупка юнитов типа type: в выбранный отряд, если он этого типа, иначе в первый занятый отряд типа
+# (он есть всегда: 0 — пехота, 1 — лучники).
+func _buy_target(type: int) -> int:
+	if squad_used[selected_squad] == 1 and squad_type[selected_squad] == type:
+		return selected_squad
+	for s in SQUAD_MAX:
+		if squad_used[s] == 1 and squad_type[s] == type:
+			return s
+	return 0
+
+
 # Новые юниты отряда выходят из ворот: временные уникальные slot_idx, затем одна перестройка.
+# Пустой созданный отряд (индекс >= START_SQUADS) при первой покупке встаёт у ворот лицом вверх.
 func _squad_add_units(s: int, type: int, n: int) -> void:
+	var at_gate := s >= START_SQUADS and squad_n[s] == 0
+	if at_gate:
+		squad_center_off[s] = Vector2.ZERO
+		squad_angle[s] = PLAYER_ANGLE
 	for k in n:
 		if count >= MAX_UNITS:
 			break
 		var i := count
 		count += 1
+		squad_n[s] += 1
 		var p := Vector2(GATE_POS.x + unit_rng.randf_range(-20.0, 20.0), WALL_Y - 6.0)
 		pos[i] = p
 		prev_pos[i] = p
@@ -584,6 +613,171 @@ func _squad_add_units(s: int, type: int, n: int) -> void:
 		unit_state[i] = ST_IDLE
 		unit_slot_changed_t[i] = -1000.0
 	_reflow_squad(s)
+	if at_gate:
+		squad_pos[s] = Vector2(GATE_POS.x, WALL_Y - 40.0)
+		squad_target[s] = squad_pos[s]
+
+
+# --- Отряды: создание, разделение, слияние (только в передышке) ---------------------
+
+# Индекс отряда в исходное состояние: свободен, 0 юнитов, все поля по умолчанию.
+func _squad_reset(s: int) -> void:
+	squad_used[s] = 0
+	squad_n[s] = 0
+	squad_pos[s] = Vector2.ZERO
+	squad_target[s] = Vector2.ZERO
+	squad_angle[s] = PLAYER_ANGLE
+	squad_team[s] = 0
+	squad_stop_dist[s] = 0.0
+	squad_width[s] = 1
+	squad_rows[s] = 0
+	squad_dirty[s] = 0
+	squad_speed[s] = 0.0
+	squad_center_off[s] = Vector2.ZERO
+	squad_reflow_n[s] = 0
+	squad_front_row[s] = 0
+	squad_follow[s] = -1
+	squad_ranged[s] = 0
+	squad_type[s] = 0
+	squad_volley_mode[s] = MODE_VOLLEY
+	squad_volley_t[s] = 0.0
+	squad_volley_fired[s] = 0
+	squad_arrows_fired[s] = 0
+	squad_mode_switches[s] = 0
+	squad_depth[s] = 0.0
+	squad_front_x[s] = 0.0
+	squad_user_width[s] = 0
+	squad_aspect[s] = Vector2.ONE
+	squad_order[s] = ORDER_ATTACK
+
+
+# Новый пустой отряд по образцу отряда src (тип, команда, пропорция строя) в первом свободном индексе
+# >= START_SQUADS. Стоит у ворот лицом вверх, приказ «атака». Возвращает индекс или -1, если все заняты.
+func _squad_create(src: int) -> int:
+	for s in range(START_SQUADS, SQUAD_MAX):
+		if squad_used[s] == 1:
+			continue
+		_squad_reset(s)
+		squad_used[s] = 1
+		squad_type[s] = squad_type[src]
+		squad_team[s] = squad_team[src]
+		squad_ranged[s] = squad_ranged[src]
+		squad_aspect[s] = squad_aspect[src]
+		squad_speed[s] = 0.75 * type_speed[squad_type[src]]
+		squad_width[s] = maxi(int(squad_aspect[src].x), 1)
+		squad_pos[s] = Vector2(GATE_POS.x, WALL_Y - 40.0)
+		squad_target[s] = squad_pos[s]
+		return s
+	return -1
+
+
+func _say(text: String) -> void:
+	hud_msg = text
+	hud_msg_t = 3.0
+	ui_t = 0.0   # показать сразу
+
+
+# Освободить индекс отряда (не 0 и не 1; юнитов в нём уже нет). Выбор с него уходит на отряд 0.
+func _squad_free(s: int) -> void:
+	if s < START_SQUADS:
+		return
+	_squad_reset(s)
+	if selected_squad == s:
+		selected_squad = 0
+		drag_active = false
+
+
+# В начале передышки: созданные отряды без живых юнитов освобождаются.
+func _free_empty_squads() -> void:
+	for s in range(START_SQUADS, SQUAD_MAX):
+		if squad_used[s] == 1 and squad_n[s] == 0:
+			_squad_free(s)
+	_update_squad_panel()
+
+
+# N: новый пустой отряд того же типа, что выбранный; выбор переходит на него.
+func _cmd_new_squad() -> bool:
+	if wave_state != WS_RESPITE:
+		return false
+	var s := _squad_create(selected_squad)
+	if s < 0:
+		_say("Свободных отрядов нет: занято %d из %d" % [SQUAD_MAX, SQUAD_MAX])
+		return false
+	_select_squad(s)
+	return true
+
+
+# G: правая половина выбранного отряда (по local.y, поперёк фронта) уходит в новый отряд с тем же приказом,
+# местом, углом и шириной строя; обе половины перестраиваются. Выбор переходит на новый отряд.
+func _cmd_split() -> bool:
+	if wave_state != WS_RESPITE:
+		return false
+	var s := selected_squad
+	var n := squad_n[s]
+	if n < 2:
+		_say("В отряде меньше 2 юнитов: делить нечего")
+		return false
+	var t := _squad_create(s)
+	if t < 0:
+		_say("Свободных отрядов нет: занято %d из %d" % [SQUAD_MAX, SQUAD_MAX])
+		return false
+	squad_order[t] = squad_order[s]
+	squad_pos[t] = squad_pos[s]
+	squad_angle[t] = squad_angle[s]
+	squad_target[t] = squad_target[s]
+	squad_user_width[t] = squad_user_width[s]
+	squad_stop_dist[t] = squad_stop_dist[s]
+	squad_width[t] = squad_width[s]   # старые slot_idx уходящих читаются в сетке исходного отряда
+	squad_center_off[t] = squad_center_off[s]
+	sort_keys.fill(0x7FFFFFFFFFFFFFFF)
+	var m := 0
+	for i in count:
+		if unit_squad[i] == s:
+			var local := (pos[i] - squad_pos[s]).rotated(-squad_angle[s])
+			sort_keys[m] = ((int(local.y * 16.0) + SORT_OFFSET) << 32) | i
+			m += 1
+	sort_keys.sort()
+	var half := n / 2
+	for q in range(n - half, n):
+		unit_squad[int(sort_keys[q] & 0xFFFFFFFF)] = t
+	squad_n[s] = n - half
+	squad_n[t] = half
+	_reflow_squad(s)
+	_reflow_squad(t)
+	_select_squad(t)
+	return true
+
+
+# M: выбранный отряд вливается в первый другой занятый отряд того же типа; его индекс освобождается,
+# выбор переходит на целевой. Отряды 0 и 1 не освобождаются: если выбран один из них, другой вливается в него.
+func _cmd_merge() -> bool:
+	if wave_state != WS_RESPITE:
+		return false
+	var src := selected_squad
+	var dst := -1
+	for s in SQUAD_MAX:
+		if s != src and squad_used[s] == 1 and squad_type[s] == squad_type[src]:
+			dst = s
+			break
+	if dst < 0:
+		_say("Нет другого отряда этого типа")
+		return false
+	if src < START_SQUADS:
+		var tmp := src
+		src = dst
+		dst = tmp
+	var k := 0
+	for i in count:
+		if unit_squad[i] == src:
+			unit_squad[i] = dst
+			unit_slot_idx[i] = TEMP_SLOT_BASE + k   # уникальные временные индексы: новые в конец
+			k += 1
+	squad_n[dst] += squad_n[src]
+	squad_n[src] = 0
+	_squad_free(src)
+	_reflow_squad(dst)
+	_select_squad(dst)
+	return true
 
 
 # Ворота пали: бой останавливается, рекорд сохраняется, R — заново.
@@ -808,47 +1002,51 @@ func _setup_data() -> void:
 	# Отряд 0: пехота игрока (team 0). Отряд 1: лучники (team 0): самостоятельный отряд;
 	# при archers_follow идут за отрядом 0, как раньше.
 	# Зомби (team 1) без отряда: орда идёт к HORDE_GOAL.
-	squad_count = 2
-	squad_pos.resize(squad_count)
-	squad_target.resize(squad_count)
-	squad_angle.resize(squad_count)
-	squad_team.resize(squad_count)
-	squad_stop_dist.resize(squad_count)
-	squad_pos[0] = PLAYER_START   # временно: после расстановки центр строя ставится в PLAYER_START
-	squad_pos[1] = PLAYER_START   # временно: после расстановки встаёт за отрядом 0
-	squad_angle.fill(PLAYER_ANGLE)
-	squad_team.fill(0)
-	squad_stop_dist.fill(0.0)
-	squad_center_off.resize(squad_count)
-	squad_center_off.fill(Vector2.ZERO)
-	squad_reflow_n.resize(squad_count)
-	squad_front_row.resize(squad_count)
-	squad_follow = PackedInt32Array([-1, 0 if archers_follow else -1])
-	squad_order = PackedByteArray([ORDER_ATTACK, ORDER_ATTACK])
-	squad_user_width.resize(squad_count)
-	squad_user_width.fill(0)
+	# Все массивы отрядов — один раз на SQUAD_MAX; занятые индексы отмечены в squad_used.
+	squad_used.resize(SQUAD_MAX)
+	squad_n.resize(SQUAD_MAX)
+	squad_pos.resize(SQUAD_MAX)
+	squad_target.resize(SQUAD_MAX)
+	squad_angle.resize(SQUAD_MAX)
+	squad_team.resize(SQUAD_MAX)
+	squad_stop_dist.resize(SQUAD_MAX)
+	squad_width.resize(SQUAD_MAX)
+	squad_rows.resize(SQUAD_MAX)
+	squad_dirty.resize(SQUAD_MAX)
+	squad_speed.resize(SQUAD_MAX)
+	squad_center_off.resize(SQUAD_MAX)
+	squad_reflow_n.resize(SQUAD_MAX)
+	squad_front_row.resize(SQUAD_MAX)
+	squad_follow.resize(SQUAD_MAX)
+	squad_ranged.resize(SQUAD_MAX)
+	squad_type.resize(SQUAD_MAX)
+	squad_volley_mode.resize(SQUAD_MAX)
+	squad_volley_t.resize(SQUAD_MAX)
+	squad_volley_fired.resize(SQUAD_MAX)
+	squad_arrows_fired.resize(SQUAD_MAX)
+	squad_mode_switches.resize(SQUAD_MAX)
+	squad_depth.resize(SQUAD_MAX)
+	squad_front_x.resize(SQUAD_MAX)
+	squad_user_width.resize(SQUAD_MAX)
+	squad_aspect.resize(SQUAD_MAX)
+	squad_order.resize(SQUAD_MAX)
+	for s in SQUAD_MAX:
+		_squad_reset(s)
 	selected_squad = 0
-	squad_ranged = PackedByteArray([0, 1])
-	squad_type = PackedInt32Array([infantry, archer])
-	squad_volley_mode.resize(squad_count)
-	squad_volley_mode.fill(MODE_VOLLEY)
-	squad_volley_t.resize(squad_count)
-	squad_volley_t.fill(0.0)
-	squad_volley_fired.resize(squad_count)
-	squad_volley_fired.fill(0)
-	squad_depth.resize(squad_count)
-	squad_depth.fill(0.0)
-	squad_front_x.resize(squad_count)
-	squad_front_x.fill(0.0)
-
 	var squad_size := PackedInt32Array([INFANTRY_COUNT, ARCHER_COUNT])
-	squad_width = PackedInt32Array([20, 25])   # лучники: шире и мельче (25 x 4)
-	squad_aspect = PackedVector2Array([Vector2(20, 15), Vector2(25, 4)])   # для перестройки (_reflow_squad)
-	squad_rows.resize(squad_count)
-	squad_dirty.resize(squad_count)
-	squad_dirty.fill(0)
-	for s in squad_count:
+	var start_type := PackedInt32Array([infantry, archer])
+	var start_width := PackedInt32Array([20, 25])   # лучники: шире и мельче (25 x 4)
+	var start_aspect := PackedVector2Array([Vector2(20, 15), Vector2(25, 4)])   # для перестройки (_reflow_squad)
+	for s in START_SQUADS:
+		squad_used[s] = 1
+		squad_n[s] = squad_size[s]
+		squad_pos[s] = PLAYER_START   # временно: пехота после расстановки в PLAYER_START, лучники позади неё
+		squad_type[s] = start_type[s]
+		squad_ranged[s] = 1 if type_range_far[start_type[s]] > 0.0 else 0
+		squad_width[s] = start_width[s]
+		squad_aspect[s] = start_aspect[s]
 		squad_rows[s] = ceili(squad_size[s] / float(squad_width[s]))
+	squad_follow[1] = 0 if archers_follow else -1   # ведомым бывает только отряд 1
 	col_map.resize(WIDTH_MAX)   # выделяется один раз
 	unit_rng.seed = spawn_seed
 	# Стартовый состав: пехота и лучники; зомби на старте — только без волн (как bak21).
@@ -874,10 +1072,10 @@ func _setup_data() -> void:
 			pos[i] = Vector2(ROAD_X, ZOMBIE_FRONT_Y) + _slot_vector(i - INFANTRY_COUNT - ARCHER_COUNT, 20).rotated(PI / 2.0)
 		hp[i] = type_hp[unit_type[i]]
 	unit_slot_changed_t.fill(-1000.0)   # стартовая расстановка — не смена слота
-	for s in squad_count:
+	for s in START_SQUADS:
 		squad_reflow_n[s] = squad_size[s]
 		_reanchor(s)   # squad_pos переезжает в центр строя, мировые позиции юнитов те же
-	for s in squad_count:
+	for s in START_SQUADS:
 		var lead := squad_follow[s]
 		if lead < 0 and s == 0:   # центр строя пехоты — в PLAYER_START
 			var shift0 := PLAYER_START - squad_pos[s]
@@ -904,8 +1102,7 @@ func _setup_data() -> void:
 	wave_hp_mult = 1.0
 	team_dmg_mult = PackedFloat32Array([1.0, 1.0])
 	wave_state = WS_RESPITE if waves_enabled else WS_BATTLE
-	squad_speed.resize(squad_count)
-	for s in squad_count:
+	for s in START_SQUADS:
 		var min_speed := INF
 		for i in count:
 			if unit_squad[i] == s:
@@ -991,10 +1188,9 @@ func _setup_fps_label() -> void:
 	squad_panel.set_anchors_preset(Control.PRESET_CENTER_LEFT)
 	squad_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	squad_panel.position.x = 16.0
-	for s in squad_count:
+	for s in SQUAD_MAX:   # строка на каждый индекс; свободные скрыты (_update_squad_panel)
 		var row := HBoxContainer.new()
 		var sw := ColorRect.new()
-		sw.color = type_color[squad_type[s]]
 		sw.custom_minimum_size = Vector2(18, 18)
 		sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		sw.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1008,6 +1204,20 @@ func _setup_fps_label() -> void:
 		row.add_child(b)
 		squad_panel.add_child(row)
 		squad_buttons.append(b)
+		squad_rows_ui.append(row)
+		squad_swatches.append(sw)
+	# Внизу панели: создание, разделение, слияние (видны только в передышке)
+	squad_actions = HBoxContainer.new()
+	var action_names := ["+ Отряд (N)", "Разделить (G)", "Слить (M)"]
+	var action_calls := [_cmd_new_squad, _cmd_split, _cmd_merge]
+	for k in action_names.size():
+		var b := Button.new()
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(0, 36)
+		b.text = action_names[k]
+		b.pressed.connect(action_calls[k])
+		squad_actions.add_child(b)
+	squad_panel.add_child(squad_actions)
 	layer.add_child(squad_panel)
 	add_child(layer)
 	_update_squad_panel()
@@ -1017,11 +1227,13 @@ func _setup_fps_label() -> void:
 
 
 func _select_squad(s: int) -> void:
-	if s < 0 or s >= squad_count:
-		return   # клавиша 3 зарезервирована: без отряда игнорируется
+	if s < 0 or s >= SQUAD_MAX or squad_used[s] == 0:
+		return   # клавиши 1-8: свободный индекс игнорируется
 	selected_squad = s
+	drag_active = false   # начатое перетаскивание относилось к прежнему отряду
 	_update_squad_panel()
-	queue_redraw()   # маркер цели выбранного отряда крупнее
+	ui_t = 0.0            # подписи товаров «→ Отряд N» зависят от выбора
+	queue_redraw()        # маркер цели выбранного отряда крупнее
 
 
 func _set_order(o: int) -> void:
@@ -1029,17 +1241,37 @@ func _set_order(o: int) -> void:
 	_update_squad_panel()
 
 
-# Левая панель отрядов: раз в 0.25 с и сразу при выборе / смене приказа.
+# Название отряда для панели и магазина: label типа, а если отрядов этого типа несколько — с номером по порядку.
+func _squad_label(s: int) -> String:
+	var same := 0
+	var rank := 0
+	for q in SQUAD_MAX:
+		if squad_used[q] == 1 and squad_type[q] == squad_type[s]:
+			same += 1
+			if q <= s:
+				rank += 1
+	return type_label[squad_type[s]] if same < 2 else "%s %d" % [type_label[squad_type[s]], rank]
+
+
+# Левая панель отрядов: раз в 0.25 с и сразу при выборе / смене приказа. Строки свободных индексов скрыты,
+# кнопки создания, разделения и слияния видны только в передышке.
 func _update_squad_panel() -> void:
 	if squad_panel == null:
 		return
-	for s in squad_buttons.size():
-		var alive := 0
-		for i in count:
-			if unit_squad[i] == s:
-				alive += 1
-		squad_buttons[s].text = "%d  %s — %d — %s" % [s + 1, type_label[squad_type[s]], alive, ORDER_NAMES[squad_order[s]]]
+	var sig := 1 if wave_state == WS_RESPITE else 0
+	for s in SQUAD_MAX:
+		squad_rows_ui[s].visible = squad_used[s] == 1
+		if squad_used[s] == 0:
+			continue
+		sig |= 2 << s
+		squad_swatches[s].color = type_color[squad_type[s]]
+		squad_buttons[s].text = "%d  %s — %d — %s" % [s + 1, _squad_label(s), squad_n[s], ORDER_NAMES[squad_order[s]]]
 		squad_buttons[s].set_pressed_no_signal(s == selected_squad)
+	squad_actions.visible = wave_state == WS_RESPITE
+	if sig != squad_panel_sig:
+		squad_panel_sig = sig
+		# набор строк изменился: размер по содержимому, снова по центру левого края
+		squad_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 16)
 
 
 # HUD и магазин: раз в 0.1 с (и сразу после покупки).
@@ -1048,6 +1280,8 @@ func _update_ui() -> void:
 		return
 	hud_label.text = "Волна %d · зомби: %d · ворота: %d/%d · золото: %d" % [
 		wave_number, zombie_alive + wave_remaining, ceili(maxf(gate_hp, 0.0)), roundi(gate_hp_max), floori(gold)]
+	if hud_msg != "":
+		hud_label.text += "\n" + hud_msg
 	shop_panel.visible = wave_state == WS_RESPITE
 	if not shop_panel.visible:
 		return
@@ -1056,6 +1290,11 @@ func _update_ui() -> void:
 		var price := _price(k)
 		var capped := _at_cap(k)
 		shop_buttons[k].text = "%s  %s — %s (куплено %d)" % [key_names[k], shop_label[k], "макс." if capped else "%d зол." % ceili(price), shop_bought[k]]
+		# Юниты идут в выбранный отряд своего типа, иначе в первый отряд типа.
+		var pack_type := infantry_type if SHOP_ITEMS[k] == "inf_pack" else (archer_type if SHOP_ITEMS[k] == "archer_pack" else -1)
+		if pack_type >= 0:
+			var target := _buy_target(pack_type)
+			shop_buttons[k].text += "\n→ Отряд %d (%s)" % [target + 1, _squad_label(target)]
 		shop_buttons[k].disabled = capped or gold < price   # серая при нехватке золота или на пределе
 
 
@@ -1082,8 +1321,8 @@ func _physics_process(delta: float) -> void:
 	# Лучники: грубая сетка и режим раз в COARSE_EVERY тиков; выстрелы и падение стрел — каждый тик.
 	if tick_counter % COARSE_EVERY == 1:
 		_rebuild_coarse()
-		for s in squad_count:
-			if squad_ranged[s] == 1:
+		for s in SQUAD_MAX:
+			if squad_used[s] == 1 and squad_n[s] > 0 and squad_ranged[s] == 1:
 				_update_archer_mode(s)
 	var m2 := Time.get_ticks_usec() if profile else 0
 	_update_archers(delta)
@@ -1138,6 +1377,11 @@ func _process(delta: float) -> void:
 		ui_t = 0.1
 		_update_ui()
 		queue_redraw()   # маркеры целей отрядов
+	if hud_msg_t > 0.0:
+		hud_msg_t -= delta
+		if hud_msg_t <= 0.0:
+			hud_msg = ""
+			ui_t = 0.0
 	panel_t -= delta
 	if panel_t <= 0.0:
 		panel_t = 0.25
@@ -1333,6 +1577,7 @@ func _remove_dead() -> void:
 				gold += wave_cfg.gold_per_kill
 			if unit_squad[i] >= 0:
 				squad_dirty[unit_squad[i]] = 1
+				squad_n[unit_squad[i]] -= 1
 			count -= 1
 			pos[i] = pos[count]
 			prev_pos[i] = prev_pos[count]   # та же перестановка, иначе lerp смешает разных юнитов
@@ -1658,14 +1903,21 @@ func _mark_slot_changes(s: int) -> void:
 func _update_squads(delta: float) -> void:
 	squad_compact_t += delta
 	if squad_compact_t >= 0.5:
-		for s in squad_count:
+		for s in SQUAD_MAX:
+			if squad_used[s] == 0:
+				continue
+			if squad_n[s] == 0:
+				squad_dirty[s] = 0   # сжимать нечего
+				continue
 			if squad_dirty[s] == 1:
 				_compact_squad(s)
 				squad_dirty[s] = 0
 			if _needs_reflow(s):
 				_reflow_squad(s)
 		squad_compact_t = 0.0
-	for s in squad_count:
+	for s in SQUAD_MAX:
+		if squad_used[s] == 0 or squad_n[s] == 0:
+			continue   # свободный или пустой отряд не ходит и не поворачивается
 		var lead := squad_follow[s]
 		if lead >= 0:
 			# Ведомый отряд сам не поворачивается: угол копируется у ведущего. Если ведущий
@@ -1828,12 +2080,15 @@ func _update_archer_mode(s: int) -> void:
 	if mode != squad_volley_mode[s]:
 		squad_volley_mode[s] = mode
 		mode_switches += 1
+		squad_mode_switches[s] += 1
 		squad_volley_t[s] = 0.0   # залп после переключения начинается с натяжения
 		squad_volley_fired[s] = 0
 
 
 func _update_archers(delta: float) -> void:
-	for s in squad_count:
+	for s in SQUAD_MAX:
+		if squad_used[s] == 0 or squad_n[s] == 0:
+			continue
 		if squad_ranged[s] == 0 or squad_order[s] == ORDER_RETREAT:   # при отходе не стреляют
 			continue
 		if squad_volley_mode[s] == MODE_SINGLE:
@@ -1931,6 +2186,7 @@ func _fire_arrow(i: int, aim: Vector2, delay: float) -> void:
 	arrow_dmg[arrow_count] = type_arrow_dmg[t]
 	arrow_count += 1
 	arrows_fired += 1
+	squad_arrows_fired[unit_squad[i]] += 1
 
 
 # Падение стрел этого тика: урон ближайшему живому зомби в ARROW_HIT_R (мелкая сетка, 3x3), иначе промах.
@@ -2000,8 +2256,14 @@ func _unhandled_input(event: InputEvent) -> void:
 					get_tree().reload_current_scene()   # полный сброс: сцена создаётся заново
 			KEY_SPACE:
 				_start_wave()
-			KEY_1, KEY_2, KEY_3:
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8:
 				_select_squad(event.keycode - KEY_1)
+			KEY_N:
+				_cmd_new_squad()
+			KEY_G:
+				_cmd_split()
+			KEY_M:
+				_cmd_merge()
 			KEY_Q:
 				_set_order(ORDER_ATTACK)
 			KEY_W:

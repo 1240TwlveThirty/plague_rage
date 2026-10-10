@@ -62,7 +62,7 @@ func checksum(m: Node2D) -> Vector2:
 	var c := Vector2.ZERO
 	for i in m.count:
 		c += m.pos[i] * (1.0 + (i % 7)) + Vector2(m.hp[i], m.count)
-	for s in m.squad_count:
+	for s in 2:   # отряды 0 и 1 (squad_count убран в v28)
 		c += m.squad_pos[s] + Vector2(m.squad_angle[s], m.squad_width[s])
 	return c
 
