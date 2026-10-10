@@ -14,6 +14,9 @@ const WIDTH_MAX := 100     # и не шире
 const WAVE_DMG_TO_UNITS := true   # урон зомби по юнитам растёт с волной (team_dmg_mult[1])
 const PROFILE := false     # true: время фаз тика (среднее за 60 тиков) в отладочной строке
 const TEMP_SLOT_BASE := 1 << 24   # временные slot_idx новых юнитов (уникальные, больше любых настоящих)
+# Залп: true — стреляет только лучник, чья точка падения не дальше range_far от него самого;
+# false — стреляют все лучники отряда, дальность считается от центра отряда.
+const ARCHER_OWN_RANGE := false
 const ARCHERS_FOLLOW := false     # true: лучники идут за пехотой (как раньше) — для бенчей и регрессии
 # Приказы отряда
 const ORDER_ATTACK := 0   # как раньше: юниты идут на врага в VIEW_RANGE
@@ -32,6 +35,7 @@ const START_SQUADS := 2                       # отряды 0 (пехота) и
 const ROTATE_STEP := PI / 12.0                # Shift + колесо: поворот отряда на месте, 15°
 const BANNER_TOP := 120.0                     # верхняя граница баннера, px от верха экрана
 const BANNER_BG_ALPHA := 0.55                 # непрозрачность фона баннера
+const OVERLAP_MAX := 0.25                     # расстановка: доля площади меньшего блока, с которой пересечение со своим отрядом запрещено
 const DRAG_MIN := 24.0                       # px: короче — обычный клик, длиннее — расстановка строя по линии
 const FORM_MARGIN := 12.0                     # строй при расстановке не ниже WALL_Y - FORM_MARGIN
 const SORT_OFFSET := 1 << 20                  # сдвиг ключа сортировки _place_formation: координата * 16 всегда > 0
@@ -180,6 +184,8 @@ var arrow_count := 0
 var arrow_rng := RandomNumberGenerator.new()
 var arrows_fired := 0   # статистика
 var arrows_hit := 0     # статистика
+var arrows_out_of_range := 0   # статистика: выстрелы залпа, отменённые по дальности от позиции лучника (за волну)
+var archer_own_range := ARCHER_OWN_RANGE   # бенчи переопределяют
 var arrows_dropped := 0 # статистика: не влезли в ARROW_CAP
 var mode_switches := 0  # статистика: смены режима стрельбы
 var squad_depth := PackedFloat32Array()     # глубина строя = занятых рядов * SLOT_SPACING (кеш, см. _update_squad_extent)
@@ -333,7 +339,8 @@ func _draw() -> void:
 	var ring := _range_ring_radius(selected_squad)
 	if ring > 0.0:
 		draw_arc(squad_pos[selected_squad], ring, 0.0, TAU, 96, Color(type_color[squad_type[selected_squad]], 0.35), 1.0)
-	# Предпросмотр расстановки: контур блока (красный, если блок не помещается и будет сдвинут), яркий передний ряд,
+	# Предпросмотр расстановки: контур блока (красный, если блок не помещается и будет сдвинут или слишком
+	# пересекается с другим своим отрядом и поставлен не будет), яркий передний ряд,
 	# стрелка лица, подпись
 	if drag_active and drag_start.distance_to(drag_cur) >= DRAG_MIN and squad_follow[selected_squad] < 0:
 		var g := _formation_geometry(selected_squad, drag_start, drag_cur, drag_flip)
@@ -347,7 +354,7 @@ func _draw() -> void:
 			var col := type_color[squad_type[selected_squad]]
 			draw_colored_polygon(box, Color(col, 0.25))
 			box.append(box[0])
-			draw_polyline(box, Color(1.0, 0.2, 0.2, 0.9) if g.adjusted else Color(col, 0.7), 2.0)
+			draw_polyline(box, Color(1.0, 0.2, 0.2, 0.9) if g.adjusted or g.overlap >= 0 else Color(col, 0.7), 2.0)
 			draw_line(g.front - lat * hw, g.front + lat * hw, col.lightened(0.5), 3.0)
 			var tip: Vector2 = g.front + face * 30.0   # стрелка лица
 			draw_line(g.front, tip, Color.WHITE, 2.0)
@@ -504,6 +511,7 @@ func _start_wave() -> void:
 	wave_kills = 0
 	arrows_fired = 0   # в отладочной строке — за текущую волну
 	arrows_hit = 0
+	arrows_out_of_range = 0
 	subwave_timer = 0.0
 	_show_banner("")
 
@@ -708,9 +716,9 @@ func _squad_create(src: int) -> int:
 	return -1
 
 
-func _say(text: String) -> void:
+func _say(text: String, secs := 3.0) -> void:
 	hud_msg = text
-	hud_msg_t = 3.0
+	hud_msg_t = secs
 	ui_t = 0.0   # показать сразу
 
 
@@ -1871,7 +1879,7 @@ func _reflow_squad(s: int) -> void:
 # только за курсор. Не помещается в поле или ниже WALL_Y - FORM_MARGIN — сначала длиннее за курсор (меньше рядов);
 # если и так нет — adjusted (красный предпросмотр) и блок сдвигается вдоль лица на минимум (A уезжает).
 # Возвращает n, width, rows, user_width (в squad_user_width), angle, centre (блока), front (середина переднего ряда),
-# a и b (концы переднего ряда), adjusted.
+# a и b (концы переднего ряда), adjusted, overlap (номер своего отряда, с которым блок пересекается слишком сильно, или -1).
 func _formation_geometry(s: int, a: Vector2, b: Vector2, flip := false) -> Dictionary:
 	var n := squad_n[s]
 	var d := b - a
@@ -1901,8 +1909,90 @@ func _formation_geometry(s: int, a: Vector2, b: Vector2, flip := false) -> Dicti
 	var b_eff := a_eff + dir * (width - 1) * SLOT_SPACING
 	var front := (a_eff + b_eff) * 0.5
 	return {"n": n, "width": width, "rows": rows, "user_width": user_width, "angle": face.angle(),
-		"centre": front - face * (rows - 1) * SLOT_SPACING * 0.5, "front": front, "a": a_eff, "b": b_eff, "adjusted": adjusted}
+		"centre": front - face * (rows - 1) * SLOT_SPACING * 0.5, "front": front, "a": a_eff, "b": b_eff, "adjusted": adjusted,
+		"overlap": _overlap_squad(s, front - face * (rows - 1) * SLOT_SPACING * 0.5, face.angle(), width, rows)}
 
+
+# Прямоугольник блока в мире: центр, угол лица, half — полуразмеры (вдоль лица, поперёк), уже с половиной слота по краям.
+func _block_rect(centre: Vector2, angle: float, half: Vector2) -> PackedVector2Array:
+	var face := Vector2.from_angle(angle)
+	var lat := Vector2(-face.y, face.x)
+	return PackedVector2Array([centre + face * half.x - lat * half.y, centre + face * half.x + lat * half.y,
+		centre - face * half.x + lat * half.y, centre - face * half.x - lat * half.y])
+
+
+func _poly_area(poly: PackedVector2Array) -> float:
+	var a := 0.0
+	for k in poly.size():
+		a += poly[k].cross(poly[(k + 1) % poly.size()])
+	return absf(a) * 0.5
+
+
+# Новый блок отряда s (центр, угол, width × rows) против блоков других своих отрядов.
+# Возвращает номер первого отряда, с которым пересечение не меньше OVERLAP_MAX площади меньшего блока, или -1.
+# Каждый юнит занимает клетку SLOT_SPACING × SLOT_SPACING, поэтому соседние вплотную блоки только касаются.
+func _overlap_squad(s: int, centre: Vector2, angle: float, width: int, rows: int) -> int:
+	return _overlap_with(s, _block_rect(centre, angle, Vector2(rows, width) * SLOT_SPACING * 0.5),
+		width * rows * SLOT_SPACING * SLOT_SPACING, _squad_boxes())
+
+
+# Блок отряда s в нынешнем виде (угол и сетка те же, без поворота), если его якорь встанет в target:
+# с каким своим отрядом он пересечётся слишком сильно (-1 — ни с каким). Для обычного клика.
+func _target_overlap(s: int, target: Vector2) -> int:
+	var boxes := _squad_boxes()
+	var lo: Vector2 = boxes[0][s]
+	var hi: Vector2 = boxes[1][s]
+	if hi.x < lo.x:
+		return -1   # пустой отряд
+	var half := (hi - lo) * 0.5 + Vector2(SLOT_SPACING, SLOT_SPACING) * 0.5
+	return _overlap_with(s, _block_rect(target + ((lo + hi) * 0.5).rotated(squad_angle[s]), squad_angle[s], half), half.x * half.y * 4.0, boxes)
+
+
+# Границы живых слотов каждого отряда в его локальных координатах: [lo, hi] по индексам отрядов (один проход по юнитам).
+func _squad_boxes() -> Array:
+	var lo := PackedVector2Array()
+	var hi := PackedVector2Array()
+	lo.resize(SQUAD_MAX)
+	hi.resize(SQUAD_MAX)
+	lo.fill(Vector2(INF, INF))
+	hi.fill(Vector2(-INF, -INF))
+	for i in count:
+		var q := unit_squad[i]
+		if q >= 0:
+			lo[q] = lo[q].min(unit_slot[i])
+			hi[q] = hi[q].max(unit_slot[i])
+	return [lo, hi]
+
+
+# Прямоугольник mine (площадь mine_area) отряда s против блоков других своих отрядов. Блок другого отряда —
+# прямоугольник его живых слотов: там, где отряд стоит, а если он идёт — там, куда придёт (якорь в squad_target,
+# угол нынешний).
+func _overlap_with(s: int, mine: PackedVector2Array, mine_area: float, boxes: Array) -> int:
+	for q in SQUAD_MAX:
+		var lo: Vector2 = boxes[0][q]
+		var hi: Vector2 = boxes[1][q]
+		if q == s or squad_used[q] == 0 or squad_n[q] == 0 or squad_team[q] != squad_team[s] or hi.x < lo.x:
+			continue
+		var moving := squad_pos[q].distance_to(squad_target[q]) > maxf(squad_stop_dist[q], 1.0)
+		var anchor := squad_target[q] if moving else squad_pos[q]
+		var half := (hi - lo) * 0.5 + Vector2(SLOT_SPACING, SLOT_SPACING) * 0.5
+		var other := _block_rect(anchor + ((lo + hi) * 0.5).rotated(squad_angle[q]), squad_angle[q], half)
+		var common := 0.0
+		for poly in Geometry2D.intersect_polygons(mine, other):
+			common += _poly_area(poly)
+		if common >= OVERLAP_MAX * minf(mine_area, half.x * half.y * 4.0) - 0.01:
+			return q
+	return -1
+
+
+# Обычный клик: цель отряда s. Не задаётся, если блок отряда в точке цели слишком пересечётся с другим своим отрядом.
+func _cmd_move(s: int, target: Vector2) -> bool:
+	var q := _target_overlap(s, target)
+	if q >= 0:
+		_say("Блок пересекается с отрядом %d" % (q + 1), 2.0)   # цель не меняется
+		return false
+	squad_target[s] = target
+	return true
 
 # На сколько сдвинуть блок (передний ряд от a вдоль dir, width колонок, ряды назад от лица), чтобы все слоты
 # были в поле и не ниже WALL_Y - FORM_MARGIN. Ноль — помещается. Сдвиг ищется вдоль лица (минимальный);
@@ -1945,6 +2035,10 @@ func _place_formation(s: int, a: Vector2, b: Vector2, flip := false) -> void:
 	var g := _formation_geometry(s, a, b, flip)
 	var n: int = g.n
 	if n == 0:
+		return
+	if g.overlap >= 0:
+		_say("Блок пересекается с отрядом %d" % (g.overlap + 1), 2.0)   # отряд остаётся на месте
+		queue_redraw()
 		return
 	var width: int = g.width
 	var angle: float = g.angle
@@ -2216,6 +2310,8 @@ func _single_fire(s: int) -> void:
 
 
 # Залп: цикл draw (draw_time) -> fire -> reload до volley_period от начала цикла.
+# Цель — самая плотная клетка в range_far от центра отряда; при archer_own_range стреляют только те, кто достаёт
+# со своего места, иначе все лучники отряда.
 # Если в момент выстрела цели нет, цикл ждёт на этой точке.
 func _volley(s: int, delta: float) -> void:
 	var ut := squad_type[s]
@@ -2235,7 +2331,7 @@ func _volley(s: int, delta: float) -> void:
 			if unit_squad[i] == s:
 				var j := _random_zombie_in_cell(c0, cn)
 				if j != -1:
-					_fire_arrow(i, pos[j], (unit_rand[i] * 2.0 - 1.0) * VOLLEY_JITTER)
+					_fire_arrow(i, pos[j], (unit_rand[i] * 2.0 - 1.0) * VOLLEY_JITTER, archer_own_range)
 		squad_volley_fired[s] = 1
 		squad_volley_t[s] = t
 	elif t >= type_volley_period[ut]:
@@ -2275,14 +2371,18 @@ func _random_zombie_in_cell(c0: int, cn: int) -> int:
 
 
 # Стрела-событие: точка падения = прицел + разброс (радиус spread * дистанция, seeded-генератор),
-# тик падения = сейчас + задержка + дистанция / ARROW_SPEED.
-func _fire_arrow(i: int, aim: Vector2, delay: float) -> void:
+# тик падения = сейчас + задержка + дистанция / ARROW_SPEED. own_range: если точка падения дальше range_far
+# от самого лучника, выстрела нет (arrows_out_of_range).
+func _fire_arrow(i: int, aim: Vector2, delay: float, own_range := false) -> void:
 	if arrow_count >= ARROW_CAP:
 		arrows_dropped += 1
 		return
 	var t := unit_type[i]
 	var dist := pos[i].distance_to(aim)
 	var land := aim + Vector2.from_angle(arrow_rng.randf() * TAU) * (type_spread[t] * dist * sqrt(arrow_rng.randf()))
+	if own_range and pos[i].distance_to(land) > type_range_far[t]:
+		arrows_out_of_range += 1
+		return
 	var ticks := roundi((delay + pos[i].distance_to(land) / ARROW_SPEED) * Engine.physics_ticks_per_second)
 	arrow_land[arrow_count] = land
 	arrow_tick[arrow_count] = tick_counter + maxi(ticks, 1)
@@ -2338,7 +2438,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			drag_active = false
 			if squad_follow[selected_squad] < 0:   # ведомому цель и строй задаёт ведущий
 				if drag_start.distance_to(p) < DRAG_MIN:
-					squad_target[selected_squad] = drag_start   # короткий клик: цель отряда, как раньше
+					_cmd_move(selected_squad, drag_start)   # короткий клик: цель отряда (если блок не пересечётся с другим)
 				else:
 					_place_formation(selected_squad, drag_start, p, drag_flip)
 			queue_redraw()
