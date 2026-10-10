@@ -1,0 +1,28 @@
+{
+	"archer_pack": {
+		"amount": 25.0,
+		"base": 100.0,
+		"cap": 300.0,
+		"growth": 0.2,
+		"label": "+25 лучников"
+	},
+	"gate": {
+		"base": 120.0,
+		"gate_max_gain": 150.0,
+		"growth": 0.3,
+		"label": "Ремонт ворот, +300 HP"
+	},
+	"inf_pack": {
+		"amount": 50.0,
+		"base": 100.0,
+		"cap": 1200.0,
+		"growth": 0.2,
+		"label": "+50 пехоты"
+	},
+	"weapons": {
+		"base": 150.0,
+		"dmg_mult": 1.1,
+		"growth": 0.5,
+		"label": "Оружие +10%"
+	}
+}

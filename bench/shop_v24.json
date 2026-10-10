@@ -1,0 +1,6 @@
+{
+	"inf_pack": {"label": "+50 пехоты", "base": 100, "growth": 0.2, "amount": 50, "cap": 1200},
+	"archer_pack": {"label": "+25 лучников", "base": 100, "growth": 0.2, "amount": 25, "cap": 300},
+	"weapons": {"label": "Оружие +10%", "base": 150, "growth": 0.5, "dmg_mult": 1.1},
+	"gate": {"label": "Ремонт ворот, +20% HP", "base": 120, "growth": 0.3, "hp_mult": 1.2}
+}

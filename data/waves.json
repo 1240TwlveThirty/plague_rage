@@ -1,0 +1,17 @@
+{
+	"count_base": 50,
+	"count_step": 45,
+	"count_cap": 2000,
+	"hp_growth": 0.04,
+	"dmg_growth": 0.04,
+	"subwave_size": 100,
+	"subwave_interval": 15.0,
+	"max_alive": 2200,
+	"spawn_center_x": 970,
+	"spawn_front_y": 100,
+	"spawn_columns": 50,
+	"spawn_spacing": 6,
+	"wave_bonus_gold": 20,
+	"gold_per_kill": 2.0,
+	"start_gold": 100
+}
