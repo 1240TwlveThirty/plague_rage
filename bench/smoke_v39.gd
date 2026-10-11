@@ -131,6 +131,8 @@ func _run() -> void:
 	await key(KEY_SPACE)
 	check("(г) клик мышью по «Разделить» делит (отрядов %d → %d); затем Enter и Space кнопку не нажимают: Space снял паузу, делений больше нет" % [u0, u1],
 		u1 == u0 + 1 and presses == p1 and used() == u1 and unpaused and m.paused and root.gui_get_focus_owner() == null, "сигналов pressed %d" % presses)
+	tick0 = m.tick_counter   # между двумя Space пауза была снята на несколько кадров: тик мог пройти, отсчёт заново
+	pos0 = m.pos.duplicate()
 	# ползунок: клик двигает, стрелки и Space — нет
 	var sr: Rect2 = m.split_slider.get_global_rect()
 	await click(Vector2(sr.position.x + sr.size.x * 0.25, sr.get_center().y))

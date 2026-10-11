@@ -7,6 +7,10 @@ import subprocess
 
 src = io.open('scripts/main.gd', encoding='utf-8', newline='').read()
 old = subprocess.run(['git', 'show', '5a26a30:scripts/main.gd'], capture_output=True, check=True).stdout.decode('utf-8')
+# прежний main читает дневник прежней структуры: ему — копия прежнего story.json
+STORY = 'const STORY_PATH := "res://data/story.json"'
+assert old.count(STORY) == 1
+old = old.replace(STORY, 'const STORY_PATH := "res://bench/fixtures_story/story_old.json"')
 
 
 def big(s):

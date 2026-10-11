@@ -44,4 +44,4 @@ func _on_play() -> void:
 
 
 func _on_quit() -> void:
-	get_tree().quit()
+	get_node("/root/Game").quit_game()   # сохранить и выйти

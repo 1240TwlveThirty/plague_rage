@@ -6,6 +6,8 @@ const GAME := "res://scripts/game.gd"
 const MAIN := "res://scripts/main.gd"
 const FIX := "res://bench/fixtures_run/"
 const DT := 1.0 / 30.0
+const SAVE_DIR := "user://bench_v41"
+const SAVE := SAVE_DIR + "/save.json"
 var fails := 0
 var g: Node
 
@@ -13,6 +15,11 @@ func check(what: String, ok: bool, info := "") -> void:
 	if not ok:
 		fails += 1
 	print("  %s: %s%s" % [what, "да" if ok else "НЕТ", "" if info == "" else " (" + info + ")"])
+
+# Game с нуля: временное сохранение удаляется (настоящее user://save.json тест не трогает).
+func reset() -> void:
+	DirAccess.remove_absolute(SAVE)
+	g._setup()
 
 func step(n: int) -> void:
 	for i in n:
@@ -110,6 +117,8 @@ func _run() -> void:
 		g.name = "Game"
 		root.add_child(g)
 	print("Game: %s" % ("создан вручную" if manual else "автозагрузка проекта"))
+	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
+	g.save_path = SAVE
 	node_added.connect(_on_node_added)
 	var args := OS.get_cmdline_user_args()
 	var mode := "all" if args.is_empty() else args[0]
@@ -123,6 +132,8 @@ func _run() -> void:
 		await t_rerun()
 	if mode in ["all", "hub"]:
 		await t_hub()
+	DirAccess.remove_absolute(SAVE)
+	DirAccess.remove_absolute(SAVE_DIR)
 	print("CHECK: провалов %d" % fails)
 	quit(1 if fails > 0 else 0)
 
@@ -137,7 +148,7 @@ func t_cfg() -> void:
 		check("повреждённый %s.json не грузится" % name, gs.load_run_cfg(FIX + name + ".json").is_empty())
 	for name in ["no_field", "bad_type", "empty"]:
 		g.run_path = FIX + name + ".json"
-		g._setup()
+		reset()
 		g.start_run(1)
 		await step(3)
 		check("Game с %s.json: cfg_ok false, забег не начинается" % name, not g.cfg_ok and g.run_index == 0 and current_scene == null)
@@ -147,18 +158,18 @@ func t_cfg() -> void:
 		check("сцена боя с %s.json: остановка (типы сброшены, тик выключен)" % name, m.type_id.is_empty() and not m.is_physics_processing() and not m.is_processing())
 		m.free()
 	g.run_path = FIX + "ok.json"
-	g._setup()
+	reset()
 	check("Game с ok.json: 7 волн, 2 осады, рекорды нулевые", g.cfg_ok and g.waves_per_run == 7 and g.siege_count == 2 and g.records.size() == 2
 		and g.records[2] == {"best_wave": 0, "wins": 0, "runs": 0})
 	g.run_path = g.RUN_PATH
-	g._setup()
+	reset()
 	check("начальное состояние Game: siege 1, unlocked 1, run_index 0, last_run без результата, 3 записи рекордов",
 		g.cfg_ok and g.siege == 1 and g.unlocked_siege == 1 and g.run_index == 0 and g.last_run.result == "" and g.records.size() == 3)
 
 # (в) победа: 10 волн слоя 1 усиленной армией.
 func t_win() -> void:
 	print("(в) победа")
-	g._setup()
+	reset()
 	var stamp := record_stamp()
 	var m := await run(1)
 	check("забег начат: сцена боя, tick 0, передышка, волна 0, run_index 1", m != null and m.tick_counter == 0 and m.wave_state == m.WS_RESPITE
@@ -198,7 +209,7 @@ func t_win() -> void:
 # (г) поражение: ворота 1 HP на волне 3; второй забег — поражение на волне 2.
 func t_loss() -> void:
 	print("(г) поражение")
-	g._setup()
+	reset()
 	var stamp := record_stamp()
 	var m := await run(1)
 	boost(m)
@@ -252,7 +263,7 @@ func one_run(first: bool) -> Array:
 # (д) повторный забег: то же состояние на тиках 0 и 600, узлы и память не копятся.
 func t_rerun() -> void:
 	print("(д) повторный забег")
-	g._setup()
+	reset()
 	var a := await one_run(true)
 	var b := await one_run(false)
 	check("оба забега кончились поражением и хабом", a[2] and b[2])
@@ -283,7 +294,7 @@ func t_rerun() -> void:
 # (е) хаб: выбор осады, осада II берёт слой 2.
 func t_hub() -> void:
 	print("(е) хаб")
-	g._setup()
+	reset()
 	g.go_hub()
 	await step(3)
 	var h := current_scene

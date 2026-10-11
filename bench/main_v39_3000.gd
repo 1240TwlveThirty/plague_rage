@@ -297,7 +297,9 @@ var drag_cur := Vector2.ZERO           # и курсора сейчас
 var drag_flip := false                 # F во время протяжки: лицо строя наоборот
 var story_path := STORY_PATH           # тесты подменяют
 var story_intro := ""
-var story_entries := {}                # номер волны -> запись дневника
+var story_entries := {}                # Vector2i(осада, волна) -> {id, text}
+var story_victories := {}              # осада -> текст победы
+var siege_count := 0                   # из run.json: для каждой осады нужен текст победы
 var story_end_wave := PackedInt32Array()    # концовки: min_wave
 var story_end_text := PackedStringArray()   # и текст с {wave}
 var drawn_gate_hp := -1.0        # последнее нарисованное HP ворот (перерисовка полосы только при изменении)
@@ -728,6 +730,7 @@ func _load_run() -> bool:
 	if cfg.is_empty():
 		return false
 	waves_per_run = cfg.waves_per_run
+	siege_count = cfg.siege_count
 	game = _game()
 	run_limit = RUN_LIMIT_ENABLED and game != null
 	if game != null:
@@ -1685,7 +1688,7 @@ func _on_win() -> void:
 	set_physics_process(false)
 	best_wave = maxi(best_wave, wave_number)
 	game.end_run("win", wave_number, run_kills)
-	_show_banner("Осада пережита. Волн: %d из %d." % [wave_number, waves_per_run], "", "Enter — в хаб")   # временный текст
+	_show_banner("Осада пережита. Волн: %d из %d." % [wave_number, waves_per_run], story_victories.get(debug_layer, ""), "Enter — в хаб")
 	_show_hub_button()
 	queue_redraw()
 
@@ -1762,50 +1765,19 @@ func _cmd_rotate(steps: int) -> bool:
 
 # --- Дневник --------------------------------------------------------------------
 
-# story.json: intro (строка), entries [{wave, text}], endings [{min_wave, text}]. Значений по умолчанию нет.
+# story.json: intro, entries [{id, siege, wave, text}], endings [{min_wave, text}], victories [{siege, text}].
+# Проверки те же, что в Game (общий загрузчик); значений по умолчанию нет.
 func _load_story() -> bool:
-	var d = _load_json(story_path)
-	if d == null:
-		return false
-	if not d is Dictionary:
-		push_error("%s: ожидается JSON-объект" % story_path)
-		return false
-	if not d.get("intro") is String:
-		push_error("%s: нет строкового поля intro" % story_path)
-		return false
-	if not d.get("entries") is Array or not d.get("endings") is Array:
-		push_error("%s: нет массивов entries и endings" % story_path)
-		return false
-	var entries := {}
-	for e in d.entries:
-		if not e is Dictionary or not _is_whole(e.get("wave")) or not e.get("text") is String:
-			push_error("%s: запись entries без целого wave или строки text" % story_path)
-			return false
-		if entries.has(int(e.wave)):
-			push_error("%s: в entries волна %d повторяется" % [story_path, int(e.wave)])
-			return false
-		entries[int(e.wave)] = e.text
-	var end_wave := PackedInt32Array()
-	var end_text := PackedStringArray()
-	for e in d.endings:
-		if not e is Dictionary or not _is_whole(e.get("min_wave")) or not e.get("text") is String:
-			push_error("%s: запись endings без целого min_wave или строки text" % story_path)
-			return false
-		if end_wave.has(int(e.min_wave)):
-			push_error("%s: в endings min_wave %d повторяется" % [story_path, int(e.min_wave)])
-			return false
-		end_wave.append(int(e.min_wave))
-		end_text.append(e.text)
-	var lowest := INF
-	for w in end_wave:
-		lowest = minf(lowest, w)
-	if lowest > 0:
-		push_error("%s: в endings нет концовки с min_wave 0" % story_path)
+	var d: Dictionary = GAME_SCRIPT.load_story(story_path, siege_count)
+	if d.is_empty():
 		return false
 	story_intro = d.intro
-	story_entries = entries
-	story_end_wave = end_wave
-	story_end_text = end_text
+	story_entries = {}
+	for e in d.entries:
+		story_entries[Vector2i(e.siege, e.wave)] = {"id": e.id, "text": e.text}
+	story_end_wave = d.end_wave
+	story_end_text = d.end_text
+	story_victories = d.victories
 	return true
 
 
@@ -1813,9 +1785,26 @@ func _is_whole(v: Variant) -> bool:
 	return (v is float or v is int) and v == floorf(v)
 
 
-# Запись дневника после волны w или "" (на волну не больше одной записи).
+# Запись дневника после волны w текущей осады или "". С синглтоном запись показывается один раз: её id уходит в
+# Game.diary_seen и сохраняется. Без синглтона (бенчи) — каждый раз.
 func _entry_text(w: int) -> String:
-	return story_entries.get(w, "")
+	var e = story_entries.get(Vector2i(debug_layer, w))
+	if e == null:
+		return ""
+	if game != null:
+		if game.diary_read(e.id):
+			return ""
+		game.mark_diary(e.id)
+	return e.text
+
+
+# Вступление для стартового баннера: с синглтоном — только пока оно не прочитано. "" — баннер без дневника.
+func _intro_text() -> String:
+	if game != null:
+		if game.diary_read(GAME_SCRIPT.INTRO_ID):
+			return ""
+		game.mark_diary(GAME_SCRIPT.INTRO_ID)
+	return story_intro
 
 
 # Концовка с наибольшим min_wave <= w; {wave} — день (номер волны).
@@ -1931,7 +1920,7 @@ func _setup_data() -> void:
 	var peasant := _type_of("peasant")     # орда зомби
 	var runner := _type_of("runner")
 	var knight := _type_of("fallen_knight")
-	if infantry == -1 or archer == -1 or peasant == -1 or runner == -1 or knight == -1 or not _load_castle() or not _load_waves() or not _load_shop() or not _load_story() or not _load_run():
+	if infantry == -1 or archer == -1 or peasant == -1 or runner == -1 or knight == -1 or not _load_castle() or not _load_waves() or not _load_shop() or not _load_run() or not _load_story():
 		type_id = {}
 		set_physics_process(false)
 		set_process(false)
@@ -2346,7 +2335,8 @@ func _setup_fps_label() -> void:
 	_no_focus(layer)
 	_update_squad_panel()
 	if wave_state == WS_RESPITE:
-		_show_banner("", story_intro, "Расставь отряды. Space — начать волну 1", "Дневник военачальника")
+		var intro := _intro_text()
+		_show_banner("", intro, "Расставь отряды. Space — начать волну 1", "Дневник военачальника" if intro != "" else "")
 	_update_ui()
 
 

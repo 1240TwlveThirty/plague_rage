@@ -97,9 +97,13 @@ func _run() -> void:
 		print("SMOKE: провалов 1")
 		quit(1)
 		return
+	DirAccess.make_dir_recursive_absolute("user://bench_v41s")   # временное сохранение: настоящее не трогается
+	g.save_path = "user://bench_v41s/save.json"
+	DirAccess.remove_absolute(g.save_path)
+	g._setup()
 	check("главная сцена проекта — menu.tscn, автозагрузка Game есть", ProjectSettings.get_setting("application/run/main_scene") == "res://scenes/menu.tscn")
 	g.go_menu()
-	await step(5)
+	await step(40)   # окно только что открылось: первый клик сразу после старта иногда теряется
 	check("меню: заголовок «Plague Wrath», «Играть» в фокусе, «Выход»", is_scene("Menu") and current_scene.play_button.has_focus() and current_scene.quit_button.text == "Выход")
 	await click(current_scene.play_button)
 	check("клик «Играть» -> хаб: итог пуст, выбор осады скрыт, «Начать забег» в фокусе", is_scene("Hub") and current_scene.last_label.text == ""
@@ -139,5 +143,7 @@ func _run() -> void:
 	check("клик «В меню» -> меню, «Выход» на месте и не нажат, Game цел (забегов 4)", is_scene("Menu") and current_scene.quit_button.is_visible_in_tree() and g.records[1].runs == 4)
 	await key(KEY_ENTER)
 	check("Enter в меню нажимает «Играть» -> хаб с итогом", is_scene("Hub") and current_scene.last_label.text == "Последний забег: поражение на волне 1")
+	DirAccess.remove_absolute(g.save_path)
+	DirAccess.remove_absolute("user://bench_v41s")
 	print("SMOKE: провалов %d" % fails)
 	quit(1 if fails > 0 else 0)

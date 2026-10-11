@@ -20,7 +20,8 @@ const ARCHER_OWN_RANGE := false
 const SCOUT_SHOWN := false        # true: в передышке видны маркеры разведки и строка HUD «Дальше: ...»
 const BURSTS_ENABLED := true      # false: прежние подволны (subwave_*) со всех сторон сразу
 const BURSTS_LAYERED := true      # всплески по слою: стороны по весам, группы, темп и сигнал из waves.json layers; false — как раньше
-const DEBUG_LAYER := 1            # номер слоя 1-3 (позже его задаст каркас забега)
+const DEBUG_LAYER := 1            # номер слоя 1-3, когда синглтона Game нет (бенчи); в игре слой = Game.siege
+const RUN_LIMIT_ENABLED := true   # забег из waves_per_run волн с победой (нужен синглтон Game); false — бесконечные волны
 const SIGNAL_TEXT_SHOWN := false  # надпись «Всплеск: ...» при сигнале (при BURSTS_LAYERED)
 const SIGNAL_ICONS_SHOWN := false # треугольники у стороны при сигнале (при BURSTS_LAYERED)
 const SIGNAL_SOUND_PATH := "res://audio/horn.ogg"   # звук сигнала всплеска; файла нет — без звука
@@ -33,8 +34,10 @@ const RETREAT_SPEED_MULT := 1.5
 const ORDER_NAMES := ["атака", "держать", "отход"]
 const UNIT_TYPES_PATH := "res://data/unit_types.json"
 const CASTLE_PATH := "res://data/castle.json"
-const RECORD_PATH := "user://record.json"   # рекорд best_wave (не геймплейные данные)
-const STORY_PATH := "res://data/story.json"   # дневник: тексты баннеров (на механику не влияет)
+const RECORD_PATH := "user://record.json"   # прежний рекорд best_wave: в игре не читается и не пишется (рекорды в Game)
+const RUN_PATH := "res://data/run.json"     # забег: waves_per_run, siege_count
+const GAME_SCRIPT := preload("res://scripts/game.gd")   # общий загрузчик run.json
+const STORY_PATH := "res://bench/ref/story_ref.json"   # дневник: тексты баннеров (на механику не влияет)
 const BANNER_WIDTH := 700.0                   # ширина баннера, px: длинный текст переносится по словам
 const STORY_COLOR := Color(1.0, 0.88, 0.6)    # цвет текста дневника в баннере
 const SQUAD_MAX := 8                          # ёмкость всех массивов отрядов (выделяются один раз)
@@ -56,6 +59,7 @@ const SORT_OFFSET := 1 << 20                  # сдвиг ключа сорти
 const WS_BATTLE := 0    # идёт бой
 const WS_DEFEAT := 1    # ворота пали
 const WS_RESPITE := 2   # передышка между волнами
+const WS_WIN := 3       # забег пройден: все волны осады пережиты
 # --- Масштаб мира: множители к базовым значениям геометрии и скоростей (и к range, range_far, speed из JSON,
 # spawn_spacing из waves.json — при загрузке). Результат округляется до 0.01. 1.0 — база (шаг строя 8); сейчас шаг 12.
 const SCALE_REL := 1.5           # геометрия: шаг строя, дистанции, клетка сетки, дальности, квадрат юнита
@@ -268,6 +272,12 @@ var wave_state := WS_BATTLE
 var wave_number := 0
 var best_wave := 0
 var record_path := RECORD_PATH   # тесты подменяют, чтобы не трогать настоящий рекорд
+var run_path := RUN_PATH         # тесты подменяют
+var game: Node = null            # синглтон Game или null (бенчи, headless-скрипты)
+var run_limit := false           # RUN_LIMIT_ENABLED и синглтон есть: забег кончается победой на волне waves_per_run
+var waves_per_run := 0
+var run_kills := 0               # убито зомби за забег
+var hub_button: Button           # «В хаб» в баннере на экране конца забега
 var gate_hp := 0.0
 var gate_hp_max := 0.0
 var gate_half := 0.0             # полуширина ворот по x
@@ -707,7 +717,25 @@ func _load_shop() -> bool:
 	return true
 
 
-# Рекорд читается при старте; нет файла или он испорчен — рекорд 0.
+# Синглтон Game (каркас забега) или null: в бенчах и headless-скриптах автозагрузки нет.
+func _game() -> Node:
+	return get_node_or_null("/root/Game") if is_inside_tree() else null
+
+
+# run.json: проверки те же, что в Game (общий загрузчик). Без синглтона слой остаётся debug_layer, забег без предела.
+func _load_run() -> bool:
+	var cfg: Dictionary = GAME_SCRIPT.load_run_cfg(run_path)
+	if cfg.is_empty():
+		return false
+	waves_per_run = cfg.waves_per_run
+	game = _game()
+	run_limit = RUN_LIMIT_ENABLED and game != null
+	if game != null:
+		debug_layer = game.siege
+	return true
+
+
+# Прежний рекорд в файле: в игре не вызывается (рекорды ведёт Game), оставлен для старых бенчей.
 func _load_record() -> void:
 	best_wave = 0
 	if not FileAccess.file_exists(record_path):
@@ -1264,6 +1292,9 @@ func _kills_text() -> String:
 
 
 func _wave_cleared() -> void:
+	if run_limit and wave_number == waves_per_run:
+		_on_win()   # последняя волна забега: передышки не будет
+		return
 	gold += wave_cfg.wave_bonus_gold
 	for i in count:
 		if team[i] == 0:
@@ -1469,7 +1500,7 @@ func _cmd_new_squad() -> bool:
 # split_mode 0 и 1 — с наибольшей / наименьшей local.y (правые / левые), 2 и 3 — с наименьшей / наибольшей
 # local.x (задние / передние ряды). В бою — только на паузе. Позиции юнитов не меняются. Выбран должен быть ровно один отряд.
 func _cmd_split() -> bool:
-	if wave_state == WS_DEFEAT:
+	if _run_over():
 		return false
 	if wave_state == WS_BATTLE and not paused:
 		if PAUSE_ENABLED:
@@ -1632,14 +1663,52 @@ func _cmd_merge() -> bool:
 	return true
 
 
-# Ворота пали: бой останавливается, рекорд сохраняется, R — заново.
+# Ворота пали: бой останавливается, итог уходит в Game, Enter — в хаб. Без синглтона (бенчи) рекордов нет, R — заново.
 func _on_defeat() -> void:
 	wave_state = WS_DEFEAT
 	_set_paused(false)   # при поражении пауза недоступна
 	set_physics_process(false)
 	best_wave = maxi(best_wave, wave_number)
-	_save_record()
-	_show_banner("", _ending_text(wave_number), "Рекорд: день %d. R — заново" % best_wave)
+	if game == null:
+		_show_banner("", _ending_text(wave_number), "R — заново")
+		return
+	game.end_run("loss", wave_number, run_kills)
+	_show_banner("", _ending_text(wave_number), "Лучшая волна осады %s: %d. Enter — в хаб" % [
+		GAME_SCRIPT.roman(game.siege), game.records[game.siege].best_wave])
+	_show_hub_button()
+
+
+# Последняя волна забега пройдена: бой останавливается (как при поражении), итог уходит в Game, Enter — в хаб.
+func _on_win() -> void:
+	wave_state = WS_WIN
+	_set_paused(false)   # при победе пауза недоступна
+	set_physics_process(false)
+	best_wave = maxi(best_wave, wave_number)
+	game.end_run("win", wave_number, run_kills)
+	_show_banner("Осада пережита. Волн: %d из %d." % [wave_number, waves_per_run], "", "Enter — в хаб")   # временный текст
+	_show_hub_button()
+	queue_redraw()
+
+
+func _run_over() -> bool:
+	return wave_state == WS_DEFEAT or wave_state == WS_WIN
+
+
+func _show_hub_button() -> void:
+	if hub_button != null:
+		hub_button.visible = true
+		banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
+		banner.position.y = BANNER_TOP
+
+
+# Экран конца забега: Enter, Space, R и кнопка «В хаб». Без синглтона (бенчи) — прежний перезапуск сцены.
+func _to_hub() -> void:
+	if not _run_over():
+		return
+	if game != null:
+		game.go_hub()
+	elif is_inside_tree():
+		get_tree().reload_current_scene()
 
 
 # Баннер: заголовок, текст, дневник (другим цветом), подсказка. Пустая часть скрыта; всё пусто — баннер скрыт.
@@ -1862,7 +1931,7 @@ func _setup_data() -> void:
 	var peasant := _type_of("peasant")     # орда зомби
 	var runner := _type_of("runner")
 	var knight := _type_of("fallen_knight")
-	if infantry == -1 or archer == -1 or peasant == -1 or runner == -1 or knight == -1 or not _load_castle() or not _load_waves() or not _load_shop() or not _load_story():
+	if infantry == -1 or archer == -1 or peasant == -1 or runner == -1 or knight == -1 or not _load_castle() or not _load_waves() or not _load_shop() or not _load_story() or not _load_run():
 		type_id = {}
 		set_physics_process(false)
 		set_process(false)
@@ -1872,7 +1941,6 @@ func _setup_data() -> void:
 	zombie_type = peasant
 	runner_type = runner
 	knight_type = knight
-	_load_record()
 	# Все массивы юнитов — один раз на MAX_UNITS; живые юниты всегда в [0, count).
 	pos.resize(MAX_UNITS)
 	team.resize(MAX_UNITS)
@@ -2089,6 +2157,9 @@ func _setup_rendering() -> void:
 	quad.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	multimesh.mesh = quad
 	multimesh.instance_count = MAX_UNITS   # рисуется только visible_instance_count = count
+	# Границы заданы явно (всё поле с запасом): иначе при смене сцены (change_scene_to_file) первый кадр рисуется до
+	# первого _process, границы считаются по пустому буферу и юниты потом отсекаются как невидимые.
+	multimesh.custom_aabb = AABB(Vector3(-FIELD.x, -FIELD.y, 0.0), Vector3(FIELD.x * 3.0, FIELD.y * 3.0, 0.0))
 
 	# Буфер заполняем целиком ОДИН раз: всё, что не меняется (альфа); матрица, позиция, цвет и ячейка — в _process
 	buf.resize(MAX_UNITS * FLOATS_PER_UNIT)
@@ -2149,6 +2220,13 @@ func _setup_fps_label() -> void:
 		l.visible = false
 		banner_box.add_child(l)
 		banner_labels.append(l)
+	hub_button = Button.new()   # только на экране конца забега; баннер клики пропускает, кнопка — нет
+	hub_button.text = "В хаб"
+	hub_button.add_theme_font_size_override("font_size", 36)
+	hub_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	hub_button.visible = false
+	hub_button.pressed.connect(_to_hub)
+	banner_box.add_child(hub_button)
 	banner.visible = false
 	layer.add_child(banner)
 	# HUD сверху по центру
@@ -2508,8 +2586,8 @@ func _update_squad_panel() -> void:
 func _update_ui() -> void:
 	if hud_label == null:
 		return
-	hud_label.text = "Волна %d · зомби: %d · ворота: %d/%d · золото: %d" % [
-		wave_number, zombie_alive + wave_remaining, ceili(maxf(gate_hp, 0.0)), roundi(gate_hp_max), floori(gold)]
+	hud_label.text = "Волна %s · зомби: %d · ворота: %d/%d · золото: %d" % [
+		"%d/%d" % [wave_number, waves_per_run] if run_limit else str(wave_number), zombie_alive + wave_remaining, ceili(maxf(gate_hp, 0.0)), roundi(gate_hp_max), floori(gold)]
 	if scout_shown and waves_enabled and wave_state == WS_RESPITE:
 		hud_label.text += "\n" + _plan_text()   # разведка
 	burst_label.text = burst_msg
@@ -2611,7 +2689,7 @@ func _physics_process(delta: float) -> void:
 				prof_avg[q] = prof_acc[q] / prof_n / 1000.0
 			prof_acc.fill(0.0)
 			prof_n = 0
-	if gate_hp <= 0.0 and wave_state != WS_DEFEAT:
+	if gate_hp <= 0.0 and not _run_over():
 		_on_defeat()
 	sim_ms = (Time.get_ticks_usec() - t) / 1000.0
 	sim_avg = lerpf(sim_avg, sim_ms, 0.05)
@@ -2952,6 +3030,7 @@ func _remove_dead() -> void:
 			if team[i] == 1:   # убит зомби: счёт волны и золото
 				zombie_alive -= 1
 				wave_kills += 1
+				run_kills += 1
 				gold += wave_cfg.gold_per_kill * type_bounty_mult[unit_type[i]]
 				wave_kills_by_type[unit_type[i]] += 1
 			if unit_squad[i] >= 0:
@@ -3951,6 +4030,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Shift + колесо: поворот на месте (с Shift система может прислать горизонтальное колесо); без Shift колесо не занято
 		_cmd_rotate(-1 if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_LEFT] else 1)
 	elif event is InputEventKey and event.pressed and not event.echo:
+		if _run_over():
+			if event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_R]:
+				_to_hub()
+			return   # экран конца забега: остальные клавиши не действуют
 		match event.keycode:
 			KEY_ESCAPE:
 				drag_active = false   # Esc отменяет протяжку и рамку
@@ -3968,8 +4051,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				for s in _sel_list():
 					squad_user_width[s] = 0   # ширина строя снова авто
 			KEY_R:
-				if wave_state == WS_DEFEAT:
-					get_tree().reload_current_scene()   # полный сброс: сцена создаётся заново
+				if DEBUG_COLORS and event.ctrl_pressed:
+					get_tree().reload_current_scene()   # отладочный перезапуск боя
 			KEY_SPACE:
 				if PAUSE_ENABLED and wave_state == WS_BATTLE:
 					_set_paused(not paused)

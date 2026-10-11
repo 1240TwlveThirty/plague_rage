@@ -50,12 +50,14 @@ Godot "регрессия против эталона" "res://bench/regress.gd" 
 Godot "пауза, деление, посты (v39)" "res://bench/check_v39.gd" "CHECK: провалов 0"
 Godot "выбор, группа, детерминизм (v40)" "res://bench/check_v40.gd" "CHECK: провалов 0"
 Godot "забег: Game, победа, хаб (v41)" "res://bench/check_v41.gd" "CHECK: провалов 0"
+Godot "сохранение, дневник, концовки (v42)" "res://bench/check_v42.gd" "CHECK: провалов 0"
 Godot "геометрия расстановки (v27)" "res://bench/check_v27.gd" "раздача слотов"
 Godot "отряды: создание, слияние (v28)" "res://bench/check_v28.gd" "да"
 Godot "управление строем (v29)" "res://bench/check_v29.gd" "да"
 Godot "смоук с окном: пауза (v39)" "res://bench/smoke_v39.gd" "SMOKE: провалов 0" @() -Window
 Godot "смоук с окном: мышь (v40)" "res://bench/smoke_v40.gd" "SMOKE: провалов 0" @() -Window
 Godot "смоук с окном: меню, хаб (v41)" "res://bench/smoke_v41.gd" "SMOKE: провалов 0" @() -Window
+Godot "смоук с окном: дневник (v42)" "res://bench/smoke_v42.gd" "SMOKE: провалов 0" @() -Window
 if (-not $Quick) {
 	Godot "серия 50 боёв" "res://bench/series.gd" "SERIES\|"
 	Godot "тик: волна 20 слоя 1" "res://bench/time_v35.gd" "TIME\|" @("1", "20", "0", "caps", "1", "res://scripts/main.gd")
