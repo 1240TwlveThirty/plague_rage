@@ -50,7 +50,20 @@ const SORT_OFFSET := 1 << 20                  # сдвиг ключа сорти
 const WS_BATTLE := 0    # идёт бой
 const WS_DEFEAT := 1    # ворота пали
 const WS_RESPITE := 2   # передышка между волнами
-const FLOATS_PER_UNIT := 12   # 8 (трансформ 2D) + 4 (цвет)
+const FLOATS_PER_UNIT := 16   # 8 (трансформ 2D) + 4 (цвет) + 4 (custom: x = ячейка атласа)
+# --- Спрайты ---
+const SPRITE_PATH := "res://art/pehota_animate.png"   # лист пехоты лицом вправо: кадры 16x16 в ряд (стоит, замах, атака)
+const SPRITE_PX := 16            # сторона кадра и размер спрайта в мире, px
+const SPRITE_FRAMES := 3
+const CELL_WHITE := 3            # ячейка атласа после кадров: белая, для цветных квадратов
+const UNIT_QUAD := 5.33          # ×4/3; сторона цветного квадрата юнита, px
+const WINDUP_T := 0.15           # кадр «замах» столько секунд до удара
+const UPDATE_TICKS := 2          # юнит принимает решение (и бьёт) раз в столько физических тиков
+const ATTACK_ANIM_T := 0.15      # кадр «атака» столько секунд после удара
+const DIR_HYST := 55.0 * PI / 180.0   # направление спрайта меняется, когда угол отряда ушёл от центра сектора дальше этого
+# Базис спрайта по направлению (0 вправо, 1 вниз, 2 влево, 3 вверх), по 4 числа: x.x, y.x, x.y, y.y.
+# Вправо как есть, влево зеркало по x, вниз поворот +90°, вверх -90°.
+const DIR_BASIS: Array[float] = [16.0, 0.0, 0.0, 16.0,   0.0, -16.0, 16.0, 0.0,   -16.0, 0.0, 0.0, 16.0,   0.0, 16.0, -16.0, 0.0]
 const FIELD := Vector2(2208.0, 1056.0)   # поле в px (не масштабируется), юниты не выходят за край
 const CELL_SIZE := 16.0   # ×4/3
 const GRID_W := ceili(FIELD.x / CELL_SIZE)   # сетка считается от поля и клетки
@@ -145,7 +158,13 @@ var squad_center_off := PackedVector2Array()
 var squad_reflow_n := PackedInt32Array()      # живых при прошлой перестройке (_reflow_squad)
 var reflow_order := PackedInt32Array()        # scratch для _reflow_squad: юниты в порядке старых слотов
 var slot_idx_prev := PackedInt32Array()       # scratch: slot_idx до перестройки (для unit_slot_changed_t)
-var unit_state := PackedByteArray()           # ST_* (только для раскраски F3)
+var unit_state := PackedByteArray()           # ST_* (для раскраски F3 и кадра «замах»)
+var unit_anim_t := PackedFloat32Array()       # сколько секунд ещё показывать кадр «атака» (только отрисовка)
+var unit_dir := PackedByteArray()             # направление спрайта: 0 вправо, 1 вниз, 2 влево, 3 вверх (только отрисовка)
+var squad_dir_angle := PackedFloat32Array()   # угол отряда, по которому в последний раз считались unit_dir; NAN = пересчитать
+var sprites_on := true                        # F5: пехота спрайтом (в F1); false — все юниты квадратами
+var sprites_ok := false                       # лист пехоты загружен
+var windup_cd := 0.0                          # порог cooldown для кадра «замах», см. _unit_frame
 var unit_slot_changed_t := PackedFloat32Array()   # время (с) последней смены slot_idx (для F4)
 var color_mode := 0                           # 0 = F1 по типу, 1 = F2 по ряду, 2 = F3 по состоянию, 3 = F4 смена слота
 var squad_front_row := PackedInt32Array()     # scratch для F2: передний занятый ряд отряда
@@ -1132,6 +1151,8 @@ func _spawn_zombie(p: Vector2, type: int) -> void:
 	cooldown[i] = unit_rand[i] * type_cooldown[type]
 	unit_state[i] = ST_IDLE
 	unit_slot_changed_t[i] = -1000.0
+	unit_anim_t[i] = 0.0
+	unit_dir[i] = 0
 	zombie_alive += 1
 
 
@@ -1244,6 +1265,9 @@ func _squad_add_units(s: int, type: int, n: int) -> void:
 		cooldown[i] = 0.0
 		unit_state[i] = ST_IDLE
 		unit_slot_changed_t[i] = -1000.0
+		unit_anim_t[i] = 0.0
+		unit_dir[i] = _nearest_dir(squad_angle[s])
+	squad_dir_angle[s] = NAN
 	_reflow_squad(s)
 	if at_gate:
 		squad_pos[s] = Vector2(GATE_POS.x, WALL_Y - 40.0)
@@ -1281,6 +1305,7 @@ func _squad_reset(s: int) -> void:
 	squad_user_width[s] = 0
 	squad_aspect[s] = Vector2.ONE
 	squad_order[s] = ORDER_ATTACK
+	squad_dir_angle[s] = NAN
 
 
 # Новый пустой отряд по образцу отряда src (тип, команда, пропорция строя) в первом свободном индексе
@@ -1374,6 +1399,7 @@ func _cmd_split() -> bool:
 		unit_squad[int(sort_keys[q] & 0xFFFFFFFF)] = t
 	squad_n[s] = n - half
 	squad_n[t] = half
+	squad_dir_angle[t] = NAN
 	_reflow_squad(s)
 	_reflow_squad(t)
 	_select_squad(t)
@@ -1406,6 +1432,7 @@ func _cmd_merge() -> bool:
 			k += 1
 	squad_n[dst] += squad_n[src]
 	squad_n[src] = 0
+	squad_dir_angle[dst] = NAN
 	_squad_free(src)
 	_reflow_squad(dst)
 	_select_squad(dst)
@@ -1658,6 +1685,12 @@ func _setup_data() -> void:
 	unit_state.fill(ST_IDLE)
 	unit_slot_changed_t.resize(MAX_UNITS)
 	unit_rand.resize(MAX_UNITS)
+	unit_anim_t.resize(MAX_UNITS)
+	unit_anim_t.fill(0.0)
+	unit_dir.resize(MAX_UNITS)
+	unit_dir.fill(0)
+	var upd := float(UPDATE_TICKS) / Engine.physics_ticks_per_second
+	windup_cd = (roundf(WINDUP_T / upd) - 1.5) * upd
 	# Лучники: грубая сетка зомби и очередь стрел, всё выделяется один раз.
 	coarse_zcount.resize(COARSE_COUNT)
 	coarse_sum.resize(COARSE_COUNT)
@@ -1703,6 +1736,7 @@ func _setup_data() -> void:
 	squad_user_width.resize(SQUAD_MAX)
 	squad_aspect.resize(SQUAD_MAX)
 	squad_order.resize(SQUAD_MAX)
+	squad_dir_angle.resize(SQUAD_MAX)
 	for s in SQUAD_MAX:
 		_squad_reset(s)
 	selected_squad = 0
@@ -1734,6 +1768,7 @@ func _setup_data() -> void:
 			unit_type[i] = squad_type[s]
 			_set_line_slot(i, i - (0 if s == 0 else INFANTRY_COUNT), squad_width[s])
 			pos[i] = squad_pos[s] + unit_slot[i].rotated(squad_angle[s])
+			unit_dir[i] = _nearest_dir(squad_angle[s])
 		else:
 			unit_squad[i] = -1
 			unit_slot_idx[i] = -1
@@ -1789,24 +1824,55 @@ func _setup_data() -> void:
 
 
 func _setup_rendering() -> void:
+	# Атлас 4 ячейки 16x16 в ряд: 0 стоит, 1 замах, 2 атака (лист пехоты), 3 белая (цветные квадраты остальных).
+	# Собирается в памяти; файл PNG не меняется. Нет листа или он не 48x16 — все юниты квадратами, с предупреждением.
+	var atlas := Image.create(SPRITE_PX * (SPRITE_FRAMES + 1), SPRITE_PX, false, Image.FORMAT_RGBA8)
+	atlas.fill_rect(Rect2i(SPRITE_PX * CELL_WHITE, 0, SPRITE_PX, SPRITE_PX), Color.WHITE)
+	var sheet: Image = (load(SPRITE_PATH) as Texture2D).get_image() if ResourceLoader.exists(SPRITE_PATH) else null
+	sprites_ok = sheet != null and sheet.get_size() == Vector2i(SPRITE_PX * SPRITE_FRAMES, SPRITE_PX)
+	if sprites_ok:
+		if sheet.is_compressed():
+			sheet.decompress()
+		sheet.convert(Image.FORMAT_RGBA8)
+		atlas.blit_rect(sheet, Rect2i(0, 0, SPRITE_PX * SPRITE_FRAMES, SPRITE_PX), Vector2i.ZERO)
+	else:
+		push_warning("Нет листа пехоты %s (нужен %dx%d): пехота рисуется квадратами" % [SPRITE_PATH, SPRITE_PX * SPRITE_FRAMES, SPRITE_PX])
+
 	multimesh = MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_2D
 	multimesh.use_colors = true
-	var quad := QuadMesh.new()
-	quad.size = Vector2(5.33, 5.33)   # ×4/3
+	multimesh.use_custom_data = true   # custom.x = ячейка атласа
+	# Единичный квадрат с явными UV (левый верх картинки — левый верх на экране); размер и поворот задаёт трансформ инстанса.
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector2Array([Vector2(-0.5, -0.5), Vector2(0.5, -0.5), Vector2(0.5, 0.5), Vector2(-0.5, 0.5)])
+	arrays[Mesh.ARRAY_TEX_UV] = PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
+	arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
+	var quad := ArrayMesh.new()
+	quad.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	multimesh.mesh = quad
 	multimesh.instance_count = MAX_UNITS   # рисуется только visible_instance_count = count
 
-	# Буфер заполняем целиком ОДИН раз: всё, что не меняется (матрица, альфа); позиция и цвет — в _process
+	# Буфер заполняем целиком ОДИН раз: всё, что не меняется (альфа); матрица, позиция, цвет и ячейка — в _process
 	buf.resize(MAX_UNITS * FLOATS_PER_UNIT)
 	for i in MAX_UNITS:
 		var o := i * FLOATS_PER_UNIT
-		buf[o + 0] = 1.0   # x.x  (без поворота и масштаба)
-		buf[o + 5] = 1.0   # y.y
+		buf[o + 0] = UNIT_QUAD   # x.x
+		buf[o + 5] = UNIT_QUAD   # y.y
 		buf[o + 11] = 1.0   # альфа
+		buf[o + 12] = CELL_WHITE
 
+	# Шейдер: UV квадрата сдвигается в ячейку атласа custom.x; цвет инстанса умножается как обычно
+	# (спрайт — белый, квадрат — цвет типа по белой ячейке).
+	var shader := Shader.new()
+	shader.code = "shader_type canvas_item;\nvoid vertex() {\n\tUV.x = (UV.x + INSTANCE_CUSTOM.x) / %d.0;\n}\n" % (SPRITE_FRAMES + 1)
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
 	var node := MultiMeshInstance2D.new()
 	node.multimesh = multimesh
+	node.texture = ImageTexture.create_from_image(atlas)   # без mipmaps
+	node.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	node.material = mat
 	add_child(node)
 
 
@@ -2012,6 +2078,11 @@ func _physics_process(delta: float) -> void:
 	tick_counter += 1
 	_update_waves(delta)
 	_update_squads(delta)
+	_update_unit_dirs()
+	# Кадр «атака»: таймер убывает у всех юнитов каждый тик (а не у обновляемой половины).
+	for i in count:
+		if unit_anim_t[i] > 0.0:
+			unit_anim_t[i] = maxf(unit_anim_t[i] - delta, 0.0)
 	var m0 := Time.get_ticks_usec() if profile else 0
 	_build_grid()
 	grid_ms = (Time.get_ticks_usec() - t) / 1000.0
@@ -2097,17 +2168,36 @@ func _process(delta: float) -> void:
 	var by_type := color_mode == 0
 	var frac := Engine.get_physics_interpolation_fraction()
 	var have_prev := prev_pos.size() == pos.size()   # до первого физического тика prev_pos пуст
+	var sprites := sprites_on and sprites_ok and by_type   # F2-F4: пехота квадратом, чтобы отладочный цвет читался
+	var inf := infantry_type
 	for i in count:
 		var o := i * FLOATS_PER_UNIT
 		var rp := prev_pos[i].lerp(pos[i], frac) if have_prev else pos[i]   # позиция между тиками
 		buf[o + 3] = rp.x
 		buf[o + 7] = rp.y
-		# цвет пишем каждый кадр: после _remove_dead на индекс i мог встать юнит другого типа.
+		# матрицу, цвет и ячейку пишем каждый кадр: после _remove_dead на индекс i мог встать юнит другого типа.
+		if sprites and unit_type[i] == inf and unit_squad[i] >= 0:
+			# Пехота в отряде: спрайт 16 px по направлению, цвет белый; кадр — как в _unit_frame (без вызова функции).
+			var b := unit_dir[i] * 4
+			buf[o + 0] = DIR_BASIS[b]
+			buf[o + 1] = DIR_BASIS[b + 1]
+			buf[o + 4] = DIR_BASIS[b + 2]
+			buf[o + 5] = DIR_BASIS[b + 3]
+			buf[o + 8] = 1.0
+			buf[o + 9] = 1.0
+			buf[o + 10] = 1.0
+			buf[o + 12] = 2.0 if unit_anim_t[i] > 0.0 else (1.0 if unit_state[i] == ST_ATTACK and cooldown[i] <= windup_cd else 0.0)
+			continue
+		buf[o + 0] = UNIT_QUAD
+		buf[o + 1] = 0.0
+		buf[o + 4] = 0.0
+		buf[o + 5] = UNIT_QUAD
 		# F1 без вызова функции: вызов на юнита стоит ~1.7 мс на 3000 юнитов.
 		var c := type_color[unit_type[i]] if by_type else _unit_color(i, now)
 		buf[o + 8] = c.r
 		buf[o + 9] = c.g
 		buf[o + 10] = c.b
+		buf[o + 12] = CELL_WHITE
 	multimesh.visible_instance_count = count
 	multimesh.buffer = buf          # один вызов вместо UNIT_COUNT
 	draw_ms = (Time.get_ticks_usec() - t) / 1000.0
@@ -2120,6 +2210,46 @@ func _process(delta: float) -> void:
 		fps_label.text += "\nфазы, мс/тик: " + ", ".join(parts) + " | появилось за 10 с, максимум: %d" % arrivals_10s_max
 	if gate_hp != drawn_gate_hp:
 		queue_redraw()   # полоса HP ворот
+
+
+# Кадр спрайта юнита: 2 «атака» — ATTACK_ANIM_T после удара; 1 «замах» — юнит бьёт (враг в дальности атаки)
+# и до следующего удара не больше WINDUP_T; иначе 0 «стоит». У «атаки» приоритет.
+# cooldown — остаток до готовности, убывает на обновлении юнита (раз в UPDATE_TICKS тиков, шагом в период обновления);
+# удар — на первом обновлении, где он уже 0, то есть ещё через одно обновление. Замах включается за
+# round(WINDUP_T / период) обновлений до удара (при 30 тиках/с это 2 обновления, 4 тика): порог windup_cd стоит
+# посередине между соседними значениями cooldown, чтобы остаток округления float его не сдвигал.
+func _unit_frame(i: int) -> int:
+	if unit_anim_t[i] > 0.0:
+		return 2
+	return 1 if unit_state[i] == ST_ATTACK and cooldown[i] <= windup_cd else 0
+
+
+# Ближайшее из четырёх направлений к углу мира (0 = вправо, PI/2 = вниз): 0 вправо, 1 вниз, 2 влево, 3 вверх.
+func _nearest_dir(angle: float) -> int:
+	return posmod(roundi(angle / (PI * 0.5)), 4)
+
+
+# Направление с гистерезисом: текущее держится, пока угол не ушёл от центра его сектора дальше DIR_HYST (55°).
+func _next_dir(cur: int, angle: float) -> int:
+	return _nearest_dir(angle) if absf(angle_difference(cur * PI * 0.5, angle)) > DIR_HYST else cur
+
+
+# unit_dir юнитов отрядов, у которых с прошлого раза изменился угол (или состав: squad_dir_angle = NAN).
+# Вызывается из физического тика: на паузе направления стоят.
+func _update_unit_dirs() -> void:
+	var any := false
+	for s in SQUAD_MAX:
+		if squad_used[s] == 1 and squad_n[s] > 0 and not squad_dir_angle[s] == squad_angle[s]:
+			any = true
+	if not any:
+		return
+	for i in count:
+		var s := unit_squad[i]
+		if s >= 0 and not squad_dir_angle[s] == squad_angle[s]:
+			unit_dir[i] = _next_dir(unit_dir[i], squad_angle[s])
+	for s in SQUAD_MAX:
+		if squad_used[s] == 1 and squad_n[s] > 0:
+			squad_dir_angle[s] = squad_angle[s]
 
 
 func _unit_color(i: int, now: float) -> Color:
@@ -2228,6 +2358,7 @@ func _update_unit(i: int, delta: float) -> void:
 						blocked_hits += 1
 			hp[best] -= dmg
 			cooldown[i] = type_cooldown[t]
+			unit_anim_t[i] = ATTACK_ANIM_T
 		if leash_w > 0.0:
 			v = v.lerp(slot_vel, leash_w)   # смесь «к врагу (или стоять и бить)» и «к слоту»
 			if leash_w > 0.5:
@@ -2249,6 +2380,7 @@ func _update_unit(i: int, delta: float) -> void:
 				gate_hits += 1
 				gate_damage_total += gd
 				cooldown[i] = type_cooldown[t]
+				unit_anim_t[i] = ATTACK_ANIM_T
 		else:
 			unit_state[i] = ST_IDLE
 			# Орда идёт к воротам; скорость у каждого зомби своя (±HORDE_SPEED_SPREAD).
@@ -2296,6 +2428,8 @@ func _remove_dead() -> void:
 			unit_rand[i] = unit_rand[count]
 			unit_state[i] = unit_state[count]
 			unit_slot_changed_t[i] = unit_slot_changed_t[count]
+			unit_anim_t[i] = unit_anim_t[count]
+			unit_dir[i] = unit_dir[count]
 		else:
 			i += 1
 
@@ -3115,3 +3249,5 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F2, KEY_F3, KEY_F4:
 				if DEBUG_COLORS:
 					color_mode = event.keycode - KEY_F1
+			KEY_F5:
+				sprites_on = not sprites_on   # спрайты пехоты / все юниты квадратами

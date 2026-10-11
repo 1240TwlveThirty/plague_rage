@@ -37,7 +37,7 @@ func _run() -> void:
 	current_scene = m
 	await step(8)
 	check("старт: передышка, слой 1, 400 юнитов, квадрат юнита 5.33 px", m.wave_state == m.WS_RESPITE and m.debug_layer == 1 and m.count == 400
-		and is_equal_approx(m.multimesh.mesh.size.x, 5.33), "size %s" % m.multimesh.mesh.size)
+		and is_equal_approx(m.UNIT_QUAD, 5.33), "квадрат %s" % m.UNIT_QUAD)   # после этапа 2 размер квадрата — в трансформе инстанса
 	# деление и слияние в передышке
 	await key(KEY_G)
 	var split_ok: bool = m.squad_used[2] == 1 and m.squad_n[0] == 150 and m.squad_n[2] == 150 and m.selected_squad == 2
