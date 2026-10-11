@@ -139,7 +139,7 @@ func test_anim() -> void:
 			if m.unit_type[i] != inf or m.unit_squad[i] < 0:
 				continue
 			var id: float = m.unit_rand[i]
-			var fr: int = m._unit_frame(i)
+			var fr: int = m._unit_anim_state(i)   # с v37 состояние анимации отдельно от кадра листа
 			frames[fr] += 1
 			var struck: bool = prev_cd.has(id) and m.cooldown[i] > prev_cd[id]
 			if struck:

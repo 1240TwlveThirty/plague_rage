@@ -57,15 +57,16 @@ const SPEED_REL := 1.5           # скорости юнитов и стрел
 const RENDER_JITTER := 1.0       # px: статичный сдвиг отрисовки юнита (по unit_rand), только на экране
 const FLOATS_PER_UNIT := 16   # 8 (трансформ 2D) + 4 (цвет) + 4 (custom: x = ячейка атласа)
 # --- Спрайты ---
-const SPRITE_PATH := "res://art/pehota_animate.png"   # лист пехоты лицом вправо: кадры 16x16 в ряд (стоит, замах, атака)
+# Листы задаются в unit_types.json (поле sprite): лицом вправо, кадры 16x16 в ряд по состояниям (стоит, замах, атака);
+# кадров может быть меньше — состояние зажимается до последнего кадра.
 const SPRITE_PX := 16            # сторона кадра и размер спрайта в мире, px
-const SPRITE_FRAMES := 3
-const CELL_WHITE := 3            # ячейка атласа после кадров: белая, для цветных квадратов
+const SPRITE_FRAMES_MAX := 3     # состояний анимации: 0 стоит, 1 замах, 2 атака
 const UNIT_QUAD := roundf(5.33 * SCALE_REL * 100.0) / 100.0   # сторона цветного квадрата юнита, px
 const WINDUP_T := 0.15           # кадр «замах» столько секунд до удара
 const UPDATE_TICKS := 2          # юнит принимает решение (и бьёт) раз в столько физических тиков
 const ATTACK_ANIM_T := 0.15      # кадр «атака» столько секунд после удара
 const DIR_HYST := 55.0 * PI / 180.0   # направление спрайта меняется, когда угол отряда ушёл от центра сектора дальше этого
+const DIR_VEC: Array[Vector2] = [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP]   # взгляд по unit_dir (для отдачи)
 # Базис спрайта по направлению (0 вправо, 1 вниз, 2 влево, 3 вверх), по 4 числа: x.x, y.x, x.y, y.y.
 # Вправо как есть, влево зеркало по x, вниз поворот +90°, вверх -90°.
 const DIR_BASIS: Array[float] = [16.0, 0.0, 0.0, 16.0,   0.0, -16.0, 16.0, 0.0,   -16.0, 0.0, 0.0, 16.0,   0.0, 16.0, -16.0, 0.0]
@@ -179,8 +180,14 @@ var unit_anim_t := PackedFloat32Array()       # сколько секунд ещ
 var unit_dir := PackedByteArray()             # направление спрайта: 0 вправо, 1 вниз, 2 влево, 3 вверх (только отрисовка)
 var squad_dir_angle := PackedFloat32Array()   # угол отряда, по которому в последний раз считались unit_dir; NAN = пересчитать
 var unit_render_off := PackedVector2Array()   # сдвиг отрисовки юнита (_render_offset), считается при появлении (только отрисовка)
-var sprites_on := true                        # F5: пехота спрайтом (в F1); false — все юниты квадратами
-var sprites_ok := false                       # лист пехоты загружен
+var unit_shot_t := PackedFloat32Array()       # лучник в залпе: сколько секунд до его собственного выпуска стрелы; 0 = не ждёт (только отрисовка)
+var sprites_on := true                        # F5: спрайты (в F1); false — все юниты квадратами
+var type_sprite := PackedStringArray()        # путь листа спрайта типа; "" = цветной квадрат
+var type_recoil := PackedFloat32Array()       # отдача при «атаке», px (только отрисовка)
+var type_sprite_frames := PackedInt32Array()  # кадров в листе типа; 0 = рисуется квадратом (нет листа или он не подошёл)
+var type_sprite_base := PackedInt32Array()    # первая ячейка типа в атласе
+var cell_white := 0                           # ячейка атласа после всех кадров: белая, для цветных квадратов
+var atlas_cells := 1                          # всего ячеек в атласе
 var windup_cd := 0.0                          # порог cooldown для кадра «замах», см. _unit_frame
 var unit_slot_changed_t := PackedFloat32Array()   # время (с) последней смены slot_idx (для F4)
 var color_mode := 0                           # 0 = F1 по типу, 1 = F2 по ряду, 2 = F3 по состоянию, 3 = F4 смена слота
@@ -1171,6 +1178,7 @@ func _spawn_zombie(p: Vector2, type: int) -> void:
 	unit_state[i] = ST_IDLE
 	unit_slot_changed_t[i] = -1000.0
 	unit_anim_t[i] = 0.0
+	unit_shot_t[i] = 0.0
 	unit_dir[i] = 0
 	zombie_alive += 1
 
@@ -1286,6 +1294,7 @@ func _squad_add_units(s: int, type: int, n: int) -> void:
 		unit_state[i] = ST_IDLE
 		unit_slot_changed_t[i] = -1000.0
 		unit_anim_t[i] = 0.0
+		unit_shot_t[i] = 0.0
 		unit_dir[i] = _nearest_dir(squad_angle[s])
 	squad_dir_angle[s] = NAN
 	_reflow_squad(s)
@@ -1609,6 +1618,12 @@ func _load_types() -> bool:
 	type_label.resize(n)
 	type_bounty_mult.resize(n)
 	type_chase.resize(n)
+	type_sprite.resize(n)
+	type_recoil.resize(n)
+	type_sprite_frames.resize(n)
+	type_sprite_frames.fill(0)
+	type_sprite_base.resize(n)
+	type_sprite_base.fill(0)
 	var ids := {}
 	for t in n:
 		var e = data[t]
@@ -1616,10 +1631,13 @@ func _load_types() -> bool:
 			push_error("%s: тип #%d без поля name" % [UNIT_TYPES_PATH, t])
 			return false
 		if not _require_numbers(e, ["hp", "damage", "range", "cooldown", "speed", "block_mult", "leash_start", "leash_end",
-				"range_far", "volley_period", "draw_time", "spread", "arrow_dmg", "bounty_mult", "chase"], "%s, тип \"%s\"" % [UNIT_TYPES_PATH, e.name]):
+				"range_far", "volley_period", "draw_time", "spread", "arrow_dmg", "bounty_mult", "chase", "recoil_px"], "%s, тип \"%s\"" % [UNIT_TYPES_PATH, e.name]):
 			return false
 		if not e.get("label") is String:
 			push_error("%s: у типа \"%s\" нет строкового поля label" % [UNIT_TYPES_PATH, e.name])
+			return false
+		if not e.get("sprite") is String:
+			push_error("%s: у типа \"%s\" нет строкового поля sprite (\"\" = цветной квадрат)" % [UNIT_TYPES_PATH, e.name])
 			return false
 		if e.leash_end < e.leash_start:
 			push_error("%s: у типа \"%s\" leash_end меньше leash_start" % [UNIT_TYPES_PATH, e.name])
@@ -1650,6 +1668,8 @@ func _load_types() -> bool:
 		type_label[t] = e.label
 		type_bounty_mult[t] = e.bounty_mult
 		type_chase[t] = 1 if e.chase != 0 else 0
+		type_sprite[t] = e.sprite
+		type_recoil[t] = e.recoil_px
 	type_id = ids   # заполняем только при полном успехе
 	return true
 
@@ -1716,6 +1736,8 @@ func _setup_data() -> void:
 	unit_dir.resize(MAX_UNITS)
 	unit_dir.fill(0)
 	unit_render_off.resize(MAX_UNITS)
+	unit_shot_t.resize(MAX_UNITS)
+	unit_shot_t.fill(0.0)
 	var upd := float(UPDATE_TICKS) / Engine.physics_ticks_per_second
 	windup_cd = (roundf(WINDUP_T / upd) - 1.5) * upd
 	# Лучники: грубая сетка зомби и очередь стрел, всё выделяется один раз.
@@ -1852,19 +1874,39 @@ func _setup_data() -> void:
 
 
 func _setup_rendering() -> void:
-	# Атлас 4 ячейки 16x16 в ряд: 0 стоит, 1 замах, 2 атака (лист пехоты), 3 белая (цветные квадраты остальных).
-	# Собирается в памяти; файл PNG не меняется. Нет листа или он не 48x16 — все юниты квадратами, с предупреждением.
-	var atlas := Image.create(SPRITE_PX * (SPRITE_FRAMES + 1), SPRITE_PX, false, Image.FORMAT_RGBA8)
-	atlas.fill_rect(Rect2i(SPRITE_PX * CELL_WHITE, 0, SPRITE_PX, SPRITE_PX), Color.WHITE)
-	var sheet: Image = (load(SPRITE_PATH) as Texture2D).get_image() if ResourceLoader.exists(SPRITE_PATH) else null
-	sprites_ok = sheet != null and sheet.get_size() == Vector2i(SPRITE_PX * SPRITE_FRAMES, SPRITE_PX)
-	if sprites_ok:
+	# Атлас: ячейки 16x16 в ряд. По порядку id типов — кадры листа каждого типа со спрайтом (type_sprite_base,
+	# type_sprite_frames), последняя ячейка белая (цветные квадраты). Собирается в памяти; файлы PNG не меняются.
+	# Лист не загрузился или не подошёл (высота не 16, ширина не кратна 16, кадров не 1-3) — тип рисуется квадратом,
+	# с одним предупреждением.
+	var sheets: Array[Image] = []
+	atlas_cells = 0
+	for t in type_sprite.size():
+		type_sprite_frames[t] = 0
+		type_sprite_base[t] = atlas_cells
+		if type_sprite[t] == "":
+			continue
+		var tex := load(type_sprite[t]) as Texture2D if ResourceLoader.exists(type_sprite[t]) else null
+		var sheet: Image = tex.get_image() if tex != null else null
+		if sheet == null or sheet.get_height() != SPRITE_PX or sheet.get_width() % SPRITE_PX != 0 \
+				or sheet.get_width() / SPRITE_PX < 1 or sheet.get_width() / SPRITE_PX > SPRITE_FRAMES_MAX:
+			push_warning("Лист спрайта %s типа \"%s\" не подходит (нужны 1-%d кадров %dx%d в ряд): тип рисуется квадратами" % [
+				type_sprite[t], type_label[t], SPRITE_FRAMES_MAX, SPRITE_PX, SPRITE_PX])
+			continue
 		if sheet.is_compressed():
 			sheet.decompress()
 		sheet.convert(Image.FORMAT_RGBA8)
-		atlas.blit_rect(sheet, Rect2i(0, 0, SPRITE_PX * SPRITE_FRAMES, SPRITE_PX), Vector2i.ZERO)
-	else:
-		push_warning("Нет листа пехоты %s (нужен %dx%d): пехота рисуется квадратами" % [SPRITE_PATH, SPRITE_PX * SPRITE_FRAMES, SPRITE_PX])
+		type_sprite_frames[t] = sheet.get_width() / SPRITE_PX
+		atlas_cells += type_sprite_frames[t]
+		sheets.append(sheet)
+	cell_white = atlas_cells
+	atlas_cells += 1
+	var atlas := Image.create(SPRITE_PX * atlas_cells, SPRITE_PX, false, Image.FORMAT_RGBA8)
+	atlas.fill_rect(Rect2i(SPRITE_PX * cell_white, 0, SPRITE_PX, SPRITE_PX), Color.WHITE)
+	var next_sheet := 0
+	for t in type_sprite.size():
+		if type_sprite_frames[t] > 0:
+			atlas.blit_rect(sheets[next_sheet], Rect2i(0, 0, SPRITE_PX * type_sprite_frames[t], SPRITE_PX), Vector2i(SPRITE_PX * type_sprite_base[t], 0))
+			next_sheet += 1
 
 	multimesh = MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_2D
@@ -1888,14 +1930,15 @@ func _setup_rendering() -> void:
 		buf[o + 0] = UNIT_QUAD   # x.x
 		buf[o + 5] = UNIT_QUAD   # y.y
 		buf[o + 11] = 1.0   # альфа
-		buf[o + 12] = CELL_WHITE
+		buf[o + 12] = cell_white
 
 	# Шейдер: UV квадрата сдвигается в ячейку атласа custom.x; цвет инстанса умножается как обычно
 	# (спрайт — белый, квадрат — цвет типа по белой ячейке).
 	var shader := Shader.new()
-	shader.code = "shader_type canvas_item;\nvoid vertex() {\n\tUV.x = (UV.x + INSTANCE_CUSTOM.x) / %d.0;\n}\n" % (SPRITE_FRAMES + 1)
+	shader.code = "shader_type canvas_item;\nuniform float cells = 1.0;\nvoid vertex() {\n\tUV.x = (UV.x + INSTANCE_CUSTOM.x) / cells;\n}\n"
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
+	mat.set_shader_parameter("cells", float(atlas_cells))
 	var node := MultiMeshInstance2D.new()
 	node.multimesh = multimesh
 	node.texture = ImageTexture.create_from_image(atlas)   # без mipmaps
@@ -2107,10 +2150,16 @@ func _physics_process(delta: float) -> void:
 	_update_waves(delta)
 	_update_squads(delta)
 	_update_unit_dirs()
-	# Кадр «атака»: таймер убывает у всех юнитов каждый тик (а не у обновляемой половины).
+	# Таймеры анимации убывают у всех юнитов каждый тик (а не у обновляемой половины): кадр «атака» и ожидание
+	# собственного выпуска стрелы в залпе — в момент выпуска начинается «атака» (и отдача).
 	for i in count:
 		if unit_anim_t[i] > 0.0:
 			unit_anim_t[i] = maxf(unit_anim_t[i] - delta, 0.0)
+		if unit_shot_t[i] > 0.0:
+			unit_shot_t[i] -= delta
+			if unit_shot_t[i] <= 0.0:
+				unit_shot_t[i] = 0.0
+				unit_anim_t[i] = ATTACK_ANIM_T
 	var m0 := Time.get_ticks_usec() if profile else 0
 	_build_grid()
 	grid_ms = (Time.get_ticks_usec() - t) / 1000.0
@@ -2196,19 +2245,31 @@ func _process(delta: float) -> void:
 	var by_type := color_mode == 0
 	var frac := Engine.get_physics_interpolation_fraction()
 	var have_prev := prev_pos.size() == pos.size()   # до первого физического тика prev_pos пуст
-	var sprites := sprites_on and sprites_ok and by_type   # F2-F4: пехота квадратом, чтобы отладочный цвет читался
-	var inf := infantry_type
+	var sprites := sprites_on and by_type   # F2-F4: все квадратами, чтобы отладочный цвет читался
 	var jitter := RENDER_JITTER > 0.0
+	# Замах стрелков по отряду (как в _unit_anim_state): 1 — залп натягивается или ждёт цель, 2 — одиночный огонь.
+	var draw_mode := PackedByteArray()
+	draw_mode.resize(SQUAD_MAX)
+	for s in SQUAD_MAX:
+		if squad_used[s] == 1 and squad_ranged[s] == 1 and squad_order[s] != ORDER_RETREAT:
+			draw_mode[s] = 2 if squad_volley_mode[s] == MODE_SINGLE else (1 if squad_volley_fired[s] == 0 else 0)
 	for i in count:
 		var o := i * FLOATS_PER_UNIT
+		var ut := unit_type[i]
+		var anim := unit_anim_t[i]
 		var rp := prev_pos[i].lerp(pos[i], frac) if have_prev else pos[i]   # позиция между тиками
 		if jitter:
 			rp += unit_render_off[i]   # статичный сдвиг ±RENDER_JITTER
+		if anim > 0.0 and type_recoil[ut] > 0.0:
+			# отдача: назад от взгляда, линейно затухает за время «атаки»
+			rp -= DIR_VEC[unit_dir[i]] * (type_recoil[ut] * anim / ATTACK_ANIM_T)
 		buf[o + 3] = rp.x
 		buf[o + 7] = rp.y
 		# матрицу, цвет и ячейку пишем каждый кадр: после _remove_dead на индекс i мог встать юнит другого типа.
-		if sprites and unit_type[i] == inf and unit_squad[i] >= 0:
-			# Пехота в отряде: спрайт 16 px по направлению, цвет белый; кадр — как в _unit_frame (без вызова функции).
+		var frames := type_sprite_frames[ut]
+		var sq := unit_squad[i]
+		if sprites and frames > 0 and sq >= 0:
+			# Юнит отряда со спрайтом: 16 px по направлению, цвет белый; состояние — как в _unit_anim_state (без вызова функции).
 			var b := unit_dir[i] * 4
 			buf[o + 0] = DIR_BASIS[b]
 			buf[o + 1] = DIR_BASIS[b + 1]
@@ -2217,18 +2278,24 @@ func _process(delta: float) -> void:
 			buf[o + 8] = 1.0
 			buf[o + 9] = 1.0
 			buf[o + 10] = 1.0
-			buf[o + 12] = 2.0 if unit_anim_t[i] > 0.0 else (1.0 if unit_state[i] == ST_ATTACK and cooldown[i] <= windup_cd else 0.0)
+			var st := 0
+			if anim > 0.0:
+				st = 2
+			elif (unit_state[i] == ST_ATTACK and cooldown[i] <= windup_cd) or unit_shot_t[i] > 0.0 \
+					or draw_mode[sq] == 1 or (draw_mode[sq] == 2 and cooldown[i] <= windup_cd):
+				st = 1
+			buf[o + 12] = type_sprite_base[ut] + mini(st, frames - 1)
 			continue
 		buf[o + 0] = UNIT_QUAD
 		buf[o + 1] = 0.0
 		buf[o + 4] = 0.0
 		buf[o + 5] = UNIT_QUAD
 		# F1 без вызова функции: вызов на юнита стоит ~1.7 мс на 3000 юнитов.
-		var c := type_color[unit_type[i]] if by_type else _unit_color(i, now)
+		var c := type_color[ut] if by_type else _unit_color(i, now)
 		buf[o + 8] = c.r
 		buf[o + 9] = c.g
 		buf[o + 10] = c.b
-		buf[o + 12] = CELL_WHITE
+		buf[o + 12] = cell_white
 	multimesh.visible_instance_count = count
 	multimesh.buffer = buf          # один вызов вместо UNIT_COUNT
 	draw_ms = (Time.get_ticks_usec() - t) / 1000.0
@@ -2251,16 +2318,39 @@ func _render_offset(i: int) -> Vector2:
 	return Vector2(fposmod(r * 127.1, 1.0) * 2.0 - 1.0, fposmod(r * 311.7, 1.0) * 2.0 - 1.0) * RENDER_JITTER
 
 
-# Кадр спрайта юнита: 2 «атака» — ATTACK_ANIM_T после удара; 1 «замах» — юнит бьёт (враг в дальности атаки)
-# и до следующего удара не больше WINDUP_T; иначе 0 «стоит». У «атаки» приоритет.
+# Состояние анимации юнита: 2 «атака» — ATTACK_ANIM_T после удара или собственного выпуска стрелы; 1 «замах»; 0 «стоит».
+# У «атаки» приоритет. Замах в ближнем бою: юнит бьёт (враг в дальности атаки) и до следующего удара не больше WINDUP_T.
 # cooldown — остаток до готовности, убывает на обновлении юнита (раз в UPDATE_TICKS тиков, шагом в период обновления);
 # удар — на первом обновлении, где он уже 0, то есть ещё через одно обновление. Замах включается за
 # round(WINDUP_T / период) обновлений до удара (при 30 тиках/с это 2 обновления, 4 тика): порог windup_cd стоит
 # посередине между соседними значениями cooldown, чтобы остаток округления float его не сдвигал.
-func _unit_frame(i: int) -> int:
+# Замах стрелка: в залпе — от начала натяжения отряда (и пока отряд ждёт цель натянутым) до собственного выпуска
+# (unit_shot_t); в одиночном огне — когда cooldown дошёл до того же порога. При отходе отряд не стреляет.
+func _unit_anim_state(i: int) -> int:
 	if unit_anim_t[i] > 0.0:
 		return 2
-	return 1 if unit_state[i] == ST_ATTACK and cooldown[i] <= windup_cd else 0
+	if unit_state[i] == ST_ATTACK and cooldown[i] <= windup_cd:
+		return 1
+	var s := unit_squad[i]
+	if s < 0 or squad_ranged[s] == 0:
+		return 0
+	if unit_shot_t[i] > 0.0:
+		return 1
+	if squad_order[s] == ORDER_RETREAT:
+		return 0
+	if squad_volley_mode[s] == MODE_SINGLE:
+		return 1 if cooldown[i] <= windup_cd else 0
+	return 1 if squad_volley_fired[s] == 0 else 0
+
+
+# Кадр листа для состояния: состояние зажимается до последнего кадра типа (лист с одним кадром — всегда 0).
+func _unit_frame(i: int) -> int:
+	return mini(_unit_anim_state(i), maxi(type_sprite_frames[unit_type[i]], 1) - 1)
+
+
+# Отдача юнита сейчас: смещение отрисовки назад от взгляда, recoil_px в момент «атаки», линейно до нуля за ATTACK_ANIM_T.
+func _recoil_offset(i: int) -> Vector2:
+	return -DIR_VEC[unit_dir[i]] * (type_recoil[unit_type[i]] * unit_anim_t[i] / ATTACK_ANIM_T)
 
 
 # Ближайшее из четырёх направлений к углу мира (0 = вправо, PI/2 = вниз): 0 вправо, 1 вниз, 2 влево, 3 вверх.
@@ -2470,6 +2560,7 @@ func _remove_dead() -> void:
 			unit_anim_t[i] = unit_anim_t[count]
 			unit_dir[i] = unit_dir[count]
 			unit_render_off[i] = unit_render_off[count]
+			unit_shot_t[i] = unit_shot_t[count]
 		else:
 			i += 1
 
@@ -3127,7 +3218,7 @@ func _volley(s: int, delta: float) -> void:
 			if unit_squad[i] == s:
 				var j := _random_zombie_in_cell(c0, cn)
 				if j != -1:
-					_fire_arrow(i, pos[j], (unit_rand[i] * 2.0 - 1.0) * VOLLEY_JITTER, archer_own_range)
+					_fire_arrow(i, pos[j], (unit_rand[i] * 2.0 - 1.0) * VOLLEY_JITTER, archer_own_range, unit_rand[i] * 2.0 * VOLLEY_JITTER)
 		squad_volley_fired[s] = 1
 		squad_volley_t[s] = t
 	elif t >= type_volley_period[ut]:
@@ -3169,7 +3260,9 @@ func _random_zombie_in_cell(c0: int, cn: int) -> int:
 # Стрела-событие: точка падения = прицел + разброс (радиус spread * дистанция, seeded-генератор),
 # тик падения = сейчас + задержка + дистанция / ARROW_SPEED. own_range: если точка падения дальше range_far
 # от самого лучника, выстрела нет (arrows_out_of_range).
-func _fire_arrow(i: int, aim: Vector2, delay: float, own_range := false) -> void:
+# release_in (только отрисовка): через сколько секунд лучник выпускает стрелу сам — в залпе это его задержка,
+# отсчитанная от самого раннего выстрела залпа (0 .. 2 * VOLLEY_JITTER); 0 — сейчас.
+func _fire_arrow(i: int, aim: Vector2, delay: float, own_range := false, release_in := 0.0) -> void:
 	if arrow_count >= ARROW_CAP:
 		arrows_dropped += 1
 		return
@@ -3186,6 +3279,11 @@ func _fire_arrow(i: int, aim: Vector2, delay: float, own_range := false) -> void
 	arrow_count += 1
 	arrows_fired += 1
 	squad_arrows_fired[unit_squad[i]] += 1
+	if release_in > 0.0:
+		unit_shot_t[i] = release_in
+	else:
+		unit_shot_t[i] = 0.0
+		unit_anim_t[i] = ATTACK_ANIM_T
 
 
 # Падение стрел этого тика: урон ближайшему живому зомби в ARROW_HIT_R (мелкая сетка, 3x3), иначе промах.
@@ -3290,4 +3388,4 @@ func _unhandled_input(event: InputEvent) -> void:
 				if DEBUG_COLORS:
 					color_mode = event.keycode - KEY_F1
 			KEY_F5:
-				sprites_on = not sprites_on   # спрайты пехоты / все юниты квадратами
+				sprites_on = not sprites_on   # спрайты / все юниты квадратами
