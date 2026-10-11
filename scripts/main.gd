@@ -51,27 +51,27 @@ const WS_BATTLE := 0    # идёт бой
 const WS_DEFEAT := 1    # ворота пали
 const WS_RESPITE := 2   # передышка между волнами
 const FLOATS_PER_UNIT := 12   # 8 (трансформ 2D) + 4 (цвет)
-const CELL_SIZE := 12.0
-const GRID_W := 184
-const GRID_H := 88
+const FIELD := Vector2(2208.0, 1056.0)   # поле в px (не масштабируется), юниты не выходят за край
+const CELL_SIZE := 16.0   # ×4/3
+const GRID_W := ceili(FIELD.x / CELL_SIZE)   # сетка считается от поля и клетки
+const GRID_H := ceili(FIELD.y / CELL_SIZE)
 const CELL_COUNT := GRID_W * GRID_H   # клеток мелкой сетки
-const MIN_DIST := 5.0        # ближе этого юниты отталкиваются
+const MIN_DIST := 6.67       # ×4/3; ближе этого юниты отталкиваются
 const PUSH_K := 0.5          # доля перекрытия, которую снимаем за тик
-const VIEW_RANGE := 12.0   # равен CELL_SIZE: окно 3x3 его гарантированно покрывает
-const FIELD := Vector2(GRID_W * CELL_SIZE, GRID_H * CELL_SIZE)   # поле в px, юниты не выходят за край
+const VIEW_RANGE := CELL_SIZE   # ×4/3; равен CELL_SIZE: окно 3x3 его гарантированно покрывает
 # --- Карта замка (вертикальная, 1920x1080; игрок внизу, зомби сверху) ---
 const BG_PATH := "res://art/castle_bg.jpg"   # 1500x704, рисуется с масштабом 1.5
 const ROAD_X := 970.0                  # ось дороги, по которой идёт орда
 const GATE_POS := Vector2(1010, 745)   # ворота замка
 const WALL_Y := 745.0                  # временный пол: ниже не заходит ни один юнит, пока нет стен
-const PLAYER_START := Vector2(1010, 640)   # центр строя пехоты на старте (лучники встают позади)
+const PLAYER_START := Vector2(1010, 605)   # расстояние до WALL_Y ×4/3 (105 -> 140); центр строя пехоты на старте (лучники встают позади)
 const PLAYER_ANGLE := -PI / 2.0            # «вперёд» отряда игрока — вверх, к зомби
 const ZOMBIE_FRONT_Y := 130.0              # передний край блока зомби на старте; ряды уходят вверх
 # Юнит обновляется раз в 2 тика. Два обновления по PUSH_K оставляют 25% перекрытия,
 # поэтому за одно обновление снимаем 1 - 0.5^2 = 75%.
 const PUSH_K_2 := 1.0 - (1.0 - PUSH_K) * (1.0 - PUSH_K)
 const SLOT_GAIN := 5.0        # сила притяжения к слоту (1/с)
-const SLOT_SPACING := 6.0
+const SLOT_SPACING := 8.0       # ×4/3
 const TURN_SPEED := 1.5          # рад/с, поворот на месте
 const ABOUT_FACE_ANGLE := 2.1    # около 120°: если угол больше, разворот «кругом»
 const MOVE_ANGLE := 0.7          # около 40°: пока угол больше, отряд стоит и поворачивается
@@ -81,21 +81,21 @@ const HORDE_CHAOS := 0.4               # доля бокового качани�
 const BLOCK_COS := 0.5                 # передний сектор щита: ±60° от фронта отряда
 const SHIELD_DOWN_TIME := 0.25         # щит опущен столько секунд после собственного удара
 # --- Лучники ---
-const ARCHER_GAP := 10.0               # зазор между строем ведущего отряда и строем лучников (сверх половин глубин)
-const COARSE_CELLS := 4                # грубая клетка = 4x4 мелких (48 px) — для прицеливания по зомби
+const ARCHER_GAP := 13.33              # ×4/3; зазор между строем ведущего отряда и строем лучников (сверх половин глубин)
+const COARSE_CELLS := 4                # грубая клетка = 4x4 мелких (64 px) — для прицеливания по зомби
 const COARSE_SIZE := CELL_SIZE * COARSE_CELLS
 const COARSE_W := (GRID_W + COARSE_CELLS - 1) / COARSE_CELLS   # ceil: покрывает всё поле
 const COARSE_H := (GRID_H + COARSE_CELLS - 1) / COARSE_CELLS
 const COARSE_COUNT := COARSE_W * COARSE_H
 const COARSE_EVERY := 4                # пересчёт грубой сетки раз в столько тиков
-const NEAR_RANGE := 30.0               # зомби ближе — одиночный огонь
-const MODE_HYST := 10.0                # дальше NEAR_RANGE + MODE_HYST — залп; между порогами режим не меняется
+const NEAR_RANGE := 40.0               # ×4/3; зомби ближе — одиночный огонь
+const MODE_HYST := 13.33               # ×4/3; дальше NEAR_RANGE + MODE_HYST — залп; между порогами режим не меняется
 const MODE_VOLLEY := 0
 const MODE_SINGLE := 1
 const SINGLE_SCAN_T := 0.3             # одиночный огонь: лучник ищет цель раз в столько секунд
 const VOLLEY_JITTER := 0.15            # залп: индивидуальная задержка выстрела ±столько секунд
-const ARROW_SPEED := 200.0             # px/с, задаёт задержку падения стрелы
-const ARROW_HIT_R := 8.0               # стрела попадает в ближайшего зомби в этом радиусе от точки падения
+const ARROW_SPEED := 266.67            # ×4/3; px/с, задаёт задержку падения стрелы
+const ARROW_HIT_R := 10.67             # ×4/3; стрела попадает в ближайшего зомби в этом радиусе от точки падения
 const ARROW_CAP := 2048                # ёмкость очереди стрел (с запасом)
 const DEBUG_COLORS := true            # F2–F4: отладочная раскраска; false в релизе (остаётся только F1)
 # Состояние юнита для раскраски F3 (пишется там, где принимается решение)
@@ -1110,7 +1110,7 @@ func _spawn_block(n: int, type: int, side: int, first: int) -> void:
 			p = Vector2(wave_cfg.spawn_center_x + (col - (cols - 1) * 0.5) * sp, wave_cfg.spawn_front_y - row * sp)
 		else:
 			p = centre + lat * ((col - (cols - 1) * 0.5) * sp) - face * (row * sp)
-		p += Vector2(unit_rng.randf_range(-1.0, 1.0), unit_rng.randf_range(-1.0, 1.0))
+		p += Vector2(unit_rng.randf_range(-1.33, 1.33), unit_rng.randf_range(-1.33, 1.33))   # ×4/3
 		_spawn_zombie(p.clamp(Vector2.ZERO, lim), type)
 
 
@@ -1793,7 +1793,7 @@ func _setup_rendering() -> void:
 	multimesh.transform_format = MultiMesh.TRANSFORM_2D
 	multimesh.use_colors = true
 	var quad := QuadMesh.new()
-	quad.size = Vector2(4, 4)
+	quad.size = Vector2(5.33, 5.33)   # ×4/3
 	multimesh.mesh = quad
 	multimesh.instance_count = MAX_UNITS   # рисуется только visible_instance_count = count
 
@@ -2201,7 +2201,7 @@ func _update_unit(i: int, delta: float) -> void:
 			# Держать: к врагу не идём, остаёмся (возвращаемся) в слот; бьём только того, кто в дальности атаки.
 			var hold_slot := squad_pos[sq] + unit_slot[i].rotated(squad_angle[sq])
 			v = ((hold_slot - p) * SLOT_GAIN).limit_length(type_speed[t] * 1.3)
-			unit_state[i] = ST_RETURN if p.distance_squared_to(hold_slot) > 9.0 else ST_IDLE
+			unit_state[i] = ST_RETURN if p.distance_squared_to(hold_slot) > 16.0 else ST_IDLE   # ×4/3: 4 px в квадрате
 		elif best_d > type_range_sq[t]:
 			var dir := (pos[best] - p).normalized()
 			if unit_squad[i] == -1:
@@ -2239,8 +2239,8 @@ func _update_unit(i: int, delta: float) -> void:
 			var lim := type_speed[t] * 1.3 * (RETREAT_SPEED_MULT if order == ORDER_RETREAT else 1.0)
 			v = ((slot_world - p) * SLOT_GAIN).limit_length(lim)
 			# дальше полуслота от своего места — «возвращается», иначе «стоит»
-			unit_state[i] = ST_RETURN if p.distance_squared_to(slot_world) > 9.0 else ST_IDLE
-		elif p.y >= WALL_Y - sqrt(type_range_sq[t]) and absf(p.x - GATE_POS.x) <= gate_half + 6.0:
+			unit_state[i] = ST_RETURN if p.distance_squared_to(slot_world) > 16.0 else ST_IDLE   # ×4/3: 4 px в квадрате
+		elif p.y >= WALL_Y - sqrt(type_range_sq[t]) and absf(p.x - GATE_POS.x) <= gate_half + 8.0:   # запас в один слот, ×4/3
 			# У ворот (сначала проверка по y — она отсекает почти всех): стоит и бьёт ворота по cooldown.
 			unit_state[i] = ST_ATTACK
 			if cooldown[i] <= 0.0:
@@ -2253,7 +2253,7 @@ func _update_unit(i: int, delta: float) -> void:
 			unit_state[i] = ST_IDLE
 			# Орда идёт к воротам; скорость у каждого зомби своя (±HORDE_SPEED_SPREAD).
 			var to_goal := HORDE_GOAL - p
-			if to_goal.length() > 4.0:
+			if to_goal.length() > 5.33:   # ×4/3
 				v = to_goal.normalized() * type_speed[t] * (1.0 + HORDE_SPEED_SPREAD * (unit_rand[i] * 2.0 - 1.0))
 	# Толчок не разовым сдвигом позиции, а добавкой к скорости на 2 тика до следующего решения:
 	# delta здесь = 2 тика, поэтому за эти 2 тика юнит сместится ровно на push * PUSH_K_2.
@@ -2763,7 +2763,7 @@ func _update_squads(delta: float) -> void:
 				squad_order[s] = ORDER_HOLD   # отход закончен: держать
 			continue
 		var diff := angle_difference(squad_angle[s], to.angle())
-		# Отряд не поворачивается к цели ближе 2 слотов (12 px).
+		# Отряд не поворачивается к цели ближе 2 слотов (16 px).
 		if dist > 2.0 * SLOT_SPACING:
 			if absf(diff) > ABOUT_FACE_ANGLE:
 				_about_face(s)

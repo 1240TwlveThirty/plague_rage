@@ -10,7 +10,7 @@
 	"spawn_center_x": 970,
 	"spawn_front_y": 100,
 	"spawn_columns": 50,
-	"spawn_spacing": 6,
+	"spawn_spacing": 8,
 	"wave_bonus_gold": 20,
 	"gold_per_kill": 2.0,
 	"start_gold": 100,
