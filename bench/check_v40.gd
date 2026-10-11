@@ -893,6 +893,8 @@ func test_regress() -> void:
 	b.free()
 
 func _initialize() -> void:
+	if root.has_node("Game"):
+		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	_run.call_deferred()
 
 func _run() -> void:

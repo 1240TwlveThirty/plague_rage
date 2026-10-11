@@ -90,6 +90,8 @@ func emit(pid: int, bot: String, seed: int, r: Array) -> void:
 	print("RUN,%d,%s,%d,%d,%d" % [pid, bot, seed, r[0], 1 if r[1] else 0])
 
 func _initialize() -> void:
+	if root.has_node("Game"):
+		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	var args := OS.get_cmdline_user_args()
 	var wid := int(args[0])
 	var nw := int(args[1])

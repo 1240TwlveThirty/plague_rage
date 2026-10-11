@@ -30,6 +30,8 @@ func same(a: Node2D, b: Node2D) -> bool:
 	return true
 
 func _initialize() -> void:
+	if root.has_node("Game"):
+		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	print("эталон: " + FileAccess.get_file_as_string("res://bench/ref/REF.txt").strip_edges())
 	var a := plain(REF, 5, false)
 	var b := plain(NEW, 5, false)

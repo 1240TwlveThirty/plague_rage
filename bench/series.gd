@@ -37,6 +37,8 @@ func battle(rng_seed: int) -> Dictionary:
 	return r
 
 func _initialize() -> void:
+	if root.has_node("Game"):
+		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	var args := OS.get_cmdline_user_args()
 	var n := int(args[0]) if args.size() > 0 else 50
 	var sum := {"loss0": 0.0, "loss1": 0.0, "fired": 0.0, "hit": 0.0, "kills_arrow": 0.0, "sec": 0.0}

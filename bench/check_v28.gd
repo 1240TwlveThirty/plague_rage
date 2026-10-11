@@ -587,6 +587,8 @@ func test_determinism() -> void:
 		"совпадает на каждом тике" if d < 0 and r1.size() == r2.size() else "расходится с тика %d" % d, r1.size() - 1, int(r1[r1.size() - 1].x), int(r1[r1.size() - 1].y)])
 
 func _initialize() -> void:
+	if root.has_node("Game"):
+		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	if OS.get_cmdline_user_args().has("battle"):
 		test_battle()
 		quit()

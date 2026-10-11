@@ -337,6 +337,8 @@ func compare(waves: bool) -> String:
 	return res
 
 func _initialize() -> void:
+	if root.has_node("Game"):
+		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	test_geometry()
 	test_about_face()
 	test_angle_stable()

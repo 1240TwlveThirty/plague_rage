@@ -10,6 +10,8 @@ func write_json(path: String, data) -> void:
 	f.close()
 
 func _initialize() -> void:
+	if root.has_node("Game"):
+		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	var args := OS.get_cmdline_user_args()
 	var gain := float(args[0])
 	var bot := args[1]

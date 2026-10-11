@@ -41,6 +41,8 @@ func slope(xs: Array, ys: Array) -> float:
 	return num / den if den > 0.0 else 0.0
 
 func _initialize() -> void:
+	if root.has_node("Game"):
+		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	var L: Array[String] = []
 	var runs := {}
 	var missing := 0

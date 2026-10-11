@@ -3,6 +3,8 @@ extends SceneTree
 # Бой идёт, пока все не появятся и ещё 10 с (или волна не кончится). Считаются все тики: медиана, максимум,
 # максимум среди тиков с появлением куска; PROFILE по фазам — среднее закрывшихся окон по 60 тиков.
 func _initialize() -> void:
+	if root.has_node("Game"):
+		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	var args := OS.get_cmdline_user_args()
 	var m: Node2D = load(args[5]).new()
 	m.spawn_seed = int(args[4])

@@ -299,6 +299,8 @@ func test_timing() -> void:
 	m.free()
 
 func _initialize() -> void:
+	if root.has_node("Game"):
+		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	test_geometry()
 	test_paths()
 	test_losses()

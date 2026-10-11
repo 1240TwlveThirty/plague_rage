@@ -630,6 +630,8 @@ func test_scenario() -> void:
 			a[1] == "" and a == b and a[3] >= 4, "%d тиков, делений %d, отрядов в конце %d, состояние волны %d, юнитов %d, хеш %d; %s" % [a[2], a[3], a[4], a[5], a[6], a[0], a[1]])
 
 func _initialize() -> void:
+	if root.has_node("Game"):
+		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	var args := OS.get_cmdline_user_args()
 	var which: String = args[0] if args.size() > 0 else "all"
 	if which in ["all", "ident"]:

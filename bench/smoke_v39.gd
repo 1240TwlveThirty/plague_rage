@@ -60,6 +60,8 @@ func buf_error(buf: PackedFloat32Array) -> float:
 	return worst
 
 func _initialize() -> void:
+	if root.has_node("Game"):
+		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	_run.call_deferred()
 
 func _run() -> void:
@@ -179,9 +181,8 @@ func _run() -> void:
 	while m.wave_state != m.WS_DEFEAT and t < 300:
 		await process_frame
 		t += 1
-	await key(KEY_SPACE)
-	await key(KEY_P)
-	check("(б) поражение (wave_state 1): Space и P паузу не ставят", was and m.wave_state == m.WS_DEFEAT and not m.paused and not m.pause_label.visible)
+	await key(KEY_P)   # Space на экране поражения теперь выходит из забега (v41), здесь не нажимается
+	check("(б) поражение (wave_state 1): P паузу не ставит", was and m.wave_state == m.WS_DEFEAT and not m.paused and not m.pause_label.visible)
 	await key(KEY_R)
 	await step(6)
 	var fresh: Node2D = current_scene

@@ -15,6 +15,8 @@ func count_type(m: Node2D, type: int) -> int:
 	return n
 
 func _initialize() -> void:
+	if root.has_node("Game"):
+		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	var args := OS.get_cmdline_user_args()
 	var bot := args[0]
 	var seed := int(args[1])
