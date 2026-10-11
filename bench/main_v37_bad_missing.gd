@@ -239,6 +239,11 @@ var arrows_hit := 0     # статистика
 var arrows_out_of_range := 0   # статистика: выстрелы залпа, отменённые по дальности от позиции лучника (за волну)
 var archer_own_range := ARCHER_OWN_RANGE   # бенчи переопределяют
 var arrows_dropped := 0 # статистика: не влезли в ARROW_CAP
+# Статистика за волну (для отчётов и бенчей, в отладочную строку не выводится): контакт = первый урон по юниту игрока
+var contact_tick := -1             # тик первого урона по юниту игрока; -1 — контакта ещё не было
+var volleys_before_contact := 0    # залпов до контакта
+var arrows_before_contact := 0     # стрел, выпущенных до контакта
+var kills_by_arrows := 0           # убито стрелами
 var mode_switches := 0  # статистика: смены режима стрельбы
 var squad_depth := PackedFloat32Array()     # глубина строя = занятых рядов * SLOT_SPACING (кеш, см. _update_squad_extent)
 var squad_front_x := PackedFloat32Array()   # локальная x переднего ряда относительно якоря (кеш)
@@ -1068,6 +1073,10 @@ func _start_wave() -> void:
 	arrows_fired = 0   # в отладочной строке — за текущую волну
 	arrows_hit = 0
 	arrows_out_of_range = 0
+	contact_tick = -1
+	volleys_before_contact = 0
+	arrows_before_contact = 0
+	kills_by_arrows = 0
 	subwave_timer = 0.0
 	wave_t = 0.0
 	burst_idx = 0
@@ -2486,6 +2495,8 @@ func _update_unit(i: int, delta: float) -> void:
 						dmg *= m
 						blocked_hits += 1
 			hp[best] -= dmg
+			if my_team == 1 and contact_tick < 0:
+				contact_tick = tick_counter
 			cooldown[i] = type_cooldown[t]
 			unit_anim_t[i] = ATTACK_ANIM_T
 		if leash_w > 0.0:
@@ -3220,6 +3231,8 @@ func _volley(s: int, delta: float) -> void:
 				if j != -1:
 					_fire_arrow(i, pos[j], (unit_rand[i] * 2.0 - 1.0) * VOLLEY_JITTER, archer_own_range, unit_rand[i] * 2.0 * VOLLEY_JITTER)
 		squad_volley_fired[s] = 1
+		if contact_tick < 0:
+			volleys_before_contact += 1
 		squad_volley_t[s] = t
 	elif t >= type_volley_period[ut]:
 		squad_volley_t[s] = 0.0   # перезарядка закончилась: новый цикл с натяжения
@@ -3228,7 +3241,8 @@ func _volley(s: int, delta: float) -> void:
 		squad_volley_t[s] = t
 
 
-# Самая плотная грубая клетка, центр которой (геометрический) не дальше range_far от центра отряда; -1 если нет.
+# Самая плотная грубая клетка, зомби которой (их центр масс) не дальше range_far от центра отряда; -1 если нет.
+# Окно поиска — все грубые клетки в квадрате ±range_far вокруг центра отряда, то есть весь радиус.
 func _volley_target_cell(s: int, range_far: float) -> int:
 	var sp := squad_pos[s]
 	var best := -1
@@ -3237,8 +3251,8 @@ func _volley_target_cell(s: int, range_far: float) -> int:
 		for cx in range(clampi(floori((sp.x - range_far) / COARSE_SIZE), 0, COARSE_W - 1), clampi(floori((sp.x + range_far) / COARSE_SIZE), 0, COARSE_W - 1) + 1):
 			var c := cx + cy * COARSE_W
 			var cn := coarse_zcount[c]
-			var center := Vector2((cx + 0.5) * COARSE_SIZE, (cy + 0.5) * COARSE_SIZE)
-			if cn > best_n and center.distance_to(sp) <= range_far:
+			# дальность — до центра масс зомби клетки, а не до её геометрического центра (он может быть до 0.7 клетки в стороне)
+			if cn > best_n and (coarse_sum[c] / cn).distance_to(sp) <= range_far:
 				best_n = cn
 				best = c
 	return best
@@ -3278,6 +3292,8 @@ func _fire_arrow(i: int, aim: Vector2, delay: float, own_range := false, release
 	arrow_dmg[arrow_count] = type_arrow_dmg[t]
 	arrow_count += 1
 	arrows_fired += 1
+	if contact_tick < 0:
+		arrows_before_contact += 1
 	squad_arrows_fired[unit_squad[i]] += 1
 	if release_in > 0.0:
 		unit_shot_t[i] = release_in
@@ -3312,6 +3328,8 @@ func _process_arrows() -> void:
 						best = j
 		if best != -1:
 			hp[best] -= arrow_dmg[a]
+			if hp[best] <= 0.0:
+				kills_by_arrows += 1
 			arrows_hit += 1
 		arrow_count -= 1
 		arrow_land[a] = arrow_land[arrow_count]
