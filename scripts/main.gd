@@ -2157,6 +2157,9 @@ func _setup_rendering() -> void:
 	quad.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	multimesh.mesh = quad
 	multimesh.instance_count = MAX_UNITS   # рисуется только visible_instance_count = count
+	# Границы заданы явно (всё поле с запасом): иначе при смене сцены (change_scene_to_file) первый кадр рисуется до
+	# первого _process, границы считаются по пустому буферу и юниты потом отсекаются как невидимые.
+	multimesh.custom_aabb = AABB(Vector3(-FIELD.x, -FIELD.y, 0.0), Vector3(FIELD.x * 3.0, FIELD.y * 3.0, 0.0))
 
 	# Буфер заполняем целиком ОДИН раз: всё, что не меняется (альфа); матрица, позиция, цвет и ячейка — в _process
 	buf.resize(MAX_UNITS * FLOATS_PER_UNIT)

@@ -42,6 +42,32 @@ func click(c: Control) -> void:
 		await step(1)
 	await step(4)
 
+# Сколько юнитов реально нарисовано: кадр с мультимешем юнитов и без него сравнивается в точках юнитов.
+func drawn_units(m: Node2D) -> int:
+	var mm: Node = null
+	for c in m.get_children():
+		if c is MultiMeshInstance2D:
+			mm = c
+	await step(3)
+	var with: Image = root.get_texture().get_image()
+	mm.visible = false
+	await step(3)
+	var without: Image = root.get_texture().get_image()
+	mm.visible = true
+	await step(1)
+	var xf := m.get_global_transform_with_canvas()
+	var n := 0
+	for i in m.count:
+		var at := Vector2i(xf * m.pos[i])
+		var differs := false
+		for d in [Vector2i(0, 0), Vector2i(2, 2), Vector2i(-2, -2), Vector2i(2, -2), Vector2i(-2, 2)]:
+			var q: Vector2i = at + d
+			if q.x >= 0 and q.y >= 0 and q.x < with.get_width() and q.y < with.get_height() and with.get_pixelv(q) != without.get_pixelv(q):
+				differs = true
+		if differs:
+			n += 1
+	return n
+
 func is_scene(scene_name: String) -> bool:
 	return current_scene != null and current_scene.name == scene_name
 
@@ -82,6 +108,8 @@ func _run() -> void:
 	var m := current_scene as Node2D
 	check("клик «Начать забег» -> бой: передышка, волна 0, HUD «Волна 0/10», осада 1", is_scene("Main") and m.wave_state == m.WS_RESPITE and m.wave_number == 0
 		and m.hud_label.text.begins_with("Волна 0/10 · ") and g.siege == 1 and g.run_index == 1)
+	var drawn := await drawn_units(m)
+	check("юниты нарисованы после смены сцены (не меньше 300 из 400 видны на кадре)", drawn >= 300, "видно %d" % drawn)
 	await key(KEY_R)
 	check("R в передышке сцену не перезапускает", current_scene == m and is_instance_valid(m))
 	m = await lose()
