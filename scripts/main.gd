@@ -45,6 +45,10 @@ const BANNER_BG_ALPHA := 0.55                 # непрозрачность ф�
 const OVERLAP_MAX := 0.25                     # расстановка: доля площади меньшего блока, с которой пересечение со своим отрядом запрещено
 const DRAG_MIN := 24.0                       # px: короче — обычный клик, длиннее — расстановка строя по линии
 const FORM_MARGIN := 12.0                     # строй при расстановке не ниже WALL_Y - FORM_MARGIN
+const PAUSE_ENABLED := true                   # активная пауза в бою (Space, P); false — паузы нет, как раньше
+const SIDE_POST_T := 0.45                     # стрелки: пост на отрезке ворота -> точка появления стороны, доля пути
+const GATE_POST_BACK := 90.0                  # стрелка вниз: пост у ворот, на столько выше стены
+const SPLIT_MODE_NAMES := ["правые", "левые", "задние", "передние"]
 const SORT_OFFSET := 1 << 20                  # сдвиг ключа сортировки _place_formation: координата * 16 всегда > 0
 # Состояние боя
 const WS_BATTLE := 0    # идёт бой
@@ -355,6 +359,16 @@ var ui_t := 0.0                               # таймер обновлени�
 var archers_follow := ARCHERS_FOLLOW          # бенчи переопределяют до _setup_data
 var squad_order := PackedByteArray()          # ORDER_* на отряд
 var selected_squad := 0
+var paused := false                           # активная пауза: _physics_process не выполняется, команды только меняют данные
+var split_frac := 0.5                         # деление: доля уходящих в новый отряд
+var split_mode := 0                           # кто уходит: 0 правые, 1 левые, 2 задние ряды, 3 передние ряды
+var pause_label: Label
+var pause_dim: ColorRect
+var split_box: VBoxContainer              # ползунок доли и кнопка режима деления (передышка и пауза в бою)
+var split_label: Label
+var split_slider: HSlider
+var split_mode_button: Button
+var action_buttons: Array[Button] = []
 var squad_panel: VBoxContainer
 var squad_buttons: Array[Button] = []
 var squad_rows_ui: Array[HBoxContainer] = []   # строки панели, по одной на индекс отряда
@@ -1057,6 +1071,7 @@ func _start_wave() -> void:
 		return
 	wave_number += 1
 	wave_state = WS_BATTLE
+	_set_paused(false)
 	if wave_plan_for != wave_number:   # план строится в начале передышки; сюда — если номер волны сменили в обход
 		wave_plan = _plan_wave(wave_number)
 		wave_plan_for = wave_number
@@ -1209,6 +1224,7 @@ func _wave_cleared() -> void:
 		if team[i] == 0:
 			hp[i] = type_hp[unit_type[i]]   # бесплатное лечение армии
 	wave_state = WS_RESPITE
+	_set_paused(false)
 	_free_empty_squads()
 	wave_plan = _plan_wave(wave_number + 1)   # состав и всплески следующей волны известны с начала передышки
 	wave_plan_for = wave_number + 1
@@ -1402,14 +1418,20 @@ func _cmd_new_squad() -> bool:
 	return true
 
 
-# G: правая половина выбранного отряда (по local.y, поперёк фронта) уходит в новый отряд с тем же приказом,
-# местом, углом и шириной строя; обе половины перестраиваются. Выбор переходит на новый отряд.
+# G: часть выбранного отряда уходит в новый отряд с той же командой, целью, углом, приказом и шириной строя;
+# оба перестраиваются, выбор переходит на новый. Уходит k = clamp(floor(n * split_frac), 1, n - 1) юнитов:
+# split_mode 0 и 1 — с наибольшей / наименьшей local.y (правые / левые), 2 и 3 — с наименьшей / наибольшей
+# local.x (задние / передние ряды). В бою — только на паузе. Позиции юнитов не меняются.
 func _cmd_split() -> bool:
-	if wave_state != WS_RESPITE:
+	if wave_state == WS_DEFEAT:
+		return false
+	if wave_state == WS_BATTLE and not paused:
+		if PAUSE_ENABLED:
+			_say("Поставь паузу (Space)")
 		return false
 	var s := selected_squad
 	var n := squad_n[s]
-	if n < 2:
+	if squad_used[s] == 0 or n < 2:
 		_say("В отряде меньше 2 юнитов: делить нечего")
 		return false
 	var t := _squad_create(s)
@@ -1429,19 +1451,88 @@ func _cmd_split() -> bool:
 	for i in count:
 		if unit_squad[i] == s:
 			var local := (pos[i] - squad_pos[s]).rotated(-squad_angle[s])
-			sort_keys[m] = ((int(local.y * 16.0) + SORT_OFFSET) << 32) | i
+			var v := local.y if split_mode < 2 else local.x
+			sort_keys[m] = ((int(v * 16.0) + SORT_OFFSET) << 32) | i
 			m += 1
 	sort_keys.sort()
-	var half := n / 2
-	for q in range(n - half, n):
+	var k := _split_count(n)
+	# по возрастанию ключа: наибольшие в конце (режимы 0 и 3), наименьшие в начале (1 и 2)
+	var first := n - k if split_mode == 0 or split_mode == 3 else 0
+	for q in range(first, first + k):
 		unit_squad[int(sort_keys[q] & 0xFFFFFFFF)] = t
-	squad_n[s] = n - half
-	squad_n[t] = half
+	squad_n[s] = n - k
+	squad_n[t] = k
 	squad_dir_angle[t] = NAN
 	_reflow_squad(s)
 	_reflow_squad(t)
 	_select_squad(t)
 	return true
+
+
+# Сколько юнитов уходит при делении отряда из n: доля в целых процентах (шаг ползунка 5%), не меньше 1 и не больше n - 1.
+func _split_count(n: int) -> int:
+	return clampi(n * roundi(split_frac * 100.0) / 100, 1, n - 1)
+
+
+func _set_split_frac(v: float) -> void:
+	split_frac = clampf(v, 10.0, 90.0) / 100.0
+	_update_split_ui()
+
+
+# K и кнопка режима: кто уходит при делении.
+func _next_split_mode() -> void:
+	split_mode = (split_mode + 1) % SPLIT_MODE_NAMES.size()
+	_update_split_ui()
+
+
+func _update_split_ui() -> void:
+	if split_label == null:
+		return
+	split_label.text = "Доля ухода: %d%%" % roundi(split_frac * 100.0)
+	split_mode_button.text = "Уходят: %s (K)" % SPLIT_MODE_NAMES[split_mode]
+
+
+# Пауза только в бою. При включении prev_pos = pos: после снятия юниты не отскакивают на долю тика назад.
+func _set_paused(v: bool) -> void:
+	v = v and PAUSE_ENABLED and wave_state == WS_BATTLE
+	if v == paused:
+		return
+	paused = v
+	if paused:
+		prev_pos = pos.duplicate()
+	if pause_label != null:
+		pause_label.visible = paused
+		pause_dim.visible = paused
+	_update_squad_panel()
+	queue_redraw()
+
+
+# Стрелки: выбранный отряд встаёт на пост у стороны side (SIDE_*; -1 — у ворот) лицом к ней, строем нынешней ширины.
+# Приказ не меняется; проверки пересечения и границ поля — как при расстановке протяжкой.
+func _cmd_side_post(side: int) -> bool:
+	var s := selected_squad
+	if squad_used[s] == 0 or squad_n[s] == 0 or squad_follow[s] >= 0:
+		return false
+	var post := _side_post(side)
+	var p: Vector2 = post[0]
+	var v: Vector2 = post[1]
+	var d := Vector2(-v.y, v.x) * maxf((squad_width[s] - 1) * SLOT_SPACING, SLOT_SPACING)
+	_place_formation(s, p - d * 0.5, p + d * 0.5)
+	return true
+
+
+# Пост у стороны: [точка, лицо]. Точка — на отрезке от ворот к точке появления стороны (доля SIDE_POST_T),
+# лицо — к точке появления; для ворот (-1) — над воротами, лицом вверх.
+func _side_post(side: int) -> Array:
+	if side < 0:
+		return [Vector2(GATE_POS.x, WALL_Y - GATE_POST_BACK), Vector2.UP]
+	var sp := Vector2(wave_cfg.spawn_center_x, wave_cfg.spawn_front_y)
+	if side == SIDE_LEFT:
+		sp = Vector2(wave_cfg.spawn_left_x, wave_cfg.spawn_left_y)
+	elif side == SIDE_RIGHT:
+		sp = Vector2(wave_cfg.spawn_right_x, wave_cfg.spawn_right_y)
+	var p := GATE_POS.lerp(sp, SIDE_POST_T)
+	return [p, (sp - p).normalized()]
 
 
 # M: выбранный отряд вливается в первый другой занятый отряд того же типа; его индекс освобождается,
@@ -1480,6 +1571,7 @@ func _cmd_merge() -> bool:
 # Ворота пали: бой останавливается, рекорд сохраняется, R — заново.
 func _on_defeat() -> void:
 	wave_state = WS_DEFEAT
+	_set_paused(false)   # при поражении пауза недоступна
 	set_physics_process(false)
 	best_wave = maxi(best_wave, wave_number)
 	_save_record()
@@ -1958,6 +2050,13 @@ func _setup_rendering() -> void:
 
 func _setup_fps_label() -> void:
 	var layer := CanvasLayer.new()
+	# Пауза: лёгкое затемнение поля под интерфейсом (первый в слое) и надпись под HUD
+	pause_dim = ColorRect.new()
+	pause_dim.color = Color(0.0, 0.0, 0.0, 0.12)
+	pause_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pause_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pause_dim.visible = false
+	layer.add_child(pause_dim)
 	fps_label = Label.new()
 	layer.add_child(fps_label)
 	# Баннер по центру сверху (верх на BANNER_TOP): заголовок, текст, дневник, подсказка на полупрозрачном фоне;
@@ -2008,6 +2107,17 @@ func _setup_fps_label() -> void:
 	burst_label.add_theme_constant_override("outline_size", 8)
 	burst_label.visible = false
 	layer.add_child(burst_label)
+	pause_label = Label.new()
+	pause_label.text = "ПАУЗА"
+	pause_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	pause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pause_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	pause_label.position.y = 112.0   # под HUD и строкой сигнала всплеска
+	pause_label.add_theme_font_size_override("font_size", 30)
+	pause_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	pause_label.add_theme_constant_override("outline_size", 8)
+	pause_label.visible = false
+	layer.add_child(pause_label)
 	# Магазин справа (виден только в передышке)
 	shop_panel = VBoxContainer.new()
 	shop_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
@@ -2057,13 +2167,46 @@ func _setup_fps_label() -> void:
 		b.text = action_names[k]
 		b.pressed.connect(action_calls[k])
 		squad_actions.add_child(b)
+		action_buttons.append(b)
 	squad_panel.add_child(squad_actions)
+	# Деление: доля уходящих (10-90%, шаг 5%) и кто уходит
+	split_box = VBoxContainer.new()
+	var split_row := HBoxContainer.new()
+	split_label = Label.new()
+	split_label.custom_minimum_size.x = 150.0
+	split_row.add_child(split_label)
+	split_slider = HSlider.new()
+	split_slider.min_value = 10.0
+	split_slider.max_value = 90.0
+	split_slider.step = 5.0
+	split_slider.value = roundi(split_frac * 100.0)
+	split_slider.custom_minimum_size = Vector2(150, 24)
+	split_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	split_slider.value_changed.connect(_set_split_frac)
+	split_row.add_child(split_slider)
+	split_box.add_child(split_row)
+	split_mode_button = Button.new()
+	split_mode_button.custom_minimum_size = Vector2(0, 36)
+	split_mode_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	split_mode_button.pressed.connect(_next_split_mode)
+	split_box.add_child(split_mode_button)
+	squad_panel.add_child(split_box)
+	_update_split_ui()
 	layer.add_child(squad_panel)
 	add_child(layer)
+	_no_focus(layer)
 	_update_squad_panel()
 	if wave_state == WS_RESPITE:
 		_show_banner("", story_intro, "Расставь отряды. Space — начать волну 1", "Дневник военачальника")
 	_update_ui()
+
+
+# Ни один Control не берёт фокус клавиатуры: Space, Enter и стрелки не нажимают кнопки и не двигают ползунок.
+func _no_focus(node: Node) -> void:
+	if node is Control:
+		(node as Control).focus_mode = Control.FOCUS_NONE
+	for c in node.get_children():
+		_no_focus(c)
 
 
 func _select_squad(s: int) -> void:
@@ -2094,11 +2237,12 @@ func _squad_label(s: int) -> String:
 
 
 # Левая панель отрядов: раз в 0.25 с и сразу при выборе / смене приказа. Строки свободных индексов скрыты,
-# кнопки создания, разделения и слияния видны только в передышке.
+# кнопки создания, разделения и слияния видны в передышке и на паузе в бою (на паузе работает только деление).
 func _update_squad_panel() -> void:
 	if squad_panel == null:
 		return
-	var sig := 1 if wave_state == WS_RESPITE else 0
+	var acts := wave_state == WS_RESPITE or paused
+	var sig := 1 if acts else 0
 	for s in SQUAD_MAX:
 		squad_rows_ui[s].visible = squad_used[s] == 1
 		if squad_used[s] == 0:
@@ -2107,7 +2251,10 @@ func _update_squad_panel() -> void:
 		squad_swatches[s].color = type_color[squad_type[s]]
 		squad_buttons[s].text = "%d  %s — %d — %s" % [s + 1, _squad_label(s), squad_n[s], ORDER_NAMES[squad_order[s]]]
 		squad_buttons[s].set_pressed_no_signal(s == selected_squad)
-	squad_actions.visible = wave_state == WS_RESPITE
+	squad_actions.visible = acts
+	split_box.visible = acts
+	action_buttons[0].disabled = wave_state != WS_RESPITE   # новый отряд и слияние — только в передышке
+	action_buttons[2].disabled = wave_state != WS_RESPITE
 	if sig != squad_panel_sig:
 		squad_panel_sig = sig
 		# набор строк изменился: размер по содержимому, снова по центру левого края
@@ -2153,6 +2300,8 @@ var prof_avg := PackedFloat64Array([0, 0, 0, 0, 0, 0])   # мс на тик, с�
 var prof_n := 0
 
 func _physics_process(delta: float) -> void:
+	if paused:
+		return   # активная пауза: симуляция стоит целиком
 	var t := Time.get_ticks_usec()
 	prev_pos = pos.duplicate()   # для интерполяции в _process
 	tick_counter += 1
@@ -2253,7 +2402,8 @@ func _process(delta: float) -> void:
 	var now := tick_counter / float(Engine.physics_ticks_per_second)
 	var by_type := color_mode == 0
 	var frac := Engine.get_physics_interpolation_fraction()
-	var have_prev := prev_pos.size() == pos.size()   # до первого физического тика prev_pos пуст
+	# до первого физического тика prev_pos пуст; на паузе — pos без интерполяции (доля тика продолжает меняться)
+	var have_prev := prev_pos.size() == pos.size() and not paused
 	var sprites := sprites_on and by_type   # F2-F4: все квадратами, чтобы отладочный цвет читался
 	var jitter := RENDER_JITTER > 0.0
 	# Замах стрелков по отряду (как в _unit_anim_state): 1 — залп натягивается или ждёт цель, 2 — одиночный огонь.
@@ -2915,10 +3065,11 @@ func _block_shift(a: Vector2, dir: Vector2, face: Vector2, width: int, n: int) -
 		if absf(f) < 0.000001:
 			feasible = feasible and need[axis] == 0.0
 		else:
+			# сдвиг t вдоль лица: lo + t * f >= 0 и hi + t * f <= lim; блок длиннее поля по оси — промежуток пуст
 			var t1 := -lo[axis] / f
 			var t2 := (lim[axis] - hi[axis]) / f
-			t_lo = maxf(t_lo, minf(t1, t2))
-			t_hi = minf(t_hi, maxf(t1, t2))
+			t_lo = maxf(t_lo, t1 if f > 0.0 else t2)
+			t_hi = minf(t_hi, t2 if f > 0.0 else t1)
 	if need == Vector2.ZERO:
 		return Vector2.ZERO
 	if feasible and t_lo <= t_hi:
@@ -3383,7 +3534,22 @@ func _unhandled_input(event: InputEvent) -> void:
 				if wave_state == WS_DEFEAT:
 					get_tree().reload_current_scene()   # полный сброс: сцена создаётся заново
 			KEY_SPACE:
-				_start_wave()
+				if PAUSE_ENABLED and wave_state == WS_BATTLE:
+					_set_paused(not paused)
+				else:
+					_start_wave()
+			KEY_P:
+				_set_paused(not paused)
+			KEY_K:
+				_next_split_mode()
+			KEY_LEFT:
+				_cmd_side_post(SIDE_LEFT)
+			KEY_UP:
+				_cmd_side_post(SIDE_TOP)
+			KEY_RIGHT:
+				_cmd_side_post(SIDE_RIGHT)
+			KEY_DOWN:
+				_cmd_side_post(-1)
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8:
 				_select_squad(event.keycode - KEY_1)
 			KEY_N:
