@@ -188,7 +188,7 @@ func test_about_face() -> void:
 			for i in units_of(m, 0):
 				before[i] = slot_world(m, i)
 			var a0: float = m.squad_angle[0]
-			m._select_squad(0)
+			m._select_only(0)
 			var done: bool = m._cmd_about_face()
 			for i in before:
 				worst = maxf(worst, slot_world(m, i).distance_to(before[i]))
@@ -200,7 +200,7 @@ func test_about_face() -> void:
 		out.append("%s: макс. сдвиг слота %.4f px, угол не на 180° в %d, сетка нарушена в %d" % [mode, worst, angle_bad, grid_bad])
 	var e := new_main(NEW, 1, true)
 	e._cmd_new_squad()
-	var ignored: bool = e.squad_n[e.selected_squad] == 0 and not e._cmd_about_face() and not e._cmd_rotate(1)
+	var ignored: bool = e.squad_n[e.sel_primary] == 0 and not e._cmd_about_face() and not e._cmd_rotate(1)
 	e.free()
 	print("(г) F вне протяжки, 30 случайных углов (допуск 0.01 px): %s; пустой отряд игнорирует F и колесо: %s" % ["; ".join(out), ignored])
 
@@ -230,7 +230,7 @@ func test_angle_stable() -> void:
 # (е) Shift + колесо.
 func test_rotate() -> void:
 	var m := new_main(NEW, 1, true)
-	m._select_squad(0)
+	m._select_only(0)
 	var a0: float = m.squad_angle[0]
 	var t0: Vector2 = m.squad_target[0]
 	var c0 := Vector2.ZERO
@@ -290,7 +290,7 @@ func test_shield() -> void:
 			bottom = i
 	var up := Vector2(0, -5)
 	var r1 := [hit_from(m, top, up), hit_from(m, bottom, -up)]
-	m._select_squad(0)
+	m._select_only(0)
 	m._cmd_about_face()
 	var r2 := [hit_from(m, top, up), hit_from(m, bottom, -up)]
 	var ok: bool = is_equal_approx(r1[0], 0.3) and is_equal_approx(r1[1], 1.0) and is_equal_approx(r2[0], 1.0) and is_equal_approx(r2[1], 0.3)
@@ -299,12 +299,12 @@ func test_shield() -> void:
 
 func test_ring() -> void:
 	var m := new_main(NEW, 1, true)
-	m._select_squad(1)
-	var arch: float = m._range_ring_radius(m.selected_squad)
-	m._select_squad(0)
-	var inf: float = m._range_ring_radius(m.selected_squad)
+	m._select_only(1)
+	var arch: float = m._range_ring_radius(m.sel_primary)
+	m._select_only(0)
+	var inf: float = m._range_ring_radius(m.sel_primary)
 	m._cmd_new_squad()
-	var empty: float = m._range_ring_radius(m.selected_squad)
+	var empty: float = m._range_ring_radius(m.sel_primary)
 	print("(з) кольцо дальности: у выбранных лучников радиус %.0f, у пехоты %.0f, у пустого отряда %.0f" % [arch, inf, empty])
 	m.free()
 

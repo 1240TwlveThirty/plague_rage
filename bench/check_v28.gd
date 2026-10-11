@@ -80,8 +80,8 @@ func integrity(m: Node2D) -> String:
 			return "свободный отряд %d с юнитами" % s
 	if m.squad_used[0] == 0 or m.squad_used[1] == 0:
 		return "отряд 0 или 1 освобождён"
-	if m.squad_used[m.selected_squad] == 0:
-		return "выбран свободный отряд %d" % m.selected_squad
+	if m.squad_used[m.sel_primary] == 0:
+		return "выбран свободный отряд %d" % m.sel_primary
 	return ""
 
 func used_list(m: Node2D) -> Array:
@@ -129,7 +129,7 @@ func test_create_buy() -> void:
 	m.gold = 1e9
 	var ok := true
 	var out := []
-	ok = ok and m._cmd_new_squad() and m.selected_squad == 2 and m.squad_type[2] == m.infantry_type and m.squad_n[2] == 0
+	ok = ok and m._cmd_new_squad() and m.sel_primary == 2 and m.squad_type[2] == m.infantry_type and m.squad_n[2] == 0
 	ok = ok and m.squad_order[2] == m.ORDER_ATTACK and m.squad_aspect[2] == m.squad_aspect[0] and m.squad_ranged[2] == 0
 	out.append("N при выбранной пехоте: отряд 3 (индекс 2), пехота, 0 юнитов: %s" % ok)
 	m._buy(0)   # пехота в выбранный отряд того же типа
@@ -145,8 +145,8 @@ func test_create_buy() -> void:
 		far = maxf(far, m.pos[i].distance_to(slot_world(m, i)))
 	ok2 = ok2 and far < m.SLOT_SPACING and m.squad_pos[2] == gate
 	out.append("покупка: пехота в выбранный отряд 3 (у ворот %s, за 8 с юниты в слотах, макс. отклонение %.2f px), лучники в отряд 2: %s" % [gate, far, ok2])
-	m._select_squad(1)
-	var ok3: bool = m._cmd_new_squad() and m.selected_squad == 3 and m.squad_type[3] == m.archer_type and m.squad_ranged[3] == 1 and m.squad_aspect[3] == m.squad_aspect[1]
+	m._select_only(1)
+	var ok3: bool = m._cmd_new_squad() and m.sel_primary == 3 and m.squad_type[3] == m.archer_type and m.squad_ranged[3] == 1 and m.squad_aspect[3] == m.squad_aspect[1]
 	m._buy(1)
 	ok3 = ok3 and m.squad_n[3] == 25 and m.squad_n[1] == 125
 	m._buy(0)   # пехота при выбранных лучниках -> первый отряд пехоты (0)
@@ -155,14 +155,14 @@ func test_create_buy() -> void:
 	# cap по сумме отрядов типа
 	var buys := [0, 0]
 	for k in 2:
-		m._select_squad(2 if k == 0 else 3)
+		m._select_only(2 if k == 0 else 3)
 		while m._buy(k):
 			buys[k] += 1
 	var ok4: bool = type_total(m, m.infantry_type) == m.shop_cap[0] and type_total(m, m.archer_type) == m.shop_cap[1] and m._at_cap(0) and m._at_cap(1)
 	out.append("cap по сумме отрядов: пехота %d (предел %d, отряды %d+%d), лучники %d (предел %d, отряды %d+%d): %s" % [
 		type_total(m, m.infantry_type), m.shop_cap[0], m.squad_n[0], m.squad_n[2], type_total(m, m.archer_type), m.shop_cap[1], m.squad_n[1], m.squad_n[3], ok4])
 	# вне передышки N/G/M игнорируются
-	m._select_squad(0)
+	m._select_only(0)
 	m._start_wave()
 	var before := used_list(m)
 	var ok5: bool = m.wave_state == m.WS_BATTLE and not m._cmd_new_squad() and not m._cmd_split() and not m._cmd_merge() and used_list(m) == before and m.hud_msg == ""
@@ -181,11 +181,11 @@ func split_case(m: Node2D, n: int) -> String:
 	var target: Vector2 = m.squad_target[0]
 	var uw: int = m.squad_user_width[0]
 	var p0: Vector2 = m.squad_pos[0]
-	m._select_squad(0)
+	m._select_only(0)
 	var done: bool = m._cmd_split()
 	if n < 2:
 		return "n=1 отказ" if (not done and m.hud_msg != "" and m.squad_used[2] == 0 and m.squad_n[0] == 1) else "ОШИБКА n=1"
-	var t: int = m.selected_squad
+	var t: int = m.sel_primary
 	var stay := units_of(m, 0)
 	var gone := units_of(m, t)
 	var max_stay := -(1 << 40)
@@ -231,9 +231,9 @@ func test_split() -> void:
 	print("    повёрнутый отряд, 8 углов: %s" % ", ".join(rot))
 	var m := new_main(NEW, 1, true)
 	for q in 6:
-		m._select_squad(0)
+		m._select_only(0)
 		m._cmd_new_squad()
-	m._select_squad(0)
+	m._select_only(0)
 	m.hud_msg = ""
 	var before := used_list(m)
 	var refused: bool = not m._cmd_split() and m.hud_msg != "" and used_list(m) == before and m.squad_n[0] == 300
@@ -245,26 +245,26 @@ func test_split() -> void:
 func test_merge() -> void:
 	var m := new_main(NEW, 1, true)
 	var out := []
-	m._select_squad(0)
+	m._select_only(0)
 	m._cmd_split()   # 0: 150, 2: 150, выбран 2
-	var ok: bool = m._cmd_merge() and m.squad_n[0] == 300 and m.squad_used[2] == 0 and m.squad_n[2] == 0 and m.selected_squad == 0 and grid_ok(m, 0) and integrity(m) == ""
+	var ok: bool = m._cmd_merge() and m.squad_n[0] == 300 and m.squad_used[2] == 0 and m.squad_n[2] == 0 and m.sel_primary == 0 and grid_ok(m, 0) and integrity(m) == ""
 	ok = ok and m.squad_user_width[2] == 0 and m.squad_pos[2] == Vector2.ZERO and m.squad_width[2] == 1
 	out.append("150+150 → %d, индекс 2 очищен, выбор на целевом: %s" % [m.squad_n[0], ok])
-	var ok2: bool = m._cmd_new_squad() and m.selected_squad == 2 and m.squad_n[2] == 0
+	var ok2: bool = m._cmd_new_squad() and m.sel_primary == 2 and m.squad_n[2] == 0
 	out.append("освобождённый индекс 2 занят снова: %s" % ok2)
 	# выбран отряд 0: другой вливается в него (0 не освобождается)
 	m._squad_add_units(2, m.infantry_type, 40)
-	m._select_squad(0)
-	var ok3: bool = m._cmd_merge() and m.squad_n[0] == 340 and m.squad_used[0] == 1 and m.squad_used[2] == 0 and m.selected_squad == 0 and grid_ok(m, 0)
+	m._select_only(0)
+	var ok3: bool = m._cmd_merge() and m.squad_n[0] == 340 and m.squad_used[0] == 1 and m.squad_used[2] == 0 and m.sel_primary == 0 and grid_ok(m, 0)
 	out.append("выбран отряд 1 (индекс 0): отряд 3 вливается в него, 300+40 → %d: %s" % [m.squad_n[0], ok3])
 	# большой отряд: 600 + 600
 	m._squad_add_units(0, m.infantry_type, 260)
 	m._cmd_new_squad()
 	m._squad_add_units(2, m.infantry_type, 600)
-	m._select_squad(2)
+	m._select_only(2)
 	var ok4: bool = m._cmd_merge() and m.squad_n[0] == 1200 and m.squad_width[0] <= m.WIDTH_MAX and m.squad_rows[0] <= m.ROWS_MAX and grid_ok(m, 0) and integrity(m) == ""
 	out.append("600+600 → %d, строй %d × %d: %s" % [m.squad_n[0], m.squad_width[0], m.squad_rows[0], ok4])
-	m._select_squad(1)
+	m._select_only(1)
 	m.hud_msg = ""
 	var ok5: bool = not m._cmd_merge() and m.hud_msg != "" and m.squad_n[1] == 100
 	out.append("нет другого отряда лучников: отказ «%s»: %s" % [m.hud_msg, ok5])
@@ -277,7 +277,7 @@ func test_cleanup() -> void:
 	m._cmd_new_squad()   # 2, пехота
 	m._buy(0)
 	m._cmd_new_squad()   # 3, пусто
-	m._select_squad(2)
+	m._select_only(2)
 	for i in m.count:
 		if m.unit_squad[i] == 2 or m.unit_squad[i] == 1:
 			m.hp[i] = 0.0   # выбиты отряд 3 и все лучники (отряд 2)
@@ -285,7 +285,7 @@ func test_cleanup() -> void:
 	m.wave_number = 1
 	m.wave_state = m.WS_BATTLE
 	m._wave_cleared()
-	var ok: bool = m.squad_used[2] == 0 and m.squad_used[3] == 0 and m.squad_used[0] == 1 and m.squad_used[1] == 1 and m.squad_n[1] == 0 and m.selected_squad == 0 and integrity(m) == ""
+	var ok: bool = m.squad_used[2] == 0 and m.squad_used[3] == 0 and m.squad_used[0] == 1 and m.squad_used[1] == 1 and m.squad_n[1] == 0 and m.sel_primary == 0 and integrity(m) == ""
 	print("(е) очистка при входе в передышку: пустые отряды 3 и 4 освобождены, пустой отряд 2 (лучники) остался, выбор ушёл на отряд 1: %s" % ok)
 	# 20 циклов: создание, покупка, разделение, слияние, гибель; целостность после каждого шага
 	var rng := RandomNumberGenerator.new()
@@ -299,7 +299,7 @@ func test_cleanup() -> void:
 			for s in m.SQUAD_MAX:
 				if m.squad_used[s] == 1:
 					used.append(s)
-			m._select_squad(used[rng.randi_range(0, used.size() - 1)])
+			m._select_only(used[rng.randi_range(0, used.size() - 1)])
 			match rng.randi_range(0, 4):
 				0:
 					ops[0] += int(m._cmd_new_squad())
@@ -338,9 +338,9 @@ func test_cleanup() -> void:
 
 func archers_run(seed: int) -> Dictionary:
 	var m := new_main(NEW, seed, true)
-	m._select_squad(1)
+	m._select_only(1)
 	m._cmd_split()   # лучники: 1 и 2 по 50
-	var b: int = m.selected_squad
+	var b: int = m.sel_primary
 	m._place_formation(1, Vector2(900, 400), Vector2(1040, 400))   # ближе к орде
 	m._place_formation(b, Vector2(900, 560), Vector2(1040, 560))   # дальше
 	teleport(m, 1)
@@ -404,14 +404,14 @@ func battle(seed: int, mode: int) -> Array:
 		m._remove_dead()
 		m._update_squads(0.6)
 		m.first_death_tick = -1
-		m._select_squad(0)
+		m._select_only(0)
 		m._cmd_split()   # 100 + 100
-		b = m.selected_squad
+		b = m.sel_primary
 		m._cmd_new_squad()
-		c = m.selected_squad
+		c = m.sel_primary
 		m._buy(0)
 		m._buy(0)   # 100 в третий отряд
-		m._select_squad(0)
+		m._select_only(0)
 		m.wave_state = m.WS_BATTLE
 		for s in [a, b, c]:
 			m.squad_pos[s] = Vector2(1010, 740)   # центр ниже линии: строй встанет лицом вверх
@@ -444,7 +444,7 @@ func battle(seed: int, mode: int) -> Array:
 		m._remove_dead()
 		m._update_squads(0.6)
 		m.first_death_tick = -1
-		m._select_squad(0)
+		m._select_only(0)
 		m._buy(0)
 		m._buy(0)
 		m.wave_state = m.WS_BATTLE
@@ -541,28 +541,28 @@ func scripted(seed: int) -> PackedVector2Array:
 				break
 			match wave:
 				0:
-					m._select_squad(0)
+					m._select_only(0)
 					m._cmd_new_squad()     # отряд пехоты
 					m._buy(0)
-					m._select_squad(1)
+					m._select_only(1)
 					m._cmd_split()         # лучники пополам
-					m._place_formation(m.selected_squad, Vector2(1080, 600), Vector2(1200, 600))
-					m._select_squad(0)
+					m._place_formation(m.sel_primary, Vector2(1080, 600), Vector2(1200, 600))
+					m._select_only(0)
 					m._place_formation(0, Vector2(900, 560), Vector2(1100, 560))
 				1:
-					m._select_squad(2)
+					m._select_only(2)
 					m._cmd_merge()         # созданный отряд пехоты вливается в отряд 0
 					m._buy(1)
-					m._select_squad(0)
+					m._select_only(0)
 					m._cmd_split()
-					m._place_formation(m.selected_squad, Vector2(820, 600), Vector2(900, 520))
+					m._place_formation(m.sel_primary, Vector2(820, 600), Vector2(900, 520))
 				2:
-					m._select_squad(1)
+					m._select_only(1)
 					m._cmd_merge()
 					m._cmd_new_squad()
 					m._buy(1)
 					m._buy(0)
-					m._select_squad(0)
+					m._select_only(0)
 					m._cmd_merge()
 			wave += 1
 			m._start_wave()

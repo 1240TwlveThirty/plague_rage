@@ -368,6 +368,8 @@ var box_cur := Vector2.ZERO                   # и курсора сейчас
 var box_dbl := false                          # нажатие было двойным кликом
 var mod_shift := false                        # Shift по последнему событию мыши или клавиатуры (клик по строке панели)
 var sel_sig := 0.0                            # отпечаток выбранных отрядов (место, угол, состав): изменился — перерисовка контуров
+var sel_boxes := []                           # границы живых слотов отрядов для контуров (_squad_boxes), пока строи те же
+var sel_boxes_key := 0.0
 var hint_label: Label
 var paused := false                           # активная пауза: _physics_process не выполняется, команды только меняют данные
 var split_frac := 0.5                         # деление: доля уходящих в новый отряд
@@ -465,12 +467,19 @@ func _draw() -> void:
 				Color(type_color[squad_type[s]], 1.0 if _is_sel(s) else 0.4))
 	# Выбранные отряды: тонкий контур блока живых слотов цветом типа (у главного толще) и дальность стрельбы стрелков
 	if sel_mask != 0:
-		var boxes := _squad_boxes()
+		# границы слотов меняются только с составом и строем: проход по юнитам — когда изменился отпечаток строёв
+		var key := 0.0
+		for s in SQUAD_MAX:
+			key += (squad_n[s] * 13.0 + squad_width[s] * 7.0 + squad_center_off[s].x * 1.3 + squad_center_off[s].y * 2.7
+				+ squad_depth[s] * 0.37 + squad_front_x[s] * 0.11) * (s + 1)
+		if key != sel_boxes_key or sel_boxes.is_empty():
+			sel_boxes_key = key
+			sel_boxes = _squad_boxes()
 		for s in SQUAD_MAX:
 			if not _is_sel(s) or squad_n[s] == 0:
 				continue
 			var sel_col := type_color[squad_type[s]]
-			var outline := _live_block(s, boxes, squad_pos[s])
+			var outline := _live_block(s, sel_boxes, squad_pos[s])
 			if outline.size() > 0:
 				outline.append(outline[0])
 				draw_polyline(outline, sel_col, 3.0 if s == sel_primary else 1.0)
