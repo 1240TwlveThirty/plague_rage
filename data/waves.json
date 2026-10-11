@@ -9,7 +9,7 @@
 	"max_alive": 2200,
 	"spawn_center_x": 970,
 	"spawn_front_y": 100,
-	"spawn_columns": 50,
+	"spawn_columns": 40,
 	"spawn_spacing": 8,
 	"wave_bonus_gold": 20,
 	"gold_per_kill": 2.0,

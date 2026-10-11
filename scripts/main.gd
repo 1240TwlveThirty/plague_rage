@@ -50,13 +50,18 @@ const SORT_OFFSET := 1 << 20                  # сдвиг ключа сорти
 const WS_BATTLE := 0    # идёт бой
 const WS_DEFEAT := 1    # ворота пали
 const WS_RESPITE := 2   # передышка между волнами
+# --- Масштаб мира: множители к базовым значениям геометрии и скоростей (и к range, range_far, speed из JSON,
+# spawn_spacing из waves.json — при загрузке). Результат округляется до 0.01. 1.0 — база (шаг строя 8); сейчас шаг 12.
+const SCALE_REL := 1.5           # геометрия: шаг строя, дистанции, клетка сетки, дальности, квадрат юнита
+const SPEED_REL := 1.5           # скорости юнитов и стрел
+const RENDER_JITTER := 1.0       # px: статичный сдвиг отрисовки юнита (по unit_rand), только на экране
 const FLOATS_PER_UNIT := 16   # 8 (трансформ 2D) + 4 (цвет) + 4 (custom: x = ячейка атласа)
 # --- Спрайты ---
 const SPRITE_PATH := "res://art/pehota_animate.png"   # лист пехоты лицом вправо: кадры 16x16 в ряд (стоит, замах, атака)
 const SPRITE_PX := 16            # сторона кадра и размер спрайта в мире, px
 const SPRITE_FRAMES := 3
 const CELL_WHITE := 3            # ячейка атласа после кадров: белая, для цветных квадратов
-const UNIT_QUAD := 5.33          # ×4/3; сторона цветного квадрата юнита, px
+const UNIT_QUAD := roundf(5.33 * SCALE_REL * 100.0) / 100.0   # сторона цветного квадрата юнита, px
 const WINDUP_T := 0.15           # кадр «замах» столько секунд до удара
 const UPDATE_TICKS := 2          # юнит принимает решение (и бьёт) раз в столько физических тиков
 const ATTACK_ANIM_T := 0.15      # кадр «атака» столько секунд после удара
@@ -65,26 +70,37 @@ const DIR_HYST := 55.0 * PI / 180.0   # направление спрайта м
 # Вправо как есть, влево зеркало по x, вниз поворот +90°, вверх -90°.
 const DIR_BASIS: Array[float] = [16.0, 0.0, 0.0, 16.0,   0.0, -16.0, 16.0, 0.0,   -16.0, 0.0, 0.0, 16.0,   0.0, 16.0, -16.0, 0.0]
 const FIELD := Vector2(2208.0, 1056.0)   # поле в px (не масштабируется), юниты не выходят за край
-const CELL_SIZE := 16.0   # ×4/3
+const CELL_SIZE := roundf(16.0 * SCALE_REL * 100.0) / 100.0   # клетка мелкой сетки
 const GRID_W := ceili(FIELD.x / CELL_SIZE)   # сетка считается от поля и клетки
 const GRID_H := ceili(FIELD.y / CELL_SIZE)
 const CELL_COUNT := GRID_W * GRID_H   # клеток мелкой сетки
-const MIN_DIST := 6.67       # ×4/3; ближе этого юниты отталкиваются
+const MIN_DIST := roundf(6.67 * SCALE_REL * 100.0) / 100.0   # ближе этого юниты отталкиваются
 const PUSH_K := 0.5          # доля перекрытия, которую снимаем за тик
-const VIEW_RANGE := CELL_SIZE   # ×4/3; равен CELL_SIZE: окно 3x3 его гарантированно покрывает
+const VIEW_RANGE := CELL_SIZE   # равен CELL_SIZE: окно 3x3 его гарантированно покрывает
 # --- Карта замка (вертикальная, 1920x1080; игрок внизу, зомби сверху) ---
 const BG_PATH := "res://art/castle_bg.jpg"   # 1500x704, рисуется с масштабом 1.5
 const ROAD_X := 970.0                  # ось дороги, по которой идёт орда
 const GATE_POS := Vector2(1010, 745)   # ворота замка
 const WALL_Y := 745.0                  # временный пол: ниже не заходит ни один юнит, пока нет стен
-const PLAYER_START := Vector2(1010, 605)   # расстояние до WALL_Y ×4/3 (105 -> 140); центр строя пехоты на старте (лучники встают позади)
+# Центр строя пехоты на старте (лучники встают позади). y считается от стены: задний ряд стартовых лучников стоит
+# на WALL_Y - FORM_MARGIN - ARCHER_ROWS_RESERVE рядов (место под ряды отряда лучников при покупках до предела магазина),
+# выше него — ряды лучников, ARCHER_GAP и половины глубин обоих строёв (глубина = ряды * шаг).
+const START_WIDTH_INF := 20      # ширина стартового строя пехоты
+const START_WIDTH_ARCH := 25     # и лучников (шире и мельче)
+const ARCHER_ROWS_RESERVE := 3
+const PLAYER_START := Vector2(1010, WALL_Y - FORM_MARGIN - ARCHER_GAP
+	- (ceili(INFANTRY_COUNT / float(START_WIDTH_INF)) * 0.5 + ceili(ARCHER_COUNT / float(START_WIDTH_ARCH)) - 0.5 + ARCHER_ROWS_RESERVE) * SLOT_SPACING)
 const PLAYER_ANGLE := -PI / 2.0            # «вперёд» отряда игрока — вверх, к зомби
 const ZOMBIE_FRONT_Y := 130.0              # передний край блока зомби на старте; ряды уходят вверх
 # Юнит обновляется раз в 2 тика. Два обновления по PUSH_K оставляют 25% перекрытия,
 # поэтому за одно обновление снимаем 1 - 0.5^2 = 75%.
 const PUSH_K_2 := 1.0 - (1.0 - PUSH_K) * (1.0 - PUSH_K)
 const SLOT_GAIN := 5.0        # сила притяжения к слоту (1/с)
-const SLOT_SPACING := 8.0       # ×4/3
+const SLOT_SPACING := roundf(8.0 * SCALE_REL * 100.0) / 100.0   # шаг строя
+const SLOT_NEAR_SQ := SLOT_SPACING * SLOT_SPACING * 0.25   # дальше полуслота от своего места (в квадрате) — «возвращается»
+const GATE_SIDE_MARGIN := roundf(8.0 * SCALE_REL * 100.0) / 100.0   # запас по x у ворот: один слот
+const GOAL_STOP := roundf(5.33 * SCALE_REL * 100.0) / 100.0          # орда не идёт к цели ближе этого
+const SPAWN_JITTER := roundf(1.33 * SCALE_REL * 100.0) / 100.0       # разброс точки появления зомби, ±px
 const TURN_SPEED := 1.5          # рад/с, поворот на месте
 const ABOUT_FACE_ANGLE := 2.1    # около 120°: если угол больше, разворот «кругом»
 const MOVE_ANGLE := 0.7          # около 40°: пока угол больше, отряд стоит и поворачивается
@@ -94,21 +110,21 @@ const HORDE_CHAOS := 0.4               # доля бокового качани�
 const BLOCK_COS := 0.5                 # передний сектор щита: ±60° от фронта отряда
 const SHIELD_DOWN_TIME := 0.25         # щит опущен столько секунд после собственного удара
 # --- Лучники ---
-const ARCHER_GAP := 13.33              # ×4/3; зазор между строем ведущего отряда и строем лучников (сверх половин глубин)
-const COARSE_CELLS := 4                # грубая клетка = 4x4 мелких (64 px) — для прицеливания по зомби
+const ARCHER_GAP := roundf(13.33 * SCALE_REL * 100.0) / 100.0   # зазор между строем ведущего отряда и строем лучников (сверх половин глубин)
+const COARSE_CELLS := 4                # грубая клетка = 4x4 мелких — для прицеливания по зомби
 const COARSE_SIZE := CELL_SIZE * COARSE_CELLS
 const COARSE_W := (GRID_W + COARSE_CELLS - 1) / COARSE_CELLS   # ceil: покрывает всё поле
 const COARSE_H := (GRID_H + COARSE_CELLS - 1) / COARSE_CELLS
 const COARSE_COUNT := COARSE_W * COARSE_H
 const COARSE_EVERY := 4                # пересчёт грубой сетки раз в столько тиков
-const NEAR_RANGE := 40.0               # ×4/3; зомби ближе — одиночный огонь
-const MODE_HYST := 13.33               # ×4/3; дальше NEAR_RANGE + MODE_HYST — залп; между порогами режим не меняется
+const NEAR_RANGE := roundf(40.0 * SCALE_REL * 100.0) / 100.0   # зомби ближе — одиночный огонь
+const MODE_HYST := roundf(13.33 * SCALE_REL * 100.0) / 100.0   # дальше NEAR_RANGE + MODE_HYST — залп; между порогами режим не меняется
 const MODE_VOLLEY := 0
 const MODE_SINGLE := 1
 const SINGLE_SCAN_T := 0.3             # одиночный огонь: лучник ищет цель раз в столько секунд
 const VOLLEY_JITTER := 0.15            # залп: индивидуальная задержка выстрела ±столько секунд
-const ARROW_SPEED := 266.67            # ×4/3; px/с, задаёт задержку падения стрелы
-const ARROW_HIT_R := 10.67             # ×4/3; стрела попадает в ближайшего зомби в этом радиусе от точки падения
+const ARROW_SPEED := roundf(266.67 * SPEED_REL * 100.0) / 100.0   # px/с, задаёт задержку падения стрелы
+const ARROW_HIT_R := roundf(10.67 * SCALE_REL * 100.0) / 100.0   # стрела попадает в ближайшего зомби в этом радиусе от точки падения
 const ARROW_CAP := 2048                # ёмкость очереди стрел (с запасом)
 const DEBUG_COLORS := true            # F2–F4: отладочная раскраска; false в релизе (остаётся только F1)
 # Состояние юнита для раскраски F3 (пишется там, где принимается решение)
@@ -162,6 +178,7 @@ var unit_state := PackedByteArray()           # ST_* (для раскраски 
 var unit_anim_t := PackedFloat32Array()       # сколько секунд ещё показывать кадр «атака» (только отрисовка)
 var unit_dir := PackedByteArray()             # направление спрайта: 0 вправо, 1 вниз, 2 влево, 3 вверх (только отрисовка)
 var squad_dir_angle := PackedFloat32Array()   # угол отряда, по которому в последний раз считались unit_dir; NAN = пересчитать
+var unit_render_off := PackedVector2Array()   # сдвиг отрисовки юнита (_render_offset), считается при появлении (только отрисовка)
 var sprites_on := true                        # F5: пехота спрайтом (в F1); false — все юниты квадратами
 var sprites_ok := false                       # лист пехоты загружен
 var windup_cd := 0.0                          # порог cooldown для кадра «замах», см. _unit_frame
@@ -576,6 +593,7 @@ func _load_waves() -> bool:
 				or layer.side_weight_top + layer.side_weight_left + layer.side_weight_right <= 0.0:
 			push_error("%s, слой %d: веса сторон должны быть >= 0, а их сумма > 0" % [WAVES_PATH, q + 1])
 			return false
+	d.spawn_spacing = _scaled(d.spawn_spacing, SCALE_REL)
 	wave_cfg = d
 	return true
 
@@ -1129,7 +1147,7 @@ func _spawn_block(n: int, type: int, side: int, first: int) -> void:
 			p = Vector2(wave_cfg.spawn_center_x + (col - (cols - 1) * 0.5) * sp, wave_cfg.spawn_front_y - row * sp)
 		else:
 			p = centre + lat * ((col - (cols - 1) * 0.5) * sp) - face * (row * sp)
-		p += Vector2(unit_rng.randf_range(-1.33, 1.33), unit_rng.randf_range(-1.33, 1.33))   # ×4/3
+		p += Vector2(unit_rng.randf_range(-SPAWN_JITTER, SPAWN_JITTER), unit_rng.randf_range(-SPAWN_JITTER, SPAWN_JITTER))
 		_spawn_zombie(p.clamp(Vector2.ZERO, lim), type)
 
 
@@ -1146,6 +1164,7 @@ func _spawn_zombie(p: Vector2, type: int) -> void:
 	unit_slot_idx[i] = -1
 	unit_slot[i] = Vector2.ZERO
 	unit_rand[i] = unit_rng.randf()
+	unit_render_off[i] = _render_offset(i)
 	hp[i] = type_hp[type] * wave_hp_mult
 	arrivals_now += 1
 	cooldown[i] = unit_rand[i] * type_cooldown[type]
@@ -1261,6 +1280,7 @@ func _squad_add_units(s: int, type: int, n: int) -> void:
 		unit_slot_idx[i] = TEMP_SLOT_BASE + k
 		unit_slot[i] = Vector2.ZERO
 		unit_rand[i] = unit_rng.randf()
+		unit_render_off[i] = _render_offset(i)
 		hp[i] = type_hp[type]
 		cooldown[i] = 0.0
 		unit_state[i] = ST_IDLE
@@ -1613,15 +1633,16 @@ func _load_types() -> bool:
 		ids[e.name] = t
 		type_hp[t] = e.hp
 		type_damage[t] = e.damage
-		type_range_sq[t] = e.range * e.range
+		var rng_near := _scaled(e.range, SCALE_REL)
+		type_range_sq[t] = rng_near * rng_near
 		type_cooldown[t] = e.cooldown
-		type_speed[t] = e.speed
+		type_speed[t] = _scaled(e.speed, SPEED_REL)
 		type_block_mult[t] = e.block_mult
 		type_leash_start[t] = e.leash_start
 		type_leash_start_sq[t] = e.leash_start * e.leash_start
 		type_leash_end[t] = e.leash_end
 		type_color[t] = Color.html(e.color)
-		type_range_far[t] = e.range_far
+		type_range_far[t] = _scaled(e.range_far, SCALE_REL)
 		type_volley_period[t] = e.volley_period
 		type_draw_time[t] = e.draw_time
 		type_spread[t] = e.spread
@@ -1631,6 +1652,11 @@ func _load_types() -> bool:
 		type_chase[t] = 1 if e.chase != 0 else 0
 	type_id = ids   # заполняем только при полном успехе
 	return true
+
+
+# Значение из JSON с множителем масштаба (SCALE_REL или SPEED_REL), округлённое до 0.01.
+func _scaled(v: float, rel: float) -> float:
+	return roundf(v * rel * 100.0) / 100.0
 
 
 func _type_of(type_name: String) -> int:
@@ -1689,6 +1715,7 @@ func _setup_data() -> void:
 	unit_anim_t.fill(0.0)
 	unit_dir.resize(MAX_UNITS)
 	unit_dir.fill(0)
+	unit_render_off.resize(MAX_UNITS)
 	var upd := float(UPDATE_TICKS) / Engine.physics_ticks_per_second
 	windup_cd = (roundf(WINDUP_T / upd) - 1.5) * upd
 	# Лучники: грубая сетка зомби и очередь стрел, всё выделяется один раз.
@@ -1742,7 +1769,7 @@ func _setup_data() -> void:
 	selected_squad = 0
 	var squad_size := PackedInt32Array([INFANTRY_COUNT, ARCHER_COUNT])
 	var start_type := PackedInt32Array([infantry, archer])
-	var start_width := PackedInt32Array([20, 25])   # лучники: шире и мельче (25 x 4)
+	var start_width := PackedInt32Array([START_WIDTH_INF, START_WIDTH_ARCH])   # лучники: шире и мельче (25 x 4)
 	var start_aspect := PackedVector2Array([Vector2(20, 15), Vector2(25, 4)])   # для перестройки (_reflow_squad)
 	for s in START_SQUADS:
 		squad_used[s] = 1
@@ -1761,6 +1788,7 @@ func _setup_data() -> void:
 	count = n_start
 	for i in n_start:
 		unit_rand[i] = unit_rng.randf()
+		unit_render_off[i] = _render_offset(i)
 		var s := 0 if i < INFANTRY_COUNT else (1 if i < INFANTRY_COUNT + ARCHER_COUNT else -1)
 		if s >= 0:
 			unit_squad[i] = s
@@ -2170,9 +2198,12 @@ func _process(delta: float) -> void:
 	var have_prev := prev_pos.size() == pos.size()   # до первого физического тика prev_pos пуст
 	var sprites := sprites_on and sprites_ok and by_type   # F2-F4: пехота квадратом, чтобы отладочный цвет читался
 	var inf := infantry_type
+	var jitter := RENDER_JITTER > 0.0
 	for i in count:
 		var o := i * FLOATS_PER_UNIT
 		var rp := prev_pos[i].lerp(pos[i], frac) if have_prev else pos[i]   # позиция между тиками
+		if jitter:
+			rp += unit_render_off[i]   # статичный сдвиг ±RENDER_JITTER
 		buf[o + 3] = rp.x
 		buf[o + 7] = rp.y
 		# матрицу, цвет и ячейку пишем каждый кадр: после _remove_dead на индекс i мог встать юнит другого типа.
@@ -2210,6 +2241,14 @@ func _process(delta: float) -> void:
 		fps_label.text += "\nфазы, мс/тик: " + ", ".join(parts) + " | появилось за 10 с, максимум: %d" % arrivals_10s_max
 	if gate_hp != drawn_gate_hp:
 		queue_redraw()   # полоса HP ворот
+
+
+# Сдвиг отрисовки юнита: две независимые функции от unit_rand, каждая в ±RENDER_JITTER. Не меняется со временем
+# и не трогает pos: строй на экране не выглядит идеальной сеткой. Считается один раз при появлении юнита
+# (unit_render_off) и переносится в _remove_dead.
+func _render_offset(i: int) -> Vector2:
+	var r := unit_rand[i]
+	return Vector2(fposmod(r * 127.1, 1.0) * 2.0 - 1.0, fposmod(r * 311.7, 1.0) * 2.0 - 1.0) * RENDER_JITTER
 
 
 # Кадр спрайта юнита: 2 «атака» — ATTACK_ANIM_T после удара; 1 «замах» — юнит бьёт (враг в дальности атаки)
@@ -2331,7 +2370,7 @@ func _update_unit(i: int, delta: float) -> void:
 			# Держать: к врагу не идём, остаёмся (возвращаемся) в слот; бьём только того, кто в дальности атаки.
 			var hold_slot := squad_pos[sq] + unit_slot[i].rotated(squad_angle[sq])
 			v = ((hold_slot - p) * SLOT_GAIN).limit_length(type_speed[t] * 1.3)
-			unit_state[i] = ST_RETURN if p.distance_squared_to(hold_slot) > 16.0 else ST_IDLE   # ×4/3: 4 px в квадрате
+			unit_state[i] = ST_RETURN if p.distance_squared_to(hold_slot) > SLOT_NEAR_SQ else ST_IDLE
 		elif best_d > type_range_sq[t]:
 			var dir := (pos[best] - p).normalized()
 			if unit_squad[i] == -1:
@@ -2370,8 +2409,8 @@ func _update_unit(i: int, delta: float) -> void:
 			var lim := type_speed[t] * 1.3 * (RETREAT_SPEED_MULT if order == ORDER_RETREAT else 1.0)
 			v = ((slot_world - p) * SLOT_GAIN).limit_length(lim)
 			# дальше полуслота от своего места — «возвращается», иначе «стоит»
-			unit_state[i] = ST_RETURN if p.distance_squared_to(slot_world) > 16.0 else ST_IDLE   # ×4/3: 4 px в квадрате
-		elif p.y >= WALL_Y - sqrt(type_range_sq[t]) and absf(p.x - GATE_POS.x) <= gate_half + 8.0:   # запас в один слот, ×4/3
+			unit_state[i] = ST_RETURN if p.distance_squared_to(slot_world) > SLOT_NEAR_SQ else ST_IDLE
+		elif p.y >= WALL_Y - sqrt(type_range_sq[t]) and absf(p.x - GATE_POS.x) <= gate_half + GATE_SIDE_MARGIN:
 			# У ворот (сначала проверка по y — она отсекает почти всех): стоит и бьёт ворота по cooldown.
 			unit_state[i] = ST_ATTACK
 			if cooldown[i] <= 0.0:
@@ -2385,7 +2424,7 @@ func _update_unit(i: int, delta: float) -> void:
 			unit_state[i] = ST_IDLE
 			# Орда идёт к воротам; скорость у каждого зомби своя (±HORDE_SPEED_SPREAD).
 			var to_goal := HORDE_GOAL - p
-			if to_goal.length() > 5.33:   # ×4/3
+			if to_goal.length() > GOAL_STOP:
 				v = to_goal.normalized() * type_speed[t] * (1.0 + HORDE_SPEED_SPREAD * (unit_rand[i] * 2.0 - 1.0))
 	# Толчок не разовым сдвигом позиции, а добавкой к скорости на 2 тика до следующего решения:
 	# delta здесь = 2 тика, поэтому за эти 2 тика юнит сместится ровно на push * PUSH_K_2.
@@ -2430,6 +2469,7 @@ func _remove_dead() -> void:
 			unit_slot_changed_t[i] = unit_slot_changed_t[count]
 			unit_anim_t[i] = unit_anim_t[count]
 			unit_dir[i] = unit_dir[count]
+			unit_render_off[i] = unit_render_off[count]
 		else:
 			i += 1
 
@@ -2897,7 +2937,7 @@ func _update_squads(delta: float) -> void:
 				squad_order[s] = ORDER_HOLD   # отход закончен: держать
 			continue
 		var diff := angle_difference(squad_angle[s], to.angle())
-		# Отряд не поворачивается к цели ближе 2 слотов (16 px).
+		# Отряд не поворачивается к цели ближе 2 слотов.
 		if dist > 2.0 * SLOT_SPACING:
 			if absf(diff) > ABOUT_FACE_ANGLE:
 				_about_face(s)
