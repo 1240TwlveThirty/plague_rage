@@ -49,6 +49,8 @@ const PAUSE_ENABLED := true                   # активная пауза в �
 const SIDE_POST_T := 0.45                     # стрелки: пост на отрезке ворота -> точка появления стороны, доля пути
 const GATE_POST_BACK := 90.0                  # стрелка вниз: пост у ворот, на столько выше стены
 const SPLIT_MODE_NAMES := ["правые", "левые", "задние", "передние"]
+const PICK_RADIUS := 1.5 * SLOT_SPACING       # ЛКМ мимо блоков: выбирается отряд ближайшего юнита игрока не дальше этого
+const BOX_SELECT_FRAC := 0.25                 # рамка выбирает отряд, если в ней его центр или не меньше этой доли живых
 const SORT_OFFSET := 1 << 20                  # сдвиг ключа сортировки _place_formation: координата * 16 всегда > 0
 # Состояние боя
 const WS_BATTLE := 0    # идёт бой
@@ -279,7 +281,7 @@ var banner_hidden := false             # скрыт клавишей H (до с�
 var banner_labels: Array[Label] = []   # заголовок, текст, дневник, подсказка
 var banner_parts := PackedStringArray(["", "", "", ""])   # что сейчас в баннере (тесты читают и без интерфейса)
 var squad_user_width := PackedInt32Array()   # ширина строя, заданная перетаскиванием; 0 = авто (squad_aspect)
-var drag_active := false               # идёт перетаскивание ЛКМ по карте
+var drag_active := false               # идёт протяжка ПКМ по карте (приказ: клик — цель, протяжка — строй)
 var drag_start := Vector2.ZERO         # мировые координаты нажатия
 var drag_cur := Vector2.ZERO           # и курсора сейчас
 var drag_flip := false                 # F во время протяжки: лицо строя наоборот
@@ -358,7 +360,15 @@ var ui_t := 0.0                               # таймер обновлени�
 # --- Управление отрядами ---
 var archers_follow := ARCHERS_FOLLOW          # бенчи переопределяют до _setup_data
 var squad_order := PackedByteArray()          # ORDER_* на отряд
-var selected_squad := 0
+var sel_mask := 1                             # выбранные отряды: бит s = отряд s выбран
+var sel_primary := 0                          # главный выбранный (последний выбранный, в него идёт покупка) или -1
+var box_active := false                       # идёт рамка выбора (ЛКМ)
+var box_start := Vector2.ZERO                 # мировые координаты нажатия
+var box_cur := Vector2.ZERO                   # и курсора сейчас
+var box_dbl := false                          # нажатие было двойным кликом
+var mod_shift := false                        # Shift по последнему событию мыши или клавиатуры (клик по строке панели)
+var sel_sig := 0.0                            # отпечаток выбранных отрядов (место, угол, состав): изменился — перерисовка контуров
+var hint_label: Label
 var paused := false                           # активная пауза: _physics_process не выполняется, команды только меняют данные
 var split_frac := 0.5                         # деление: доля уходящих в новый отряд
 var split_mode := 0                           # кто уходит: 0 правые, 1 левые, 2 задние ряды, 3 передние ряды
@@ -443,7 +453,7 @@ func _draw() -> void:
 	# Цели отрядов игрока: кружок цвета типа, у выбранного крупнее (и в релизе)
 	for s in SQUAD_MAX:
 		if squad_used[s] == 1 and squad_n[s] > 0 and squad_team[s] == 0:
-			var r := 9.0 if s == selected_squad else 5.0
+			var r := 9.0 if _is_sel(s) else 5.0
 			draw_arc(squad_target[s], r, 0.0, TAU, 24, type_color[squad_type[s]], 2.0)
 	# Лицо отрядов игрока: шеврон у середины переднего ряда (у невыбранных полупрозрачный)
 	for s in SQUAD_MAX:
@@ -452,33 +462,42 @@ func _draw() -> void:
 			var f_lat := Vector2(-f_dir.y, f_dir.x)
 			var fc := _front_centre(s) + f_dir * 6.0
 			draw_colored_polygon(PackedVector2Array([fc + f_dir * 10.0, fc + f_lat * 5.0, fc - f_lat * 5.0]),
-				Color(type_color[squad_type[s]], 1.0 if s == selected_squad else 0.4))
-	# Дальность стрельбы выбранного отряда лучников
-	var ring := _range_ring_radius(selected_squad)
-	if ring > 0.0:
-		draw_arc(squad_pos[selected_squad], ring, 0.0, TAU, 96, Color(type_color[squad_type[selected_squad]], 0.35), 1.0)
-	# Предпросмотр расстановки: контур блока (красный, если блок не помещается и будет сдвинут или слишком
-	# пересекается с другим своим отрядом и поставлен не будет), яркий передний ряд,
-	# стрелка лица, подпись
-	if drag_active and drag_start.distance_to(drag_cur) >= DRAG_MIN and squad_follow[selected_squad] < 0:
-		var g := _formation_geometry(selected_squad, drag_start, drag_cur, drag_flip)
-		if g.n > 0:
-			var face := Vector2.from_angle(g.angle)
-			var lat := Vector2(-face.y, face.x)
-			var hw: float = (g.width - 1) * SLOT_SPACING * 0.5 + SLOT_SPACING * 0.5
-			var hd: float = (g.rows - 1) * SLOT_SPACING * 0.5 + SLOT_SPACING * 0.5
-			var c: Vector2 = g.centre
-			var box := PackedVector2Array([c - lat * hw + face * hd, c + lat * hw + face * hd, c + lat * hw - face * hd, c - lat * hw - face * hd])
-			var col := type_color[squad_type[selected_squad]]
-			draw_colored_polygon(box, Color(col, 0.25))
-			box.append(box[0])
-			draw_polyline(box, Color(1.0, 0.2, 0.2, 0.9) if g.adjusted or g.overlap >= 0 else Color(col, 0.7), 2.0)
-			draw_line(g.front - lat * hw, g.front + lat * hw, col.lightened(0.5), 3.0)
-			var tip: Vector2 = g.front + face * 30.0   # стрелка лица
-			draw_line(g.front, tip, Color.WHITE, 2.0)
-			draw_line(tip, tip - face * 8.0 + lat * 5.0, Color.WHITE, 2.0)
-			draw_line(tip, tip - face * 8.0 - lat * 5.0, Color.WHITE, 2.0)
-			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), "%d × %d · %d юн." % [g.width, g.rows, g.n],
+				Color(type_color[squad_type[s]], 1.0 if _is_sel(s) else 0.4))
+	# Выбранные отряды: тонкий контур блока живых слотов цветом типа (у главного толще) и дальность стрельбы стрелков
+	if sel_mask != 0:
+		var boxes := _squad_boxes()
+		for s in SQUAD_MAX:
+			if not _is_sel(s) or squad_n[s] == 0:
+				continue
+			var sel_col := type_color[squad_type[s]]
+			var outline := _live_block(s, boxes, squad_pos[s])
+			if outline.size() > 0:
+				outline.append(outline[0])
+				draw_polyline(outline, sel_col, 3.0 if s == sel_primary else 1.0)
+			var ring := _range_ring_radius(s)
+			if ring > 0.0:
+				draw_arc(squad_pos[s], ring, 0.0, TAU, 96, Color(sel_col, 0.35), 1.0)
+	# Рамка выбора (ЛКМ)
+	if box_active and box_start.distance_to(box_cur) >= DRAG_MIN:
+		var box_rect := Rect2(box_start, box_cur - box_start).abs()
+		draw_rect(box_rect, Color(0.2, 1.0, 0.3, 0.12))
+		draw_rect(box_rect, Color(0.2, 1.0, 0.3, 0.9), false, 1.0)
+	# Предпросмотр расстановки (ПКМ): контур блока (красный, если блок не помещается и будет сдвинут или слишком
+	# пересекается с другим своим отрядом и поставлен не будет), яркий передний ряд, стрелка лица, подпись.
+	# Несколько выбранных: блок каждого отряда цветом типа, подпись — число отрядов и длина линии.
+	if drag_active and drag_start.distance_to(drag_cur) >= DRAG_MIN:
+		var list := _order_list()
+		if list.size() == 1:
+			var g := _formation_geometry(list[0], drag_start, drag_cur, drag_flip)
+			if g.n > 0:
+				_draw_block_preview(type_color[squad_type[list[0]]], g.centre, g.front, g.angle, g.width, g.rows, g.adjusted or g.overlap >= 0)
+				draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), "%d × %d · %d юн." % [g.width, g.rows, g.n],
+					HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
+		elif list.size() > 1:
+			var mg := _multi_geometry(list, drag_start, drag_cur, drag_flip)
+			for it in mg.items:
+				_draw_block_preview(type_color[squad_type[it.s]], it.centre, it.front, mg.angle, it.width, it.rows, mg.adjusted or not mg.fits or mg.overlap >= 0)
+			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), "%d отр. · %d px" % [list.size(), roundi(mg.length)],
 				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
 	# Сигнал всплеска: пульсирующая золотая полоса вдоль края экрана и мигающий (2 Гц) треугольник 48 px у своей стороны
 	var view_lo := FIELD * 0.5 - Vector2(VIEW_HALF_W, VIEW_HALF_H)
@@ -542,6 +561,23 @@ func _draw() -> void:
 	while y <= WALL_Y:
 		draw_circle(Vector2(ROAD_X, y), 3.0, Color(1.0, 1.0, 1.0, 0.5))
 		y += 60.0
+
+
+# Блок предпросмотра: заливка и контур (bad — красный), яркий передний ряд, стрелка лица.
+func _draw_block_preview(col: Color, c: Vector2, front: Vector2, angle: float, width: int, rows: int, bad: bool) -> void:
+	var face := Vector2.from_angle(angle)
+	var lat := Vector2(-face.y, face.x)
+	var hw := (width - 1) * SLOT_SPACING * 0.5 + SLOT_SPACING * 0.5
+	var hd := (rows - 1) * SLOT_SPACING * 0.5 + SLOT_SPACING * 0.5
+	var box := PackedVector2Array([c - lat * hw + face * hd, c + lat * hw + face * hd, c + lat * hw - face * hd, c - lat * hw - face * hd])
+	draw_colored_polygon(box, Color(col, 0.25))
+	box.append(box[0])
+	draw_polyline(box, Color(1.0, 0.2, 0.2, 0.9) if bad else Color(col, 0.7), 2.0)
+	draw_line(front - lat * hw, front + lat * hw, col.lightened(0.5), 3.0)
+	var tip := front + face * 30.0   # стрелка лица
+	draw_line(front, tip, Color.WHITE, 2.0)
+	draw_line(tip, tip - face * 8.0 + lat * 5.0, Color.WHITE, 2.0)
+	draw_line(tip, tip - face * 8.0 - lat * 5.0, Color.WHITE, 2.0)
 
 
 # Середина переднего ряда отряда в мире (по сетке слотов).
@@ -1279,11 +1315,11 @@ func _buy(k: int) -> bool:
 	return true
 
 
-# Куда идёт покупка юнитов типа type: в выбранный отряд, если он этого типа, иначе в первый занятый отряд типа
+# Куда идёт покупка юнитов типа type: в главный выбранный отряд, если он этого типа, иначе в первый занятый отряд типа
 # (он есть всегда: 0 — пехота, 1 — лучники).
 func _buy_target(type: int) -> int:
-	if squad_used[selected_squad] == 1 and squad_type[selected_squad] == type:
-		return selected_squad
+	if sel_primary >= 0 and squad_used[sel_primary] == 1 and squad_type[sel_primary] == type:
+		return sel_primary
 	for s in SQUAD_MAX:
 		if squad_used[s] == 1 and squad_type[s] == type:
 			return s
@@ -1388,14 +1424,12 @@ func _say(text: String, secs := 3.0) -> void:
 	ui_t = 0.0   # показать сразу
 
 
-# Освободить индекс отряда (не 0 и не 1; юнитов в нём уже нет). Выбор с него уходит на отряд 0.
+# Освободить индекс отряда (не 0 и не 1; юнитов в нём уже нет). Из выбора он уходит.
 func _squad_free(s: int) -> void:
 	if s < START_SQUADS:
 		return
 	_squad_reset(s)
-	if selected_squad == s:
-		selected_squad = 0
-		drag_active = false
+	_prune_sel()
 
 
 # В начале передышки: созданные отряды без живых юнитов освобождаются.
@@ -1406,22 +1440,25 @@ func _free_empty_squads() -> void:
 	_update_squad_panel()
 
 
-# N: новый пустой отряд того же типа, что выбранный; выбор переходит на него.
+# N: новый пустой отряд того же типа, что главный выбранный; выбор переходит на него.
 func _cmd_new_squad() -> bool:
 	if wave_state != WS_RESPITE:
 		return false
-	var s := _squad_create(selected_squad)
+	if sel_primary < 0:
+		_say("Выбери отряд")
+		return false
+	var s := _squad_create(sel_primary)
 	if s < 0:
 		_say("Свободных отрядов нет: занято %d из %d" % [SQUAD_MAX, SQUAD_MAX])
 		return false
-	_select_squad(s)
+	_select_only(s)
 	return true
 
 
 # G: часть выбранного отряда уходит в новый отряд с той же командой, целью, углом, приказом и шириной строя;
 # оба перестраиваются, выбор переходит на новый. Уходит k = clamp(floor(n * split_frac), 1, n - 1) юнитов:
 # split_mode 0 и 1 — с наибольшей / наименьшей local.y (правые / левые), 2 и 3 — с наименьшей / наибольшей
-# local.x (задние / передние ряды). В бою — только на паузе. Позиции юнитов не меняются.
+# local.x (задние / передние ряды). В бою — только на паузе. Позиции юнитов не меняются. Выбран должен быть ровно один отряд.
 func _cmd_split() -> bool:
 	if wave_state == WS_DEFEAT:
 		return false
@@ -1429,7 +1466,10 @@ func _cmd_split() -> bool:
 		if PAUSE_ENABLED:
 			_say("Поставь паузу (Space)")
 		return false
-	var s := selected_squad
+	if sel_mask == 0 or sel_mask & (sel_mask - 1) != 0:
+		_say("Выбери один отряд")
+		return false
+	var s := sel_primary
 	var n := squad_n[s]
 	if squad_used[s] == 0 or n < 2:
 		_say("В отряде меньше 2 юнитов: делить нечего")
@@ -1465,7 +1505,7 @@ func _cmd_split() -> bool:
 	squad_dir_angle[t] = NAN
 	_reflow_squad(s)
 	_reflow_squad(t)
-	_select_squad(t)
+	_select_only(t)
 	return true
 
 
@@ -1507,18 +1547,21 @@ func _set_paused(v: bool) -> void:
 	queue_redraw()
 
 
-# Стрелки: выбранный отряд встаёт на пост у стороны side (SIDE_*; -1 — у ворот) лицом к ней, строем нынешней ширины.
+# Стрелки: выбранные отряды встают на пост у стороны side (SIDE_*; -1 — у ворот) лицом к ней. Один отряд — строем
+# нынешней ширины; несколько — в одну линию длиной в сумму их ширин (_place_formation_multi).
 # Приказ не меняется; проверки пересечения и границ поля — как при расстановке протяжкой.
 func _cmd_side_post(side: int) -> bool:
-	var s := selected_squad
-	if squad_used[s] == 0 or squad_n[s] == 0 or squad_follow[s] >= 0:
+	var list := _order_list()
+	if list.is_empty():
 		return false
 	var post := _side_post(side)
 	var p: Vector2 = post[0]
 	var v: Vector2 = post[1]
-	var d := Vector2(-v.y, v.x) * maxf((squad_width[s] - 1) * SLOT_SPACING, SLOT_SPACING)
-	_place_formation(s, p - d * 0.5, p + d * 0.5)
-	return true
+	var length := 0.0
+	for s in list:
+		length += maxf((squad_width[s] - 1) * SLOT_SPACING, SLOT_SPACING)
+	var d := Vector2(-v.y, v.x) * length
+	return _place_formation_multi(list, p - d * 0.5, p + d * 0.5)
 
 
 # Пост у стороны: [точка, лицо]. Точка — на отрезке от ворот к точке появления стороны (доля SIDE_POST_T),
@@ -1537,34 +1580,46 @@ func _side_post(side: int) -> Array:
 
 # M: выбранный отряд вливается в первый другой занятый отряд того же типа; его индекс освобождается,
 # выбор переходит на целевой. Отряды 0 и 1 не освобождаются: если выбран один из них, другой вливается в него.
+# Выбрано несколько отрядов одного типа: все вливаются в отряд с наименьшим индексом.
 func _cmd_merge() -> bool:
 	if wave_state != WS_RESPITE:
 		return false
-	var src := selected_squad
-	var dst := -1
-	for s in SQUAD_MAX:
-		if s != src and squad_used[s] == 1 and squad_type[s] == squad_type[src]:
-			dst = s
-			break
-	if dst < 0:
-		_say("Нет другого отряда этого типа")
+	var srcs := _sel_list()
+	if srcs.is_empty():
 		return false
-	if src < START_SQUADS:
-		var tmp := src
-		src = dst
-		dst = tmp
+	var dst := -1
+	if srcs.size() == 1:
+		var src := srcs[0]
+		for s in SQUAD_MAX:
+			if s != src and squad_used[s] == 1 and squad_type[s] == squad_type[src]:
+				dst = s
+				break
+		if dst < 0:
+			_say("Нет другого отряда этого типа")
+			return false
+		if src < START_SQUADS:
+			srcs[0] = dst
+			dst = src
+	else:
+		dst = srcs[0]
+		for s in srcs:
+			if squad_type[s] != squad_type[dst]:
+				_say("Сливаются только отряды одного типа")
+				return false
+		srcs.remove_at(0)
 	var k := 0
 	for i in count:
-		if unit_squad[i] == src:
+		if unit_squad[i] != dst and unit_squad[i] in srcs:
 			unit_squad[i] = dst
 			unit_slot_idx[i] = TEMP_SLOT_BASE + k   # уникальные временные индексы: новые в конец
 			k += 1
-	squad_n[dst] += squad_n[src]
-	squad_n[src] = 0
+	for src in srcs:
+		squad_n[dst] += squad_n[src]
+		squad_n[src] = 0
+		_squad_free(src)
 	squad_dir_angle[dst] = NAN
-	_squad_free(src)
 	_reflow_squad(dst)
-	_select_squad(dst)
+	_select_only(dst)
 	return true
 
 
@@ -1605,25 +1660,26 @@ func _toggle_banner() -> void:
 		banner.visible = banner_any and not banner_hidden
 
 
-# F вне протяжки: выбранный отряд разворачивается «кругом» на месте (слоты в мире не двигаются).
+# F вне протяжки: каждый выбранный отряд разворачивается «кругом» на месте (слоты в мире не двигаются).
 func _cmd_about_face() -> bool:
-	var s := selected_squad
-	if squad_used[s] == 0 or squad_n[s] == 0 or squad_follow[s] >= 0:
-		return false
-	_about_face(s)
+	var list := _order_list()
+	for s in list:
+		_about_face(s)
 	queue_redraw()
-	return true
+	return not list.is_empty()
 
 
-# Shift + колесо: выбранный отряд поворачивается на месте на steps * 15° вокруг центра живых слотов (squad_pos).
-# Цель отряда не меняется; при «отходе» команда игнорируется.
+# Shift + колесо: каждый выбранный отряд поворачивается на месте на steps * 15° вокруг центра своих живых слотов
+# (squad_pos). Цель отряда не меняется; при «отходе» команда игнорируется.
 func _cmd_rotate(steps: int) -> bool:
-	var s := selected_squad
-	if squad_used[s] == 0 or squad_n[s] == 0 or squad_follow[s] >= 0 or squad_order[s] == ORDER_RETREAT:
-		return false
-	squad_angle[s] = wrapf(squad_angle[s] + steps * ROTATE_STEP, -PI, PI)
+	var any := false
+	for s in _order_list():
+		if squad_order[s] == ORDER_RETREAT:
+			continue
+		squad_angle[s] = wrapf(squad_angle[s] + steps * ROTATE_STEP, -PI, PI)
+		any = true
 	queue_redraw()
-	return true
+	return any
 
 
 # --- Дневник --------------------------------------------------------------------
@@ -1889,7 +1945,8 @@ func _setup_data() -> void:
 	squad_dir_angle.resize(SQUAD_MAX)
 	for s in SQUAD_MAX:
 		_squad_reset(s)
-	selected_squad = 0
+	sel_mask = 1
+	sel_primary = 0
 	var squad_size := PackedInt32Array([INFANTRY_COUNT, ARCHER_COUNT])
 	var start_type := PackedInt32Array([infantry, archer])
 	var start_width := PackedInt32Array([START_WIDTH_INF, START_WIDTH_ARCH])   # лучники: шире и мельче (25 x 4)
@@ -2150,7 +2207,7 @@ func _setup_fps_label() -> void:
 		b.toggle_mode = true   # нажатая = выбранная
 		b.custom_minimum_size = Vector2(260, 40)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.pressed.connect(_select_squad.bind(s))
+		b.pressed.connect(_on_row_pressed.bind(s))
 		row.add_child(b)
 		squad_panel.add_child(row)
 		squad_buttons.append(b)
@@ -2192,6 +2249,11 @@ func _setup_fps_label() -> void:
 	split_box.add_child(split_mode_button)
 	squad_panel.add_child(split_box)
 	_update_split_ui()
+	hint_label = Label.new()
+	hint_label.text = "ЛКМ выбор · ПКМ приказ · Shift добавить"
+	hint_label.add_theme_font_size_override("font_size", 13)
+	hint_label.modulate = Color(1.0, 1.0, 1.0, 0.7)
+	squad_panel.add_child(hint_label)
 	layer.add_child(squad_panel)
 	add_child(layer)
 	_no_focus(layer)
@@ -2209,18 +2271,190 @@ func _no_focus(node: Node) -> void:
 		_no_focus(c)
 
 
-func _select_squad(s: int) -> void:
-	if s < 0 or s >= SQUAD_MAX or squad_used[s] == 0:
+# --- Выбор отрядов: sel_mask (бит на отряд) и sel_primary (главный) ---------------------
+
+# Индексы выбранных отрядов по возрастанию.
+func _sel_list() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for s in SQUAD_MAX:
+		if (sel_mask >> s) & 1 == 1:
+			out.append(s)
+	return out
+
+
+func _is_sel(s: int) -> bool:
+	return s >= 0 and (sel_mask >> s) & 1 == 1
+
+
+# Выбранные отряды, которым можно приказать идти и строиться: с живыми юнитами и не ведомые (ведомому место задаёт ведущий).
+func _order_list() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for s in SQUAD_MAX:
+		if (sel_mask >> s) & 1 == 1 and squad_used[s] == 1 and squad_n[s] > 0 and squad_follow[s] < 0:
+			out.append(s)
+	return out
+
+
+# Выбрать можно занятый отряд игрока; без живых юнитов — только в передышке (созданный клавишей N ждёт покупки).
+func _selectable(s: int) -> bool:
+	return s >= 0 and s < SQUAD_MAX and squad_used[s] == 1 and squad_team[s] == 0 and (squad_n[s] > 0 or wave_state == WS_RESPITE)
+
+
+func _select_only(s: int) -> void:
+	if not _selectable(s):
 		return   # клавиши 1-8: свободный индекс игнорируется
-	selected_squad = s
-	drag_active = false   # начатое перетаскивание относилось к прежнему отряду
+	sel_mask = 1 << s
+	sel_primary = s
+	_sel_changed()
+
+
+# Shift: добавить отряд к выбранным или убрать из них.
+func _toggle_sel(s: int) -> void:
+	if not _selectable(s):
+		return
+	sel_mask ^= 1 << s
+	if _is_sel(s):
+		sel_primary = s
+	elif sel_primary == s:
+		sel_primary = _sel_nearest(s)
+	_sel_changed()
+
+
+func _select_all() -> void:
+	var mask := 0
+	for s in SQUAD_MAX:
+		if _selectable(s):
+			mask |= 1 << s
+	_select_mask(mask, false)
+
+
+func _clear_sel() -> void:
+	sel_mask = 0
+	sel_primary = -1
+	_sel_changed()
+
+
+# Выбрать набор (рамка, двойной клик, Ctrl+A); add — добавить к уже выбранным. Главный — prefer, если он в наборе,
+# иначе прежний главный, иначе ближайший к нему.
+func _select_mask(mask: int, add: bool, prefer := -1) -> void:
+	sel_mask = (sel_mask | mask) if add else mask
+	if _is_sel(prefer):
+		sel_primary = prefer
+	elif not _is_sel(sel_primary):
+		sel_primary = _sel_nearest(maxi(sel_primary, 0))
+	_sel_changed()
+
+
+# Ближайший к s по индексу выбранный отряд (при равенстве — с меньшим индексом) или -1.
+func _sel_nearest(s: int) -> int:
+	for d in SQUAD_MAX:
+		if _is_sel(s - d):
+			return s - d
+		if _is_sel(s + d):
+			return s + d
+	return -1
+
+
+func _sel_changed() -> void:
+	drag_active = false   # начатая протяжка относилась к прежнему набору
 	_update_squad_panel()
 	ui_t = 0.0            # подписи товаров «→ Отряд N» зависят от выбора
-	queue_redraw()        # маркер цели выбранного отряда крупнее
+	queue_redraw()        # контуры и маркеры целей выбранных
 
 
+# Выбор не держит свободные индексы и отряды без живых юнитов (кроме пустого отряда в передышке): бит снимается,
+# главным становится ближайший оставшийся или -1.
+func _prune_sel() -> void:
+	if sel_mask == 0:
+		return
+	var mask := sel_mask
+	for s in SQUAD_MAX:
+		if (mask >> s) & 1 == 1 and not _selectable(s):
+			mask &= ~(1 << s)
+	if mask == sel_mask:
+		return
+	var old := sel_primary
+	sel_mask = mask
+	if not _is_sel(sel_primary):
+		sel_primary = _sel_nearest(old)
+	_sel_changed()
+
+
+# Клик по строке панели: выбрать отряд, с Shift — добавить или убрать.
+func _on_row_pressed(s: int) -> void:
+	if mod_shift:
+		_toggle_sel(s)
+	else:
+		_select_only(s)
+	_update_squad_panel()   # кнопка-переключатель сама сменила вид: вернуть по выбору
+
+
+# Отряд игрока под точкой p (ЛКМ): блок живых слотов (как в проверке пересечения), в который попала точка; из нескольких —
+# тот, чей юнит ближе; мимо блоков — отряд ближайшего юнита игрока в PICK_RADIUS. Нет такого: -1.
+func _pick_squad(p: Vector2) -> int:
+	var near := PackedFloat32Array()
+	near.resize(SQUAD_MAX)
+	near.fill(INF)
+	for i in count:
+		var q := unit_squad[i]
+		if q >= 0 and team[i] == 0:
+			near[q] = minf(near[q], pos[i].distance_squared_to(p))
+	var boxes := _squad_boxes()
+	var best := -1
+	for s in SQUAD_MAX:
+		if squad_used[s] == 0 or squad_team[s] != 0 or near[s] == INF:
+			continue
+		if Geometry2D.is_point_in_polygon(p, _live_block(s, boxes, squad_pos[s])) and (best < 0 or near[s] < near[best]):
+			best = s
+	if best >= 0:
+		return best
+	for s in SQUAD_MAX:
+		if squad_used[s] == 1 and squad_team[s] == 0 and near[s] <= PICK_RADIUS * PICK_RADIUS and (best < 0 or near[s] < near[best]):
+			best = s
+	return best
+
+
+# ЛКМ-клик: отряд под курсором; Shift — добавить или убрать; двойной клик — все отряды того же типа (Shift — добавить).
+# Мимо: без Shift выбор очищается.
+func _click_select(p: Vector2, shift: bool, dbl: bool) -> void:
+	var s := _pick_squad(p)
+	if s < 0:
+		if not shift:
+			_clear_sel()
+		return
+	if dbl:
+		var mask := 0
+		for q in SQUAD_MAX:
+			if squad_used[q] == 1 and squad_team[q] == 0 and squad_n[q] > 0 and squad_type[q] == squad_type[s]:
+				mask |= 1 << q
+		_select_mask(mask, shift, s)
+	elif shift:
+		_toggle_sel(s)
+	else:
+		_select_only(s)
+
+
+# Рамка: отряды игрока, у которых центр в рамке или в ней не меньше BOX_SELECT_FRAC живых. add (Shift) — добавить;
+# без Shift выбор заменяется (пустая рамка его очищает).
+func _box_select(r: Rect2, add: bool) -> void:
+	var inside := PackedInt32Array()
+	inside.resize(SQUAD_MAX)
+	for i in count:
+		var q := unit_squad[i]
+		if q >= 0 and team[i] == 0 and r.has_point(pos[i]):
+			inside[q] += 1
+	var mask := 0
+	for s in SQUAD_MAX:
+		if squad_used[s] == 1 and squad_team[s] == 0 and squad_n[s] > 0 and (r.has_point(squad_pos[s]) or inside[s] >= BOX_SELECT_FRAC * squad_n[s]):
+			mask |= 1 << s
+	if mask != 0 or not add:
+		_select_mask(mask, add)
+
+
+# Приказ всем выбранным отрядам.
 func _set_order(o: int) -> void:
-	squad_order[selected_squad] = o
+	for s in _sel_list():
+		squad_order[s] = o
 	_update_squad_panel()
 
 
@@ -2250,7 +2484,7 @@ func _update_squad_panel() -> void:
 		sig |= 2 << s
 		squad_swatches[s].color = type_color[squad_type[s]]
 		squad_buttons[s].text = "%d  %s — %d — %s" % [s + 1, _squad_label(s), squad_n[s], ORDER_NAMES[squad_order[s]]]
-		squad_buttons[s].set_pressed_no_signal(s == selected_squad)
+		squad_buttons[s].set_pressed_no_signal(_is_sel(s))
 	squad_actions.visible = acts
 	split_box.visible = acts
 	action_buttons[0].disabled = wave_state != WS_RESPITE   # новый отряд и слияние — только в передышке
@@ -2353,6 +2587,7 @@ func _physics_process(delta: float) -> void:
 	_move_units(delta)   # двигаются все юниты каждый тик, а не только обновлённая половина
 	var m5 := Time.get_ticks_usec() if profile else 0
 	_remove_dead()
+	_prune_sel()   # отряд без живых уходит из выбора
 	if profile:
 		var m6 := Time.get_ticks_usec()
 		prof_acc[0] += m1 - m0
@@ -2383,6 +2618,15 @@ func _process(delta: float) -> void:
 		queue_redraw()   # маркеры целей отрядов
 	if wave_state == WS_BATTLE and wave_t < signal_redraw_until:
 		queue_redraw()   # полоса сигнала гаснет плавно
+	if sel_mask != 0:
+		# контуры выбранных: перерисовка, когда отряд сдвинулся, повернулся или сменил состав (и на паузе)
+		var sig := 0.0
+		for s in SQUAD_MAX:
+			if (sel_mask >> s) & 1 == 1:
+				sig += squad_pos[s].x * 1.3 + squad_pos[s].y * 2.7 + squad_angle[s] * 97.0 + squad_n[s] * 13.0 + squad_width[s]
+		if sig != sel_sig:
+			sel_sig = sig
+			queue_redraw()
 	if hud_msg_t > 0.0:
 		hud_msg_t -= delta
 		if hud_msg_t <= 0.0:
@@ -2986,14 +3230,14 @@ func _overlap_squad(s: int, centre: Vector2, angle: float, width: int, rows: int
 
 # Блок отряда s в нынешнем виде (угол и сетка те же, без поворота), если его якорь встанет в target:
 # с каким своим отрядом он пересечётся слишком сильно (-1 — ни с каким). Для обычного клика.
-func _target_overlap(s: int, target: Vector2) -> int:
+func _target_overlap(s: int, target: Vector2, skip_mask := 0) -> int:
 	var boxes := _squad_boxes()
 	var lo: Vector2 = boxes[0][s]
 	var hi: Vector2 = boxes[1][s]
 	if hi.x < lo.x:
 		return -1   # пустой отряд
 	var half := (hi - lo) * 0.5 + Vector2(SLOT_SPACING, SLOT_SPACING) * 0.5
-	return _overlap_with(s, _block_rect(target + ((lo + hi) * 0.5).rotated(squad_angle[s]), squad_angle[s], half), half.x * half.y * 4.0, boxes)
+	return _overlap_with(s, _block_rect(target + ((lo + hi) * 0.5).rotated(squad_angle[s]), squad_angle[s], half), half.x * half.y * 4.0, boxes, skip_mask)
 
 
 # Границы живых слотов каждого отряда в его локальных координатах: [lo, hi] по индексам отрядов (один проход по юнитам).
@@ -3014,12 +3258,12 @@ func _squad_boxes() -> Array:
 
 # Прямоугольник mine (площадь mine_area) отряда s против блоков других своих отрядов. Блок другого отряда —
 # прямоугольник его живых слотов: там, где отряд стоит, а если он идёт — там, куда придёт (якорь в squad_target,
-# угол нынешний).
-func _overlap_with(s: int, mine: PackedVector2Array, mine_area: float, boxes: Array) -> int:
+# угол нынешний). Отряды из skip_mask (остальные выбранные при групповом приказе) не проверяются.
+func _overlap_with(s: int, mine: PackedVector2Array, mine_area: float, boxes: Array, skip_mask := 0) -> int:
 	for q in SQUAD_MAX:
 		var lo: Vector2 = boxes[0][q]
 		var hi: Vector2 = boxes[1][q]
-		if q == s or squad_used[q] == 0 or squad_n[q] == 0 or squad_team[q] != squad_team[s] or hi.x < lo.x:
+		if q == s or (skip_mask >> q) & 1 == 1 or squad_used[q] == 0 or squad_n[q] == 0 or squad_team[q] != squad_team[s] or hi.x < lo.x:
 			continue
 		var moving := squad_pos[q].distance_to(squad_target[q]) > maxf(squad_stop_dist[q], 1.0)
 		var anchor := squad_target[q] if moving else squad_pos[q]
@@ -3031,6 +3275,55 @@ func _overlap_with(s: int, mine: PackedVector2Array, mine_area: float, boxes: Ar
 		if common >= OVERLAP_MAX * minf(mine_area, half.x * half.y * 4.0) - 0.01:
 			return q
 	return -1
+
+
+# Блок отряда s — прямоугольник его живых слотов с половиной слота по краям (как в проверке пересечения),
+# якорь в anchor, угол нынешний. У пустого отряда — пустой массив.
+func _live_block(s: int, boxes: Array, anchor: Vector2) -> PackedVector2Array:
+	var lo: Vector2 = boxes[0][s]
+	var hi: Vector2 = boxes[1][s]
+	if hi.x < lo.x:
+		return PackedVector2Array()
+	return _block_rect(anchor + ((lo + hi) * 0.5).rotated(squad_angle[s]), squad_angle[s], (hi - lo) * 0.5 + Vector2(SLOT_SPACING, SLOT_SPACING) * 0.5)
+
+
+# ПКМ-клик при нескольких выбранных: набор сдвигается целиком, середина его якорей идёт в p, взаимные смещения
+# и углы те же. Всё или ничего: набор должен поместиться в поле и не ниже WALL_Y - FORM_MARGIN (вылез — сдвигается
+# целиком на минимум), блоки у целей не пересекаются с невыбранными отрядами (между выбранными проверки нет).
+func _cmd_move_group(list: PackedInt32Array, p: Vector2) -> bool:
+	var c := Vector2.ZERO
+	var mask := 0
+	for s in list:
+		c += squad_pos[s]
+		mask |= 1 << s
+	var delta := p - c / list.size()
+	var boxes := _squad_boxes()
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for s in list:
+		var b_lo: Vector2 = boxes[0][s]
+		var b_hi: Vector2 = boxes[1][s]
+		for corner: Vector2 in [b_lo, Vector2(b_lo.x, b_hi.y), b_hi, Vector2(b_hi.x, b_lo.y)]:
+			var w := squad_pos[s] + delta + corner.rotated(squad_angle[s])
+			lo = lo.min(w)
+			hi = hi.max(w)
+	var lim := Vector2(FIELD.x, WALL_Y - FORM_MARGIN)
+	for axis in 2:
+		if hi[axis] - lo[axis] > lim[axis] + 0.01:
+			_say("Отряды не помещаются в поле", 2.0)
+			return false
+		if lo[axis] < 0.0:
+			delta[axis] -= lo[axis]
+		elif hi[axis] > lim[axis]:
+			delta[axis] += lim[axis] - hi[axis]
+	for s in list:
+		var q := _target_overlap(s, squad_pos[s] + delta, mask)
+		if q >= 0:
+			_say("Блок пересекается с отрядом %d" % (q + 1), 2.0)   # цели не меняются ни у кого
+			return false
+	for s in list:
+		squad_target[s] = squad_pos[s] + delta
+	return true
 
 
 # Обычный клик: цель отряда s. Не задаётся, если блок отряда в точке цели слишком пересечётся с другим своим отрядом.
@@ -3089,10 +3382,14 @@ func _place_formation(s: int, a: Vector2, b: Vector2, flip := false) -> void:
 		_say("Блок пересекается с отрядом %d" % (g.overlap + 1), 2.0)   # отряд остаётся на месте
 		queue_redraw()
 		return
-	var width: int = g.width
-	var angle: float = g.angle
-	var centre: Vector2 = g.centre
-	squad_user_width[s] = g.user_width
+	_apply_formation(s, g.width, g.rows, g.user_width, g.angle, g.centre, g.front)
+	queue_redraw()
+
+
+# Отряд s встаёт в блок: width колонок и rows рядов, лицо angle, центр блока centre, середина переднего ряда front.
+func _apply_formation(s: int, width: int, rows: int, user_width: int, angle: float, centre: Vector2, front: Vector2) -> void:
+	var n := squad_n[s]
+	squad_user_width[s] = user_width
 	_snapshot_slots(s)
 	# Проход 1: по local.y (поперёк строя); индекс юнита в младших 32 битах.
 	sort_keys.fill(0x7FFFFFFFFFFFFFFF)
@@ -3115,7 +3412,7 @@ func _place_formation(s: int, a: Vector2, b: Vector2, flip := false) -> void:
 			m += 1
 	sort_keys.sort()
 	squad_width[s] = width
-	squad_rows[s] = g.rows
+	squad_rows[s] = rows
 	squad_reflow_n[s] = n
 	squad_angle[s] = angle
 	m = 0
@@ -3124,11 +3421,107 @@ func _place_formation(s: int, a: Vector2, b: Vector2, flip := false) -> void:
 			_set_line_slot(int(sort_keys[m] & 0xFFFFFFFF), row * width + col, width)
 			m += 1
 	_reanchor(s)
-	# Якорь — центр живых слотов; середина переднего ряда (слот-вектор 0) должна попасть в g.front.
-	squad_pos[s] = g.front + squad_center_off[s].rotated(angle)
+	# Якорь — центр живых слотов; середина переднего ряда (слот-вектор 0) должна попасть в front.
+	squad_pos[s] = front + squad_center_off[s].rotated(angle)
 	squad_target[s] = squad_pos[s]
 	_mark_slot_changes(s)
+
+
+# Несколько отрядов на одной линии A -> B: лицо, якорь A и растяжение за курсор — как у одного отряда. Отряды идут
+# вдоль линии в порядке проекции их якорей на A -> B (при равенстве — по индексу), между соседними зазор SLOT_SPACING.
+# Доля линии отряда: L_i = (L_eff - SLOT_SPACING * (k - 1)) * n_i / N, где L_eff = max(L, сумма минимальных длин
+# с зазорами); ширина из L_i — как в _formation_geometry, ряды назад. Отрезки ставятся подряд по ширине в слотах,
+# поэтому зазор ровно SLOT_SPACING. Группа не помещается в поле или ниже WALL_Y - FORM_MARGIN — сдвигается целиком
+# вдоль лица на минимум (adjusted); не помещается и так — fits = false.
+# Возвращает items (по отряду: s, n, width, rows, user_width, a, b, front, centre), angle, length (L_eff), adjusted, fits,
+# overlap (номер невыбранного отряда, с которым пересекается чей-то блок, или -1).
+func _multi_geometry(list: PackedInt32Array, a: Vector2, b: Vector2, flip := false) -> Dictionary:
+	var d := b - a
+	var dir := d.normalized()
+	var face := Vector2(d.y, -d.x).normalized()
+	if flip:
+		face = -face
+	var order := Array(list)
+	order.sort_custom(func(x: int, y: int) -> bool:
+		var px := squad_pos[x].dot(dir)
+		var py := squad_pos[y].dot(dir)
+		return px < py if px != py else x < y)
+	var k := order.size()
+	var total := 0
+	var mask := 0
+	var min_len := SLOT_SPACING * (k - 1)
+	for s: int in order:
+		total += squad_n[s]
+		mask |= 1 << s
+		min_len += (ceili(squad_n[s] / float(ROWS_MAX)) - 1) * SLOT_SPACING
+	var length := maxf(d.length(), min_len)
+	var share := length - SLOT_SPACING * (k - 1)
+	var items := []
+	var at := a
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for s: int in order:
+		var n := squad_n[s]
+		var user_width := clampi(roundi(share * n / total / SLOT_SPACING) + 1, maxi(ceili(n / float(ROWS_MAX)), 1), WIDTH_MAX)
+		var width := mini(user_width, maxi(mini(WIDTH_MAX, n), 1))
+		var rows := maxi(ceili(n / float(width)), 1)
+		var along := dir * (width - 1) * SLOT_SPACING
+		var back := -face * (rows - 1) * SLOT_SPACING
+		items.append({"s": s, "n": n, "width": width, "rows": rows, "user_width": user_width, "a": at, "b": at + along})
+		lo = lo.min(at).min(at + along).min(at + back).min(at + along + back)
+		hi = hi.max(at).max(at + along).max(at + back).max(at + along + back)
+		at += along + dir * SLOT_SPACING
+	var lim := Vector2(FIELD.x, WALL_Y - FORM_MARGIN)
+	var shift := Vector2.ZERO
+	var fits := true
+	var adjusted := false
+	if lo.x < -0.01 or lo.y < -0.01 or hi.x > lim.x + 0.01 or hi.y > lim.y + 0.01:
+		var t_lo := -INF
+		var t_hi := INF
+		for axis in 2:
+			var f: float = face[axis]
+			if absf(f) < 0.000001:
+				fits = fits and lo[axis] >= -0.01 and hi[axis] <= lim[axis] + 0.01
+			else:
+				var t1 := -lo[axis] / f
+				var t2 := (lim[axis] - hi[axis]) / f
+				t_lo = maxf(t_lo, t1 if f > 0.0 else t2)
+				t_hi = minf(t_hi, t2 if f > 0.0 else t1)
+		fits = fits and t_lo <= t_hi
+		if fits:
+			adjusted = true
+			shift = face * clampf(0.0, t_lo, t_hi)
+	var boxes := _squad_boxes()
+	var overlap := -1
+	for it in items:
+		it.a += shift
+		it.b += shift
+		it.front = (it.a + it.b) * 0.5
+		it.centre = it.front - face * (it.rows - 1) * SLOT_SPACING * 0.5
+		if overlap < 0:
+			overlap = _overlap_with(it.s, _block_rect(it.centre, face.angle(), Vector2(it.rows, it.width) * SLOT_SPACING * 0.5),
+				it.width * it.rows * SLOT_SPACING * SLOT_SPACING, boxes, mask)
+	return {"items": items, "angle": face.angle(), "length": length, "adjusted": adjusted, "fits": fits, "overlap": overlap}
+
+
+# Расстановка нескольких отрядов по протяжке A -> B (см. _multi_geometry). Всё или ничего: группа не помещается
+# в поле или чей-то блок пересекается с невыбранным отрядом — отказ с сообщением, все на месте.
+# Один отряд — ровно _place_formation.
+func _place_formation_multi(list: PackedInt32Array, a: Vector2, b: Vector2, flip := false) -> bool:
+	if list.is_empty():
+		return false
+	if list.size() == 1:
+		_place_formation(list[0], a, b, flip)
+		return true
+	var g := _multi_geometry(list, a, b, flip)
+	if not g.fits or g.overlap >= 0:
+		_say("Строй не помещается в поле" if not g.fits else "Блок пересекается с отрядом %d" % (g.overlap + 1), 2.0)
+		queue_redraw()
+		return false
+	for it in g.items:
+		_apply_formation(it.s, it.width, it.rows, it.user_width, g.angle, it.centre, it.front)
 	queue_redraw()
+	return true
 
 
 # Для раскраски F4: запомнить slot_idx юнитов отряда перед перестройкой...
@@ -3488,37 +3881,71 @@ func _process_arrows() -> void:
 		arrow_dmg[a] = arrow_dmg[arrow_count]
 
 
+# Shift на момент последнего события мыши или клавиатуры: клик по строке панели сюда приходит раньше, чем кнопке.
+func _input(event: InputEvent) -> void:
+	if event is InputEventWithModifiers:
+		mod_shift = event.shift_pressed
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	# Сюда приходят только события, не съеденные интерфейсом: клик по панели карту не трогает.
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		# ЛКМ выбирает: клик — отряд под курсором, протяжка — рамка
 		var p := (make_input_local(event) as InputEventMouseButton).position   # мировые координаты
 		if event.pressed:
-			drag_active = true
-			drag_flip = false
-			drag_start = p
-			drag_cur = p
+			if drag_active:
+				drag_active = false   # ЛКМ во время ПКМ-протяжки отменяет её; рамка при этом не начинается
+			else:
+				box_active = true
+				box_start = p
+				box_cur = p
+				box_dbl = event.double_click
+			queue_redraw()
+		elif box_active:
+			box_active = false
+			if box_start.distance_to(p) < DRAG_MIN:
+				_click_select(box_start, event.shift_pressed, box_dbl)
+			else:
+				_box_select(Rect2(box_start, p - box_start).abs(), event.shift_pressed)
+			queue_redraw()
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+		# ПКМ приказывает выбранным: клик — цель, протяжка — строй по линии. Ничего не выбрано — игнорируется.
+		var p := (make_input_local(event) as InputEventMouseButton).position
+		if event.pressed:
+			if box_active:
+				box_active = false   # ПКМ отменяет рамку
+			elif sel_mask != 0:
+				drag_active = true
+				drag_flip = false
+				drag_start = p
+				drag_cur = p
+			queue_redraw()
 		elif drag_active:
 			drag_active = false
-			if squad_follow[selected_squad] < 0:   # ведомому цель и строй задаёт ведущий
-				if drag_start.distance_to(p) < DRAG_MIN:
-					_cmd_move(selected_squad, drag_start)   # короткий клик: цель отряда (если блок не пересечётся с другим)
-				else:
-					_place_formation(selected_squad, drag_start, p, drag_flip)
+			var list := _order_list()   # ведомому цель и строй задаёт ведущий
+			if drag_start.distance_to(p) >= DRAG_MIN:
+				_place_formation_multi(list, drag_start, p, drag_flip)
+			elif list.size() == 1:
+				_cmd_move(list[0], drag_start)   # короткий клик: цель отряда (если блок не пересечётся с другим)
+			elif list.size() > 1:
+				_cmd_move_group(list, drag_start)
 			queue_redraw()
-	elif event is InputEventMouseMotion and drag_active:
-		drag_cur = (make_input_local(event) as InputEventMouseMotion).position
-		queue_redraw()   # предпросмотр перерисовывается только во время перетаскивания
+	elif event is InputEventMouseMotion and (drag_active or box_active):
+		var p := (make_input_local(event) as InputEventMouseMotion).position
+		if drag_active:
+			drag_cur = p
+		else:
+			box_cur = p
+		queue_redraw()   # предпросмотр и рамка перерисовываются только во время перетаскивания
 	elif event is InputEventMouseButton and event.pressed and event.shift_pressed and event.button_index in [
 			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_LEFT, MOUSE_BUTTON_WHEEL_RIGHT]:
 		# Shift + колесо: поворот на месте (с Shift система может прислать горизонтальное колесо); без Shift колесо не занято
 		_cmd_rotate(-1 if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_LEFT] else 1)
-	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
-		drag_active = false   # ПКМ отменяет перетаскивание
-		queue_redraw()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_ESCAPE:
-				drag_active = false   # Esc отменяет перетаскивание
+				drag_active = false   # Esc отменяет протяжку и рамку
+				box_active = false
 				queue_redraw()
 			KEY_F:
 				if drag_active:
@@ -3529,7 +3956,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_H:
 				_toggle_banner()
 			KEY_T:
-				squad_user_width[selected_squad] = 0   # ширина строя снова авто
+				for s in _sel_list():
+					squad_user_width[s] = 0   # ширина строя снова авто
 			KEY_R:
 				if wave_state == WS_DEFEAT:
 					get_tree().reload_current_scene()   # полный сброс: сцена создаётся заново
@@ -3551,7 +3979,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_DOWN:
 				_cmd_side_post(-1)
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8:
-				_select_squad(event.keycode - KEY_1)
+				if event.shift_pressed:
+					_toggle_sel(event.keycode - KEY_1)
+				else:
+					_select_only(event.keycode - KEY_1)
+			KEY_A:
+				if event.ctrl_pressed:
+					_select_all()
 			KEY_N:
 				_cmd_new_squad()
 			KEY_G:

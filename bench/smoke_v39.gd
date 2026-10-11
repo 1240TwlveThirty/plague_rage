@@ -150,7 +150,7 @@ func _run() -> void:
 	await key(KEY_1)
 	u0 = used()
 	await key(KEY_G)
-	check("(и) G на паузе делит выбранный отряд", used() == u0 + 1 and m.selected_squad >= 2, "отряд %d: %d юнитов" % [m.selected_squad + 1, m.squad_n[m.selected_squad]])
+	check("(и) G на паузе делит выбранный отряд", used() == u0 + 1 and m.sel_primary >= 2, "отряд %d: %d юнитов" % [m.sel_primary + 1, m.squad_n[m.sel_primary]])
 	check("(и) за всё время паузы тики и позиции юнитов не менялись", m.tick_counter == tick0 and m.pos == pos0)
 	await key(KEY_P)
 	var p_off: bool = not m.paused
@@ -186,7 +186,7 @@ func _run() -> void:
 	await step(6)
 	var fresh: Node2D = current_scene
 	check("(б) R после поражения начинает заново: новая сцена, передышка, паузы нет, выбран отряд 1", fresh != m and fresh != null and fresh.wave_state == fresh.WS_RESPITE and not fresh.paused
-		and fresh.selected_squad == 0 and fresh.wave_number == 0)
+		and fresh.sel_primary == 0 and fresh.wave_number == 0)
 	m = fresh
 	m.record_path = "user://record_bench.json"
 	# передышка: деление и стрелки работают без паузы, слияние возвращает

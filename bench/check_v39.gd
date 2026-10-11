@@ -289,7 +289,7 @@ func test_cmds() -> void:
 	var res := PackedStringArray()
 	var bad := PackedStringArray()
 	key(m, KEY_2)
-	if m.selected_squad != 1:
+	if m.sel_primary != 1:
 		bad.append("выбор 2")
 	key(m, KEY_1)
 	for q in [[KEY_W, m.ORDER_HOLD], [KEY_E, m.ORDER_RETREAT], [KEY_Q, m.ORDER_ATTACK], [KEY_W, m.ORDER_HOLD]]:
@@ -326,7 +326,7 @@ func test_cmds() -> void:
 	m.split_frac = 0.3
 	key(m, KEY_K)
 	key(m, KEY_G)
-	var t_new: int = m.selected_squad
+	var t_new: int = m.sel_primary
 	if t_new < 2 or m.squad_n[t_new] != 90 or m.squad_n[0] != 210 or m.split_mode != 1:
 		bad.append("деление")
 	key(m, KEY_LEFT)
@@ -388,11 +388,11 @@ func split_case(m: Node2D, base: Array, n: int, pct: int, mode: int, stat: Dicti
 	var ok: bool = m._cmd_split()
 	stat.cases += 1
 	if n < 2:
-		if ok or m.squad_n[0] != n or m.selected_squad != 0 or m.hud_msg == "":
+		if ok or m.squad_n[0] != n or m.sel_primary != 0 or m.hud_msg == "":
 			stat.bad.append("n=%d: нет отказа" % n)
 		return
 	var k := clampi(n * pct / 100, 1, n - 1)
-	var t: int = m.selected_squad
+	var t: int = m.sel_primary
 	var tag := "n=%d %d%% режим %d" % [n, pct, mode]
 	if not ok or t < 2 or m.squad_n[t] != k or m.squad_n[0] != n - k or k < 1 or n - k < 1:
 		stat.bad.append(tag + ": размеры %d и %d, ждали %d и %d" % [m.squad_n[0], m.squad_n[t] if t >= 0 else -1, n - k, k])
@@ -496,7 +496,7 @@ func test_split() -> void:
 		m.split_mode = mode
 		m.split_frac = 0.4
 		key(m, KEY_G)
-		var tn: int = m.selected_squad
+		var tn: int = m.sel_primary
 		if tn < 2 or m.squad_n[tn] != n0 * 40 / 100 or m.squad_n[0] + m.squad_n[tn] != n0 or not slots_full(m, 0) or not slots_full(m, tn):
 			errs.append("режим %d: деление" % mode)
 		key(m, KEY_SPACE)

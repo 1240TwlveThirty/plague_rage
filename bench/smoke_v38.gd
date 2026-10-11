@@ -31,7 +31,7 @@ func _run() -> void:
 	current_scene = m
 	await step(8)
 	await key(KEY_2)
-	var ring: float = m._range_ring_radius(m.selected_squad)
+	var ring: float = m._range_ring_radius(m.sel_primary)
 	var c: Vector2 = m.squad_pos[1]
 	var view := Rect2(m.FIELD * 0.5 - Vector2(m.VIEW_HALF_W, m.VIEW_HALF_H), Vector2(m.VIEW_HALF_W, m.VIEW_HALF_H) * 2.0)
 	var inside := 0
@@ -42,7 +42,7 @@ func _run() -> void:
 			inside += 1
 		if p.y <= m.WALL_Y:
 			above_wall += 1
-	check("(ж) выбран отряд лучников, кольцо дальности 480 px рисуется вокруг его центра", m.selected_squad == 1 and ring == 480.0, "центр %s" % c.round())
+	check("(ж) выбран отряд лучников, кольцо дальности 480 px рисуется вокруг его центра", m.sel_primary == 1 and ring == 480.0, "центр %s" % c.round())
 	check("(ж) кольцо на экране целиком", inside == 360, "на экране %d° из 360; верх кольца y = %.0f, низ y = %.0f при нижнем крае экрана %.0f; над стеной (поле боя) %d°" % [
 		inside, c.y - ring, c.y + ring, view.end.y, above_wall])
 	await key(KEY_SPACE)
