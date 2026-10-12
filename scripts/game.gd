@@ -31,6 +31,7 @@ var run_index := 0             # сколько забегов начато за
 var save_locked := false       # сохранение от более новой версии: файл не перезаписывается, игра идёт в памяти
 var save_warning := ""         # строка-предупреждение для хаба или ""
 var story := {}                # дневник для хаба (load_story) или {} при ошибке
+var active_gifts := {}         # дары следующего забега, id -> уровень: сцена боя читает при старте; в сохранение не пишется
 
 
 func _ready() -> void:
@@ -148,6 +149,7 @@ func _setup() -> void:
 	save_locked = false
 	save_warning = ""
 	story = {}
+	active_gifts = {}
 	_clear_last_run()
 	var cfg := load_run_cfg(run_path)
 	cfg_ok = not cfg.is_empty()

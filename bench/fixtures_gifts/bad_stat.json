@@ -1,0 +1,1 @@
+[{"id": "g", "name": "Дар", "stat": "speed", "target": "all_units", "op": "add_pct", "levels": [8, 16, 24]}]

@@ -1,0 +1,1 @@
+[{"id": "g", "name": "Дар", "stat": "damage", "target": "zombies", "op": "add_pct", "levels": [8, 16, 24]}]

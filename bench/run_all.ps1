@@ -32,7 +32,7 @@ function Step([string]$name, [string]$exe, [string[]]$argv, [string]$expect) {
 	Write-Host ("{0}  {1,-34} {2,6:N1} с  {3}" -f $(if ($ok) { "PASS" } else { "FAIL" }), $name, $sw.Elapsed.TotalSeconds, $line)
 	if (-not $ok) {
 		$script:failed += 1
-		$text -split "`n" | Where-Object { $_ -match "НЕТ|FAIL|SCRIPT ERROR|Parse Error|Failed to load" } | Select-Object -First 5 | ForEach-Object { Write-Host ("        " + $_.Trim()) }
+		$text -split "`n" | Where-Object { $_ -match "НЕТ|FAIL|SCRIPT ERROR|Parse Error|Failed to load" } | ForEach-Object { Write-Host ("        " + $_.Trim()) }
 	}
 }
 
@@ -51,6 +51,7 @@ Godot "пауза, деление, посты (v39)" "res://bench/check_v39.gd" 
 Godot "выбор, группа, детерминизм (v40)" "res://bench/check_v40.gd" "CHECK: провалов 0"
 Godot "забег: Game, победа, хаб (v41)" "res://bench/check_v41.gd" "CHECK: провалов 0"
 Godot "сохранение, дневник, концовки (v42)" "res://bench/check_v42.gd" "CHECK: провалов 0"
+Godot "модификаторы: дары (v43)" "res://bench/check_v43.gd" "CHECK: провалов 0"
 Godot "геометрия расстановки (v27)" "res://bench/check_v27.gd" "раздача слотов"
 Godot "отряды: создание, слияние (v28)" "res://bench/check_v28.gd" "да"
 Godot "управление строем (v29)" "res://bench/check_v29.gd" "да"

@@ -1,5 +1,6 @@
 extends SceneTree
-# Калибровка осады I: один забег бота. Аргументы: <бот B1..B6> <seed> [множитель численности, по умолчанию 1]. Рабочие scripts/main.gd и JSON из data/ (только чтение).
+# Калибровка осады I: один забег бота. Аргументы: <бот B1..B6> <seed> [множитель численности, по умолчанию 1] [--gifts id:уровень,id:уровень].
+# Рабочие scripts/main.gd и JSON из data/ (только чтение). Пример замера «потолка»: B5 1 --gifts tempered_steel:3,reserve:2
 # Множитель (свип этапа 2) умножает в памяти count_base, count_step и knight_per_wave: число зомби каждого типа растёт в это число раз, доли типов те же.
 # Слой 1, синглтона Game нет — волны без предела, до поражения (страховка 40 волн). Отряды стоят на старте, приказ «атака», кликов нет;
 # в каждой передышке бот тратит всё золото. Сила игрока и врага — bench/balance/strength.gd.
@@ -18,14 +19,25 @@ func count_type(m: Node2D, type: int) -> int:
 func _initialize() -> void:
 	if root.has_node("Game"):
 		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
-	var args := OS.get_cmdline_user_args()
-	var bot := args[0]
+	var args := Array(OS.get_cmdline_user_args())
+	var gifts := {}
+	var at := args.find("--gifts")
+	if at >= 0:
+		for part in String(args[at + 1]).split(",", false):
+			gifts[part.get_slice(":", 0)] = int(part.get_slice(":", 1))
+		args = args.slice(0, at) + args.slice(at + 2)
+	var bot: String = args[0]
 	var seed := int(args[1])
 	var m: Node2D = load("res://scripts/main.gd").new()
 	m.record_path = "user://record_bench.json"
 	m.spawn_seed = seed
 	m.debug_layer = 1
+	m.active_gifts = gifts
 	m._setup_data()
+	if m.type_id.is_empty():
+		m.free()
+		quit(1)   # данные или набор даров не загрузились: ошибка уже в stderr
+		return
 	var mult := float(args[2]) if args.size() > 2 else 1.0
 	if mult != 1.0:
 		for key in ["count_base", "count_step", "knight_per_wave"]:

@@ -1,0 +1,8 @@
+[
+	{"id": "tempered_steel", "name": "Закалённая сталь", "stat": "damage", "target": "all_units", "op": "add_pct", "levels": [8, 16, 24]},
+	{"id": "sturdy_shields", "name": "Крепкие щиты", "stat": "hp", "target": "all_units", "op": "add_pct", "levels": [8, 16, 24]},
+	{"id": "spoils", "name": "Трофеи", "stat": "bounty", "target": "player", "op": "add_pct", "levels": [10, 20, 30]},
+	{"id": "mine", "name": "Рудник", "stat": "income", "target": "player", "op": "add_pct", "levels": [5, 10, 15]},
+	{"id": "fortress_walls", "name": "Крепостные стены", "stat": "gate_hp", "target": "gate", "op": "add_pct", "levels": [15, 30, 45]},
+	{"id": "reserve", "name": "Резерв", "stat": "start_units", "target": "all_units", "op": "add_flat", "levels": [40, 70, 100]}
+]

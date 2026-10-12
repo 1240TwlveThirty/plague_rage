@@ -38,6 +38,8 @@ const RECORD_PATH := "user://record.json"   # прежний рекорд best_w
 const RUN_PATH := "res://data/run.json"     # забег: waves_per_run, siege_count
 const GAME_SCRIPT := preload("res://scripts/game.gd")   # общий загрузчик run.json
 const STORY_PATH := "res://data/story.json"   # дневник: тексты баннеров (на механику не влияет)
+const GIFTS_PATH := "res://data/gifts.json"   # дары: модификаторы забега
+const MODS := preload("res://scripts/mods.gd")
 const BANNER_WIDTH := 700.0                   # ширина баннера, px: длинный текст переносится по словам
 const STORY_COLOR := Color(1.0, 0.88, 0.6)    # цвет текста дневника в баннере
 const SQUAD_MAX := 8                          # ёмкость всех массивов отрядов (выделяются один раз)
@@ -296,6 +298,12 @@ var drag_start := Vector2.ZERO         # мировые координаты н�
 var drag_cur := Vector2.ZERO           # и курсора сейчас
 var drag_flip := false                 # F во время протяжки: лицо строя наоборот
 var story_path := STORY_PATH           # тесты подменяют
+var gifts_path := GIFTS_PATH           # тесты подменяют
+var active_gifts := {}                 # активные дары забега, id -> уровень: с синглтоном берутся из Game.active_gifts, бенчи задают до _setup_data
+var mods: RefCounted = null            # MODS: спрашивается один раз в _apply_mods, тик его не вызывает
+var income_pct := 0.0                  # дар на доход: эта доля дохода прошлой волны начисляется в начале волны
+var wave_income := 0.0                 # доход прошлой волны: золото за убитых и бонус волны
+var gold_wave_start := 0.0             # золото в начале волны (после начисления дара): от него считается доход волны
 var story_intro := ""
 var story_entries := {}                # Vector2i(осада, волна) -> {id, text}
 var story_victories := {}              # осада -> текст победы
@@ -761,6 +769,45 @@ func _save_record() -> void:
 
 # --- Волны --------------------------------------------------------------------
 
+# Дары: gifts.json и активный набор (Game.active_gifts или active_gifts бенча). Ошибка в файле или в наборе — остановка.
+func _load_mods() -> bool:
+	var defs: Dictionary = MODS.load_gifts(gifts_path)
+	if defs.is_empty():
+		return false
+	if game != null:
+		active_gifts = game.active_gifts.duplicate()
+	mods = MODS.new(defs)
+	return mods.build(active_gifts)
+
+
+# Эффективные характеристики забега — один раз, до создания юнитов: дальше бой читает только готовые числа.
+# Урон, HP и награда умножаются прямо в массивах типов (type_damage, type_arrow_dmg, type_hp, type_bounty_mult),
+# ворота — в gate_hp_max, доход — в income_pct. Тип игрока получает множители цели all_units и своей (infantry, archer).
+# Без даров все множители ровно 1.0 и числа те же бит в бит.
+func _apply_mods() -> void:
+	var names := {infantry_type: "infantry", archer_type: "archer"}
+	for t in names:
+		var dmg: float = mods.get_mult("damage", "all_units") * mods.get_mult("damage", names[t])
+		type_damage[t] *= dmg
+		type_arrow_dmg[t] *= dmg
+		type_hp[t] *= mods.get_mult("hp", "all_units") * mods.get_mult("hp", names[t])
+	var bounty: float = mods.get_mult("bounty", "player")
+	for t in type_bounty_mult.size():
+		type_bounty_mult[t] *= bounty
+	gate_hp_max *= mods.get_mult("gate_hp", "gate")
+	gate_hp = gate_hp_max
+	income_pct = mods.get_mult("income", "player") - 1.0
+
+
+# Дар на стартовые юниты: прибавка каждому стартовому отряду, юниты выходят из ворот, как купленные.
+func _add_start_units() -> void:
+	var names := ["infantry", "archer"]
+	for s in START_SQUADS:
+		var n := int(mods.get_flat("start_units", "all_units") + mods.get_flat("start_units", names[s]))
+		if n > 0:
+			_squad_add_units(s, squad_type[s], n)
+
+
 func _wave_count(w: int) -> int:
 	return mini(int(wave_cfg.count_cap), roundi(wave_cfg.count_base + wave_cfg.count_step * (w - 1)))
 
@@ -1148,6 +1195,9 @@ func _start_wave() -> void:
 	wave_number += 1
 	wave_state = WS_BATTLE
 	_set_paused(false)
+	if income_pct != 0.0:
+		gold += wave_income * income_pct
+	gold_wave_start = gold
 	if wave_plan_for != wave_number:   # план строится в начале передышки; сюда — если номер волны сменили в обход
 		wave_plan = _plan_wave(wave_number)
 		wave_plan_for = wave_number
@@ -1299,6 +1349,7 @@ func _wave_cleared() -> void:
 		_on_win()   # последняя волна забега: передышки не будет
 		return
 	gold += wave_cfg.wave_bonus_gold
+	wave_income = gold - gold_wave_start
 	for i in count:
 		if team[i] == 0:
 			hp[i] = type_hp[unit_type[i]]   # бесплатное лечение армии
@@ -1920,7 +1971,7 @@ func _setup_data() -> void:
 	var peasant := _type_of("peasant")     # орда зомби
 	var runner := _type_of("runner")
 	var knight := _type_of("fallen_knight")
-	if infantry == -1 or archer == -1 or peasant == -1 or runner == -1 or knight == -1 or not _load_castle() or not _load_waves() or not _load_shop() or not _load_run() or not _load_story():
+	if infantry == -1 or archer == -1 or peasant == -1 or runner == -1 or knight == -1 or not _load_castle() or not _load_waves() or not _load_shop() or not _load_run() or not _load_story() 			or not _load_mods():
 		type_id = {}
 		set_physics_process(false)
 		set_process(false)
@@ -1930,6 +1981,7 @@ func _setup_data() -> void:
 	zombie_type = peasant
 	runner_type = runner
 	knight_type = knight
+	_apply_mods()
 	# Все массивы юнитов — один раз на MAX_UNITS; живые юниты всегда в [0, count).
 	pos.resize(MAX_UNITS)
 	team.resize(MAX_UNITS)
@@ -2075,6 +2127,8 @@ func _setup_data() -> void:
 	prev_pos = pos.duplicate()   # иначе _remove_dead до первого физического тика выходит за границы prev_pos
 	# Волны и экономика
 	gold = wave_cfg.start_gold
+	wave_income = 0.0
+	gold_wave_start = gold
 	zombie_alive = 0
 	for i in count:
 		if team[i] == 1:
@@ -2095,6 +2149,7 @@ func _setup_data() -> void:
 			if unit_squad[i] == s:
 				min_speed = minf(min_speed, type_speed[unit_type[i]])
 		squad_speed[s] = 0.75 * min_speed
+	_add_start_units()
 
 
 func _setup_rendering() -> void:
