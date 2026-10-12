@@ -1,5 +1,5 @@
 extends SceneTree
-# Тесты v42 (каркас забега, часть 2): сохранение на диск, story.json новой структуры, дневник по событиям, концовки, рекорды.
+# Тесты v42 (каркас забега, часть 2): сохранение на диск (в том числе время игры play_time), story.json новой структуры, дневник по событиям, концовки, рекорды.
 # Game создаётся вручную на каждый случай (автозагрузка проекта убирается), сохранение — во временной папке user://bench_v42;
 # настоящий user://save.json не трогается. Физика боя вручную. Аргументы: [save | story | diary | endings | records] — по умолчанию все.
 # Интерфейс с окном — bench/smoke_v42.gd.
@@ -11,13 +11,11 @@ const FIX := "res://bench/fixtures_story/"
 const DIR := "user://bench_v42"
 const SAVE := DIR + "/save.json"
 const DT := 1.0 / 30.0
-# прежняя волна -> (осада, волна)
-const WAVE_MAP := {1: Vector2i(1, 1), 2: Vector2i(1, 2), 3: Vector2i(1, 3), 5: Vector2i(1, 5), 6: Vector2i(1, 6), 8: Vector2i(1, 8), 10: Vector2i(1, 10),
-	13: Vector2i(2, 3), 15: Vector2i(2, 5), 18: Vector2i(2, 7), 20: Vector2i(2, 10), 22: Vector2i(3, 3), 25: Vector2i(3, 6), 30: Vector2i(3, 10)}
+const ENTRY_COUNT := 14   # записей дневника в data/story.json
 const VICTORIES := [
 	"День десятый. Последний из них упал у ворот, и боль короля стихла. Я записал это, как записываю всё. Это не конец: Благодать умеет возвращаться.",
 	"Снова десять дней, и снова ворота стоят. Свет над лесом стал ярче. Он красивый. Я перестал отводить глаза.",
-	"Ворота стоят, но я больше не держу их. Благодать вошла не как захватчик, а как та, кого я ждал. Мира спит рядом. Я принимаю."]
+	"Ворота стоят, но я больше не держу их. Благодать вошла не как захватчик, а как та, кого я ждал. Я принимаю."]
 const START_HINT := "Расставь отряды. Space — начать волну 1"
 var fails := 0
 var g: Node
@@ -220,6 +218,30 @@ func t_save() -> void:
 	check("version 2: после end_run, отметки дневника и выхода файл не изменён; в памяти итог есть", read() == newer and files().size() == 1 and g.records[1].wins == 1 and g.unlocked_siege == 2)
 	h = await hub()
 	check("хаб: строка «Сохранение от более новой версии» видна", h.warning_label.visible and h.warning_label.text == "Сохранение от более новой версии")
+	# время игры: поле play_time, version прежняя
+	wipe()
+	await new_game()
+	var t0: float = g.play_time
+	await step(5)
+	check("play_time: начинается с нуля и растёт по кадрам", t0 >= 0.0 and t0 < 1.0 and g.play_time > t0, "%.3f -> %.3f" % [t0, g.play_time])
+	g.play_time = 1234.56
+	g.save()
+	d = on_disk()
+	check("play_time в файле: 1234.6 с, version 1", absf(d.get("play_time", -1.0) - 1234.6) < 0.01 and d.get("version") == 1.0, str(d.get("play_time")))
+	await new_game()
+	check("новый узел Game продолжает счёт с сохранённого", g.play_time >= 1234.59 and g.play_time < 1236.0 and g.save_warning == "", "%.3f" % g.play_time)
+	var old_save := on_disk()
+	old_save.erase("play_time")
+	old_save.runs_total = 4
+	put(JSON.stringify(old_save))
+	await new_game()
+	check("старый файл без play_time: читается без предупреждения, время 0, забегов 4", g.save_warning == "" and g.runs_total == 4 and g.play_time < 1.0
+		and files() == PackedStringArray(["save.json"]), "%.3f" % g.play_time)
+	old_save.play_time = "много"
+	put(JSON.stringify(old_save))
+	await new_game()
+	check("play_time не число: время 0, сохранение не считается повреждённым", g.save_warning == "" and g.runs_total == 4 and g.play_time < 1.0
+		and files() == PackedStringArray(["save.json"]))
 	# кнопка «Выход»: сохраняет (дерево завершится в конце теста — quit уже запрошен, проверки ниже идут до конца кадра)
 	wipe()
 	await new_game()
@@ -234,35 +256,35 @@ func t_story() -> void:
 	print("(в) story.json — ниже ожидаются строки ERROR от повреждённых файлов")
 	var gs: GDScript = load(GAME)
 	var s: Dictionary = gs.load_story(STORY, 3)
-	var old: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(STORY_OLD))
-	check("story.json грузится; записей столько же, сколько в прежнем файле (%d)" % old.entries.size(), not s.is_empty() and s.entries.size() == old.entries.size(),
+	var raw: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(STORY))   # файл как есть: тексты сверяются с ним байт в байт
+	check("story.json грузится; записей %d" % ENTRY_COUNT, not s.is_empty() and s.entries.size() == ENTRY_COUNT and raw.entries.size() == ENTRY_COUNT,
 		"" if s.is_empty() else "записей %d" % s.entries.size())
-	check("вступление дословно прежнее", s.intro == old.intro and s.intro.to_utf8_buffer() == String(old.intro).to_utf8_buffer())
+	check("вступление непустое, дословно как в файле", s.intro != "" and s.intro.to_utf8_buffer() == String(raw.intro).to_utf8_buffer())
 	var by_place := {}
 	for e in s.entries:
 		by_place[Vector2i(e.siege, e.wave)] = e
-	var moved := 0
-	for e in old.entries:
-		var place: Vector2i = WAVE_MAP.get(int(e.wave), Vector2i.ZERO)
+	var good := 0
+	for e in raw.entries:
+		var place := Vector2i(int(e.siege), int(e.wave))
 		var n = by_place.get(place)
-		if n != null and n.text.to_utf8_buffer() == String(e.text).to_utf8_buffer() and n.id == "s%dw%d" % [place.x, place.y]:
-			moved += 1
+		if n != null and n.text != "" and n.text.to_utf8_buffer() == String(e.text).to_utf8_buffer() and n.id == "s%dw%d" % [place.x, place.y] and e.id == n.id 				and place.x >= 1 and place.x <= 3 and place.y >= 1 and place.y <= 10:
+			good += 1
 		else:
-			print("    прежняя волна %d не на месте" % int(e.wave))
-	check("каждая прежняя запись стоит на (осада, волна) по таблице, текст байт в байт, id вида s1w1", moved == old.entries.size(), "%d из %d" % [moved, old.entries.size()])
+			print("    запись %s не на месте" % str(e.get("id")))
+	check("каждая запись: осада 1-3, волна 1-10, id вида s{осада}w{волна}, текст непустой и байт в байт как в файле", good == ENTRY_COUNT, "%d из %d" % [good, ENTRY_COUNT])
 	var sorted := true
 	for k in range(1, s.entries.size()):
 		var a: Dictionary = s.entries[k - 1]
 		var b: Dictionary = s.entries[k]
 		sorted = sorted and (a.siege < b.siege or (a.siege == b.siege and a.wave < b.wave))
 	check("записи отсортированы по (осада, волна)", sorted)
-	var old_ends: Array = old.endings.duplicate()
-	old_ends.sort_custom(func(a, b): return a.min_wave < b.min_wave)
-	var ends_ok: bool = Array(s.end_wave) == [0, 4, 7, 10] and old_ends.size() == 4
+	var raw_ends: Array = raw.endings.duplicate()
+	raw_ends.sort_custom(func(a, b): return a.min_wave < b.min_wave)
+	var ends_ok: bool = Array(s.end_wave) == [0, 4, 7, 10] and raw_ends.size() == 4
 	for k in 4:
-		ends_ok = ends_ok and s.end_text[k] == old_ends[k].text
-	check("4 концовки с порогами 0, 4, 7, 10; тексты прежних по порядку (0, 5, 15, 25) дословно", ends_ok, str(s.end_wave))
-	check("3 победы, тексты по осадам как в задании", s.victories.size() == 3 and s.victories[1] == VICTORIES[0] and s.victories[2] == VICTORIES[1] and s.victories[3] == VICTORIES[2])
+		ends_ok = ends_ok and s.end_text[k] == raw_ends[k].text and "{wave}" in s.end_text[k]
+	check("4 концовки с порогами 0, 4, 7, 10; тексты дословно как в файле, в каждом есть {wave}", ends_ok, str(s.end_wave))
+	check("3 победы (осады 1-3), тексты по осадам как в задании", s.victories.size() == 3 and s.victories[1] == VICTORIES[0] and s.victories[2] == VICTORIES[1] and s.victories[3] == VICTORIES[2])
 	for name in ["no_field", "bad_type", "dup_id", "no_victory", "no_siege", "missing_file"]:
 		check("повреждённый %s.json не грузится" % name, gs.load_story(FIX + name + ".json", 3).is_empty())
 	check("прежняя структура (без id, siege, victories) не грузится", gs.load_story(STORY_OLD, 3).is_empty())
@@ -274,8 +296,8 @@ func t_story() -> void:
 		m.free()
 	var ok: Node2D = load(MAIN).new()
 	ok._setup_data()
-	check("сцена боя с рабочим story.json грузится; вне дерева (без синглтона) запись волны 1 отдаётся каждый раз", not ok.type_id.is_empty()
-		and ok._entry_text(1) == by_place[Vector2i(1, 1)].text and ok._entry_text(1) != "" and ok._entry_text(2) == "")
+	check("сцена боя с рабочим story.json грузится; вне дерева (без синглтона) запись волны 1 отдаётся каждый раз, у волны 4 записи нет", not ok.type_id.is_empty()
+		and ok._entry_text(1) == by_place[Vector2i(1, 1)].text and ok._entry_text(1) != "" and ok._entry_text(4) == "")
 	ok.free()
 
 # (г) дневник по событиям.
@@ -301,8 +323,8 @@ func t_diary() -> void:
 	check("волна 1 пройдена: запись s1w1 в баннере итога, отмечена и сохранена", m.wave_state == m.WS_RESPITE and m.banner_parts[2] == texts["s1w1"] and m.banner_parts[1].begins_with("Волна 1 пройдена")
 		and g.diary_seen == ["intro", "s1w1"] and on_disk().get("diary_seen") == ["intro", "s1w1"], m.banner_parts[2])
 	await wave(m)
-	check("волна 2 (записи нет): баннер итога без дневника, diary_seen не изменился", m.wave_number == 2 and m.banner_parts[1].begins_with("Волна 2 пройдена") and m.banner_parts[2] == ""
-		and g.diary_seen.size() == 2)
+	check("волна 2 пройдена: запись s1w2 в баннере итога, отмечена и сохранена", m.wave_number == 2 and m.banner_parts[1].begins_with("Волна 2 пройдена") and m.banner_parts[2] == texts["s1w2"]
+		and g.diary_seen == ["intro", "s1w1", "s1w2"] and on_disk().get("diary_seen") == ["intro", "s1w1", "s1w2"])
 	finish(m, 3)
 	key(m, KEY_ENTER)
 	await step(3)
@@ -312,20 +334,24 @@ func t_diary() -> void:
 	check("второй забег: стартовый баннер без дневника — только «%s»" % START_HINT, m.banner_parts[0] == "" and m.banner_parts[2] == "" and m.banner_parts[3] == START_HINT and m.banner.visible, str(m.banner_parts))
 	boost(m)
 	await wave(m)
-	check("волна 1 второго забега: запись s1w1 уже не показывается (баннер как без неё)", m.banner_parts[1].begins_with("Волна 1 пройдена") and m.banner_parts[2] == "" and g.diary_seen.size() == 2)
+	check("волна 1 второго забега: запись s1w1 уже не показывается (баннер как без неё)", m.banner_parts[1].begins_with("Волна 1 пройдена") and m.banner_parts[2] == "" and g.diary_seen.size() == 3)
 	m.queue_free()
 	await step(2)
 	await new_game()
-	check("новый узел Game с тем же файлом: прочитанное загружено", g.diary_seen == ["intro", "s1w1"])
+	check("новый узел Game с тем же файлом: прочитанное загружено", g.diary_seen == ["intro", "s1w1", "s1w2"])
 	m = await run(1)
 	boost(m)
 	check("после перезапуска вступление не показывается", m.banner_parts[0] == "" and m.banner_parts[2] == "")
 	await wave(m)
 	check("после перезапуска запись (1, 1) не показывается", m.banner_parts[2] == "" and m.wave_number == 1)
 	await wave(m)
+	check("после перезапуска запись (1, 2) не показывается", m.banner_parts[2] == "" and m.wave_number == 2)
 	await wave(m)
-	check("волна 3: запись s1w3 показана в первый раз", m.wave_number == 3 and m.banner_parts[2] == texts["s1w3"] and g.diary_seen == ["intro", "s1w1", "s1w3"])
-	finish(m, 4)
+	check("волна 3: запись s1w3 показана в первый раз", m.wave_number == 3 and m.banner_parts[2] == texts["s1w3"] and g.diary_seen == ["intro", "s1w1", "s1w2", "s1w3"])
+	await wave(m)
+	check("волна 4 (записи нет): баннер итога без дневника, diary_seen не изменился", m.wave_number == 4 and m.banner_parts[1].begins_with("Волна 4 пройдена") and m.banner_parts[2] == ""
+		and g.diary_seen.size() == 4)
+	finish(m, 5)
 	key(m, KEY_ENTER)
 	await step(3)
 	h = current_scene
@@ -334,7 +360,7 @@ func t_diary() -> void:
 	h.diary_button.pressed.emit()
 	var lines: Array = h._diary_lines()
 	check("«Дневник»: вступление, затем прочитанные записи в порядке (осада, волна)", h.diary_panel.visible and lines == [["", st.intro], ["Осада I, волна 1", texts["s1w1"]],
-		["Осада I, волна 3", texts["s1w3"]], ["Осада I, волна 5", texts["s1w5"]], ["Осада II, волна 5", texts["s2w5"]]], str(lines.map(func(l): return l[0])))
+		["Осада I, волна 2", texts["s1w2"]], ["Осада I, волна 3", texts["s1w3"]], ["Осада I, волна 5", texts["s1w5"]], ["Осада II, волна 5", texts["s2w5"]]], str(lines.map(func(l): return l[0])))
 	var shown := PackedStringArray()
 	for c in h.diary_box.get_children():
 		shown.append(c.text)
@@ -342,8 +368,8 @@ func t_diary() -> void:
 	for e in st.entries:
 		if not g.diary_seen.has(e.id) and (e.text in shown or ("%s, волна %d" % [g.siege_name(e.siege), e.wave]) in shown):
 			leaked += 1
-	check("непрочитанных записей в панели нет (ни текста, ни заголовка); строк 9 = вступление + 4 заголовка + 4 текста", leaked == 0 and shown.size() == 9
-		and st.entries.size() > 4, "строк %d" % shown.size())
+	check("непрочитанных записей в панели нет (ни текста, ни заголовка); строк 11 = вступление + 5 заголовков + 5 текстов", leaked == 0 and shown.size() == 11
+		and st.entries.size() > 5, "строк %d" % shown.size())
 	key(h, KEY_ESCAPE)
 	check("Esc закрывает дневник", not h.diary_panel.visible and h.start_button.has_focus())
 

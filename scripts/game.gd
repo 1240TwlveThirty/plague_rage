@@ -1,5 +1,5 @@
 extends Node
-# Каркас забега: какая осада идёт, что открыто, рекорды, прочитанный дневник и итог последнего забега.
+# Каркас забега: какая осада идёт, что открыто, рекорды, прочитанный дневник, время игры и итог последнего забега.
 # Автозагрузка с именем Game. Состояние между запусками хранится в save_path (user://save.json).
 const RUN_PATH := "res://data/run.json"
 const STORY_PATH := "res://data/story.json"
@@ -25,6 +25,7 @@ var records := {}              # осада -> {best_wave, wins, runs}
 var diary_seen: Array = []     # id прочитанных записей дневника и INTRO_ID
 var completed := false         # последняя осада пройдена хотя бы раз
 var runs_total := 0            # законченных забегов за всё время
+var play_time := 0.0           # секунд игры за всё время: идёт, пока игра запущена (меню, хаб, бой, пауза)
 var last_run := {}             # {siege, result "win" / "loss" / "", wave, kills}; result "" — забега ещё не было
 var run_index := 0             # сколько забегов начато за этот запуск
 var save_locked := false       # сохранение от более новой версии: файл не перезаписывается, игра идёт в памяти
@@ -34,6 +35,10 @@ var story := {}                # дневник для хаба (load_story) и�
 
 func _ready() -> void:
 	_setup()
+
+
+func _process(delta: float) -> void:
+	play_time += delta
 
 
 func _notification(what: int) -> void:
@@ -163,6 +168,7 @@ func _clean_state() -> void:
 	diary_seen = []
 	completed = false
 	runs_total = 0
+	play_time = 0.0
 	records = {}
 	for s in range(1, siege_count + 1):
 		records[s] = {"best_wave": 0, "wins": 0, "runs": 0}
@@ -202,8 +208,11 @@ func _parse_save(text: String) -> Dictionary:
 			return {}
 		if not seen.has(id):
 			seen.append(id)
+	# play_time появилось позже без смены version: в старых файлах поля нет — 0; не число или меньше 0 — тоже 0
+	var pt = d.get("play_time")
+	var secs: float = pt if (pt is float or pt is int) and pt >= 0 else 0.0
 	return {"unlocked_siege": int(d.unlocked_siege), "last_siege": int(d.last_siege), "runs_total": int(d.runs_total),
-		"records": recs, "diary_seen": seen, "completed": d.completed}
+		"records": recs, "diary_seen": seen, "completed": d.completed, "play_time": secs}
 
 
 # Файла нет — чистое состояние. Повреждён — переименовать в save_corrupt_<unix>.json, чистое состояние, предупреждение.
@@ -229,6 +238,7 @@ func _load_save() -> void:
 	runs_total = d.runs_total
 	diary_seen = d.diary_seen
 	completed = d.completed
+	play_time = d.play_time
 	for s in d.records:
 		if records.has(s):   # осады сверх siege_count в памяти не держатся
 			records[s] = d.records[s]
@@ -242,7 +252,7 @@ func save() -> bool:
 	for s in records:
 		recs[str(s)] = records[s]
 	var text := JSON.stringify({"version": SAVE_VERSION, "unlocked_siege": unlocked_siege, "last_siege": last_siege, "records": recs,
-		"diary_seen": diary_seen, "completed": completed, "runs_total": runs_total}, "\t")
+		"diary_seen": diary_seen, "completed": completed, "runs_total": runs_total, "play_time": snappedf(play_time, 0.1)}, "\t")
 	var tmp := save_path + ".tmp"
 	var f := FileAccess.open(tmp, FileAccess.WRITE)
 	if f == null:
