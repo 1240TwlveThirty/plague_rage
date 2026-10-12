@@ -1,6 +1,6 @@
 {
-	"count_base": 50,
-	"count_step": 45,
+	"count_base": 135,
+	"count_step": 121.5,
 	"count_cap": 2000,
 	"hp_growth": 0.04,
 	"dmg_growth": 0.04,
@@ -20,7 +20,7 @@
 	"sides_from_wave": 5,
 	"side_prob": 0.7,
 	"knight_from_wave": 7,
-	"knight_per_wave": 0.8,
+	"knight_per_wave": 2.16,
 	"knight_cap": 60,
 	"spawn_left_x": 300,
 	"spawn_left_y": 250,

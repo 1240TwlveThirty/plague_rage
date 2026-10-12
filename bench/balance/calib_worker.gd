@@ -1,5 +1,6 @@
 extends SceneTree
-# Калибровка осады I, этап 1: один забег бота. Аргументы: <бот B1..B6> <seed>. Рабочие scripts/main.gd и JSON из data/ (только чтение).
+# Калибровка осады I: один забег бота. Аргументы: <бот B1..B6> <seed> [множитель численности, по умолчанию 1]. Рабочие scripts/main.gd и JSON из data/ (только чтение).
+# Множитель (свип этапа 2) умножает в памяти count_base, count_step и knight_per_wave: число зомби каждого типа растёт в это число раз, доли типов те же.
 # Слой 1, синглтона Game нет — волны без предела, до поражения (страховка 40 волн). Отряды стоят на старте, приказ «атака», кликов нет;
 # в каждой передышке бот тратит всё золото. Сила игрока и врага — bench/balance/strength.gd.
 # Товары: 0 inf_pack, 1 archer_pack, 2 weapons, 3 gate.
@@ -25,6 +26,11 @@ func _initialize() -> void:
 	m.spawn_seed = seed
 	m.debug_layer = 1
 	m._setup_data()
+	var mult := float(args[2]) if args.size() > 2 else 1.0
+	if mult != 1.0:
+		for key in ["count_base", "count_step", "knight_per_wave"]:
+			m.wave_cfg[key] *= mult
+		m.wave_plan_for = -1   # план волны 1 построен до правки: _start_wave построит заново
 	var ptr := 0
 	var defeat := 0
 	var full := 1

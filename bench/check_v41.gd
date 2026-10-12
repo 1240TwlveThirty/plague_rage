@@ -52,11 +52,12 @@ func ticks(m: Node2D, n: int) -> void:
 	for i in n:
 		m._physics_process(DT)
 
-# Армия игрока x10 по HP и урон пехоты x10 (только в тесте): 10 волн слоя 1 проходятся без покупок.
+# Армия игрока x10 по HP, урон пехоты и стрел x10 (только в тесте): 10 волн слоя 1 проходятся без покупок.
 func boost(m: Node2D) -> void:
 	m.type_hp[m.infantry_type] *= 10.0
 	m.type_hp[m.archer_type] *= 10.0
 	m.type_damage[m.infantry_type] *= 10.0
+	m.type_arrow_dmg[m.archer_type] *= 10.0   # без этого при численности волн x2.7 (калибровка, этап 2) ворота падают на волне 9
 	for i in m.count:
 		if m.team[i] == 0:
 			m.hp[i] = m.type_hp[m.unit_type[i]]
