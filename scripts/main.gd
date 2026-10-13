@@ -76,6 +76,14 @@ const FLOATS_PER_UNIT := 16   # 8 (трансформ 2D) + 4 (цвет) + 4 (cu
 # кадров может быть меньше — состояние зажимается до последнего кадра.
 const SPRITE_PX := 16            # сторона кадра и размер спрайта в мире, px
 const SPRITE_FRAMES_MAX := 3     # состояний анимации: 0 стоит, 1 замах, 2 атака
+# Зомби (юниты без отряда) рисуются теми же листами и тем же способом. В бою кадры по состоянию, как у пехоты (замах, атака);
+# на ходу — шаг по времени отрисовки: кадры ZOMBIE_WALK_SEQ, смена кадра раз в ZOMBIE_WALK_FRAME_T. На бой не влияет.
+const ZOMBIE_WALK_FRAME_T := 0.15   # секунд на кадр шага: как кадры «замах» и «атака» пехоты; 0 — на ходу стоит кадр 0
+const ZOMBIE_WALK_SEQ: Array[int] = [0, 1, 0, 2]
+const RUNNER_ANIM_SPEED := 1.6      # во сколько раз быстрее шаг бегуна
+const KNIGHT_SPRITE_SCALE := 1.5    # павший рыцарь на экране крупнее остальных (только спрайт: размеры в бою те же)
+const ZOMBIE_TURN_MIN := 1.0        # px за тик: медленнее этого зомби спрайт не поворачивает
+const ZOMBIE_TURN_HYST := 1.43      # поворот, когда одна ось движения больше другой во столько раз (tg 55°, как DIR_HYST)
 const UNIT_QUAD := roundf(5.33 * SCALE_REL * 100.0) / 100.0   # сторона цветного квадрата юнита, px
 const WINDUP_T := 0.15           # кадр «замах» столько секунд до удара
 const UPDATE_TICKS := 2          # юнит принимает решение (и бьёт) раз в столько физических тиков
@@ -201,6 +209,9 @@ var type_sprite := PackedStringArray()        # путь листа спрайт
 var type_recoil := PackedFloat32Array()       # отдача при «атаке», px (только отрисовка)
 var type_sprite_frames := PackedInt32Array()  # кадров в листе типа; 0 = рисуется квадратом (нет листа или он не подошёл)
 var type_sprite_base := PackedInt32Array()    # первая ячейка типа в атласе
+var type_sprite_scale := PackedFloat32Array() # множитель размера спрайта типа на экране (1, у рыцаря KNIGHT_SPRITE_SCALE)
+var type_walk_rate := PackedFloat32Array()    # кадров шага в секунду у типа-зомби; 0 — шага нет (рыцарь: его лист — замах и удар мечом)
+var anim_clock := 0.0                         # секунды отрисовки для шага зомби: идёт в _process, на паузе стоит
 var cell_white := 0                           # ячейка атласа после всех кадров: белая, для цветных квадратов
 var atlas_cells := 1                          # всего ячеек в атласе
 var windup_cd := 0.0                          # порог cooldown для кадра «замах», см. _unit_frame
@@ -2196,6 +2207,14 @@ func _setup_rendering() -> void:
 	# Лист не загрузился или не подошёл (высота не 16, ширина не кратна 16, кадров не 1-3) — тип рисуется квадратом,
 	# с одним предупреждением.
 	var sheets: Array[Image] = []
+	type_sprite_scale.resize(type_sprite.size())
+	type_sprite_scale.fill(1.0)
+	type_sprite_scale[knight_type] = KNIGHT_SPRITE_SCALE
+	type_walk_rate.resize(type_sprite.size())
+	type_walk_rate.fill(0.0)
+	if ZOMBIE_WALK_FRAME_T > 0.0:
+		type_walk_rate[zombie_type] = 1.0 / ZOMBIE_WALK_FRAME_T
+		type_walk_rate[runner_type] = RUNNER_ANIM_SPEED / ZOMBIE_WALK_FRAME_T
 	atlas_cells = 0
 	for t in type_sprite.size():
 		type_sprite_frames[t] = 0
@@ -2831,6 +2850,8 @@ func _process(delta: float) -> void:
 	# до первого физического тика prev_pos пуст; на паузе — pos без интерполяции (доля тика продолжает меняться)
 	var have_prev := prev_pos.size() == pos.size() and not paused
 	var sprites := sprites_on and by_type   # F2-F4: все квадратами, чтобы отладочный цвет читался
+	if not paused:
+		anim_clock += delta
 	var jitter := RENDER_JITTER > 0.0
 	# Замах стрелков по отряду (как в _unit_anim_state): 1 — залп натягивается или ждёт цель, 2 — одиночный огонь.
 	var draw_mode := PackedByteArray()
@@ -2870,6 +2891,38 @@ func _process(delta: float) -> void:
 					or draw_mode[sq] == 1 or (draw_mode[sq] == 2 and cooldown[i] <= windup_cd):
 				st = 1
 			buf[o + 12] = type_sprite_base[ut] + mini(st, frames - 1)
+			continue
+		if sprites and frames > 0:
+			# Зомби со спрайтом. Взгляд — по движению за тик (в бою не меняется), с гистерезисом; пишется в unit_dir, бой его не читает.
+			var zst := 0
+			if anim > 0.0:
+				zst = 2
+			elif unit_state[i] == ST_ATTACK:
+				if cooldown[i] <= windup_cd:
+					zst = 1
+			else:
+				if have_prev:
+					var dx := pos[i].x - prev_pos[i].x
+					var dy := pos[i].y - prev_pos[i].y
+					var ax := absf(dx)
+					var ay := absf(dy)
+					if ax + ay > ZOMBIE_TURN_MIN:
+						if ax > ay * ZOMBIE_TURN_HYST:
+							unit_dir[i] = 0 if dx > 0.0 else 2
+						elif ay > ax * ZOMBIE_TURN_HYST:
+							unit_dir[i] = 1 if dy > 0.0 else 3
+				if type_walk_rate[ut] > 0.0:
+					zst = ZOMBIE_WALK_SEQ[int(anim_clock * type_walk_rate[ut] + unit_rand[i] * 4.0) & 3]   # фаза шага у каждого своя
+			var zb := unit_dir[i] * 4
+			var zk := type_sprite_scale[ut]
+			buf[o + 0] = DIR_BASIS[zb] * zk
+			buf[o + 1] = DIR_BASIS[zb + 1] * zk
+			buf[o + 4] = DIR_BASIS[zb + 2] * zk
+			buf[o + 5] = DIR_BASIS[zb + 3] * zk
+			buf[o + 8] = 1.0
+			buf[o + 9] = 1.0
+			buf[o + 10] = 1.0
+			buf[o + 12] = type_sprite_base[ut] + mini(zst, frames - 1)
 			continue
 		buf[o + 0] = UNIT_QUAD
 		buf[o + 1] = 0.0
