@@ -6,8 +6,11 @@ extends RefCounted
 const STATS := ["damage", "hp", "bounty", "income", "gate_hp", "start_units"]
 const TARGETS := ["all_units", "infantry", "archer", "gate", "player"]
 const OPS := ["add_pct", "add_flat", "mult"]
+# Допустимые сочетания: stat -> его target. Пары вне таблицы сцена боя не читает, дар с такой парой молча не действовал бы.
+const PAIRS := {"damage": ["all_units", "infantry", "archer"], "hp": ["all_units", "infantry", "archer"], "bounty": ["player"], "income": ["player"],
+	"gate_hp": ["gate"], "start_units": ["player"]}
 
-var defs := {}       # id дара -> {name, stat, target, op, levels}
+var defs := {}       # id дара -> {name, stat, target, op, levels, req_sieges, prices}
 var pct := {}        # ключ "stat|target" -> сумма add_pct, в процентах
 var mult := {}       # ключ -> произведение mult
 var flat := {}       # ключ -> сумма add_flat
@@ -18,7 +21,9 @@ func _init(gift_defs := {}) -> void:
 
 
 # gifts.json: непустой массив даров {id, name, stat, target, op, levels}; levels — непустой массив чисел (значение уровня n — levels[n - 1]).
-# Значений по умолчанию нет: чего нет — ошибка. Результат: id -> {name, stat, target, op, levels}; при ошибке push_error и пустой словарь.
+# Пара stat / target — из таблицы PAIRS. Для магазина даров, по желанию: req_sieges — сколько осад пройдено для покупки уровня n
+# (нет поля — 0, 1, 2, ...), prices — цены уровней в Сиянии (нет поля — пустой массив: цены по умолчанию из radiance.json); длина обоих — как у levels.
+# Остального по умолчанию нет: чего нет — ошибка. Результат: id -> {name, stat, target, op, levels, req_sieges, prices}; при ошибке push_error и пустой словарь.
 static func load_gifts(path: String) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		push_error("Нет файла данных: %s" % path)
@@ -48,6 +53,9 @@ static func load_gifts(path: String) -> Dictionary:
 		if not e.target in TARGETS:
 			push_error("%s: у дара \"%s\" неизвестный target \"%s\"" % [path, e.id, e.target])
 			return {}
+		if not e.target in PAIRS[e.stat]:
+			push_error("%s: у дара \"%s\" недопустимая пара stat \"%s\" и target \"%s\"" % [path, e.id, e.stat, e.target])
+			return {}
 		if not e.op in OPS:
 			push_error("%s: у дара \"%s\" неизвестный op \"%s\"" % [path, e.id, e.op])
 			return {}
@@ -60,7 +68,24 @@ static func load_gifts(path: String) -> Dictionary:
 				push_error("%s: у дара \"%s\" в levels не число" % [path, e.id])
 				return {}
 			levels.append(v)
-		out[e.id] = {"name": e.name, "stat": e.stat, "target": e.target, "op": e.op, "levels": levels}
+		var req := PackedInt32Array(range(levels.size()))
+		var prices := PackedInt32Array()
+		for key in ["req_sieges", "prices"]:
+			if not e.has(key):
+				continue
+			var low := 0 if key == "req_sieges" else 1
+			var ok: bool = e[key] is Array and e[key].size() == levels.size()
+			if ok:
+				for v in e[key]:
+					ok = ok and (v is float or v is int) and v == floorf(v) and v >= low
+			if not ok:
+				push_error("%s: у дара \"%s\" поле %s — не массив целых (не меньше %d) той же длины, что levels" % [path, e.id, key, low])
+				return {}
+			if key == "req_sieges":
+				req = PackedInt32Array(e[key])
+			else:
+				prices = PackedInt32Array(e[key])
+		out[e.id] = {"name": e.name, "stat": e.stat, "target": e.target, "op": e.op, "levels": levels, "req_sieges": req, "prices": prices}
 	return out
 
 

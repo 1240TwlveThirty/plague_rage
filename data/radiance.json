@@ -1,0 +1,6 @@
+{
+	"wave_base": 3,
+	"wave_step": 1,
+	"win_bonus": 50,
+	"gift_prices": [60, 120, 240]
+}

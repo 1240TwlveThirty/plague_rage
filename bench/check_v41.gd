@@ -190,7 +190,7 @@ func t_win() -> void:
 	check("Game: records[1] wins 1, best_wave 10, runs 1", g.records[1] == {"best_wave": 10, "wins": 1, "runs": 1}, str(g.records[1]))
 	check("Game: unlocked_siege 2, осады II и III без забегов", g.unlocked_siege == 2 and g.records[2].runs == 0 and g.records[3].runs == 0)
 	check("last_run: win, осада 1, волна 10, kills = все зомби 10 волн (%d)" % planned,
-		g.last_run == {"siege": 1, "result": "win", "wave": 10, "kills": planned}, str(g.last_run))
+		g.last_run == {"siege": 1, "result": "win", "wave": 10, "kills": planned, "radiance": g.run_reward("win", 10)}, str(g.last_run))
 	check("баннер: «Осада пережита. Волн: 10 из 10.» и «Enter — в хаб», кнопка «В хаб» видна", m.banner.visible and m.banner_parts[1] == "Осада пережита. Волн: 10 из 10."
 		and m.banner_parts[3] == "Enter — в хаб" and m.hub_button.visible and m.hub_button.text == "В хаб", str(m.banner_parts))
 	check("HUD «Волна 10/10», магазин скрыт", m.hud_label.text.begins_with("Волна 10/10 · ") and not m.shop_panel.visible)

@@ -109,15 +109,15 @@ func t_formula() -> void:
 	var defs: Dictionary = MODS.load_gifts(FIX + "formula.json")
 	var m = MODS.new(defs)
 	check("пустой набор: get_mult ровно 1.0, get_flat 0, has_rule false", m.build({}) and m.get_mult("damage", "all_units") == 1.0 and m.get_mult("hp", "infantry") == 1.0
-		and m.get_flat("start_units", "all_units") == 0.0 and not m.has_rule("tempered_steel"))
+		and m.get_flat("start_units", "player") == 0.0 and not m.has_rule("tempered_steel"))
 	check("до build: тоже ровно 1.0", MODS.new(defs).get_mult("damage", "all_units") == 1.0 and MODS.new().get_mult("hp", "gate") == 1.0)
 	check("16% + 20% одного ключа складываются: 1.36", m.build({"a16": 1, "a20": 2}) and is_equal_approx(m.get_mult("damage", "all_units"), 1.36), "%.6f" % m.get_mult("damage", "all_units"))
 	check("другой ключ не задет: damage/infantry и hp/all_units ровно 1.0", m.get_mult("damage", "infantry") == 1.0 and m.get_mult("hp", "all_units") == 1.0)
 	check("mult x add: (1 + 0.20) * 1.5 = 1.8", m.build({"a20": 2, "m15": 1}) and is_equal_approx(m.get_mult("damage", "all_units"), 1.8), "%.6f" % m.get_mult("damage", "all_units"))
 	check("только mult: 2.0; два ключа раздельно: all_units 1.1, infantry 1.5", m.build({"m15": 2}) and is_equal_approx(m.get_mult("damage", "all_units"), 2.0)
 		and m.build({"a20": 1, "inf": 1}) and is_equal_approx(m.get_mult("damage", "all_units"), 1.1) and is_equal_approx(m.get_mult("damage", "infantry"), 1.5))
-	check("add_flat одного ключа складывается: 40 + 25 = 65; на get_mult не влияет", m.build({"f40": 1, "f25": 1}) and m.get_flat("start_units", "all_units") == 65.0
-		and m.get_mult("start_units", "all_units") == 1.0)
+	check("add_flat одного ключа складывается: 40 + 25 = 65; на get_mult не влияет", m.build({"f40": 1, "f25": 1}) and m.get_flat("start_units", "player") == 65.0
+		and m.get_mult("start_units", "player") == 1.0)
 	print("  ниже ожидаются строки ERROR: неизвестный дар и уровни вне диапазона")
 	check("неизвестный id, уровень 0, уровень больше числа уровней, дробный уровень: build false, сумм нет", not m.build({"нет такого": 1}) and not m.build({"a16": 0})
 		and not m.build({"a16": 2}) and not m.build({"a20": 1.5}) and m.get_mult("damage", "all_units") == 1.0)
@@ -128,7 +128,7 @@ func t_loader() -> void:
 	print("загрузчик gifts.json — ниже ожидаются строки ERROR от повреждённых файлов")
 	var defs: Dictionary = MODS.load_gifts(GIFTS)
 	var want := {"tempered_steel": ["damage", "all_units", "add_pct"], "sturdy_shields": ["hp", "all_units", "add_pct"], "spoils": ["bounty", "player", "add_pct"],
-		"mine": ["income", "player", "add_pct"], "fortress_walls": ["gate_hp", "gate", "add_pct"], "reserve": ["start_units", "all_units", "add_flat"]}
+		"mine": ["income", "player", "add_pct"], "fortress_walls": ["gate_hp", "gate", "add_pct"], "reserve": ["start_units", "player", "add_flat"]}
 	var ok := defs.size() == want.size()
 	for id in want:
 		ok = ok and defs.has(id) and [defs[id].stat, defs[id].target, defs[id].op] == want[id] and defs[id].levels.size() == 3 and defs[id].name != ""
@@ -278,7 +278,7 @@ func t_determinism() -> void:
 	a.free()
 	b.free()
 
-# Game.active_gifts -> сцена боя; в сохранение дары не пишутся.
+# Game.gift_levels -> Game.active_gifts -> сцена боя; в сохранении — купленные уровни (gift_levels), набора забега (active_gifts) нет.
 func _on_node_added(n: Node) -> void:
 	if n.get_parent() == root and n is Node2D and n.get_script() != null and n.get_script().resource_path == MAIN:
 		n.process_mode = Node.PROCESS_MODE_DISABLED
@@ -297,15 +297,18 @@ func t_game() -> void:
 	await step(3)
 	var m := current_scene as Node2D
 	check("забег без даров: ворота 1500, пехоты 300, income_pct 0", m != null and m.gate_hp_max == 1500.0 and count_type(m, m.infantry_type) == 300 and m.income_pct == 0.0)
-	g.active_gifts = {"fortress_walls": 2, "reserve": 1}
+	g.gift_levels["fortress_walls"] = 2
+	g.gift_levels["reserve"] = 1
 	g.start_run(1)
 	await step(3)
 	m = current_scene as Node2D
-	check("забег с Game.active_gifts {fortress_walls 2, reserve 1}: ворота 1950, пехоты 340, лучников 140", m != null and is_equal_approx(m.gate_hp_max, 1950.0)
-		and count_type(m, m.infantry_type) == 340 and count_type(m, m.archer_type) == 140, "" if m == null else "ворота %.0f" % m.gate_hp_max)
+	check("забег с купленными fortress_walls 2 и reserve 1 (Game.active_gifts собран из gift_levels): ворота 1950, пехоты 340, лучников 140", m != null and is_equal_approx(m.gate_hp_max, 1950.0)
+		and count_type(m, m.infantry_type) == 340 and count_type(m, m.archer_type) == 140 and g.active_gifts == {"fortress_walls": 2, "reserve": 1}, "" if m == null else "ворота %.0f" % m.gate_hp_max)
 	g.end_run("loss", 2, 5)
 	var text := FileAccess.get_file_as_string(g.save_path)
-	check("сохранение записано, даров в нём нет", text != "" and not "gift" in text and not "fortress_walls" in text)
+	var saved = JSON.parse_string(text)
+	check("сохранение записано: в нём gift_levels с купленными уровнями, active_gifts нет", saved is Dictionary and saved.get("gift_levels") is Dictionary
+		and saved.gift_levels.get("fortress_walls") == 2 and saved.gift_levels.get("reserve") == 1 and not "active_gifts" in text)
 	m.queue_free()
 	g.queue_free()
 	await step(2)

@@ -42,6 +42,7 @@ const GIFTS_PATH := "res://data/gifts.json"   # дары: модификатор
 const MODS := preload("res://scripts/mods.gd")
 const BANNER_WIDTH := 700.0                   # ширина баннера, px: длинный текст переносится по словам
 const STORY_COLOR := Color(1.0, 0.88, 0.6)    # цвет текста дневника в баннере
+const RADIANCE_COLOR := Color(0.6, 0.9, 1.0)  # цвет строки «+N Сияния» на экране итога
 const SQUAD_MAX := 8                          # ёмкость всех массивов отрядов (выделяются один раз)
 const START_SQUADS := 2                       # отряды 0 (пехота) и 1 (лучники) есть всегда и не освобождаются
 const ROTATE_STEP := PI / 12.0                # Shift + колесо: поворот отряда на месте, 15°
@@ -292,6 +293,8 @@ var banner_any := false                # в баннере есть текст
 var banner_hidden := false             # скрыт клавишей H (до следующего текста)
 var banner_labels: Array[Label] = []   # заголовок, текст, дневник, подсказка
 var banner_parts := PackedStringArray(["", "", "", ""])   # что сейчас в баннере (тесты читают и без интерфейса)
+var radiance_label: Label              # «+N Сияния» на экране итога, между дневником и подсказкой
+var banner_radiance := ""              # её текст или "" (тесты читают и без интерфейса)
 var squad_user_width := PackedInt32Array()   # ширина строя, заданная перетаскиванием; 0 = авто (squad_aspect)
 var drag_active := false               # идёт протяжка ПКМ по карте (приказ: клик — цель, протяжка — строй)
 var drag_start := Vector2.ZERO         # мировые координаты нажатия
@@ -801,9 +804,8 @@ func _apply_mods() -> void:
 
 # Дар на стартовые юниты: прибавка каждому стартовому отряду, юниты выходят из ворот, как купленные.
 func _add_start_units() -> void:
-	var names := ["infantry", "archer"]
 	for s in START_SQUADS:
-		var n := int(mods.get_flat("start_units", "all_units") + mods.get_flat("start_units", names[s]))
+		var n := int(mods.get_flat("start_units", "player"))
 		if n > 0:
 			_squad_add_units(s, squad_type[s], n)
 
@@ -1729,6 +1731,7 @@ func _on_defeat() -> void:
 	game.end_run("loss", wave_number, run_kills)
 	_show_banner("", _ending_text(wave_number), "Лучшая волна осады %s: %d. Enter — в хаб" % [
 		GAME_SCRIPT.roman(game.siege), game.records[game.siege].best_wave])
+	_show_radiance(game.last_run.radiance)
 	_show_hub_button()
 
 
@@ -1740,6 +1743,7 @@ func _on_win() -> void:
 	best_wave = maxi(best_wave, wave_number)
 	game.end_run("win", wave_number, run_kills)
 	_show_banner("Осада пережита. Волн: %d из %d." % [wave_number, waves_per_run], story_victories.get(debug_layer, ""), "Enter — в хаб")
+	_show_radiance(game.last_run.radiance)
 	_show_hub_button()
 	queue_redraw()
 
@@ -1755,6 +1759,17 @@ func _show_hub_button() -> void:
 		banner.position.y = BANNER_TOP
 
 
+# Экран итога: строка «+N Сияния» между дневником и подсказкой (после _show_banner: он её прячет).
+func _show_radiance(n: int) -> void:
+	banner_radiance = "+%d Сияния" % n
+	if radiance_label == null:
+		return
+	radiance_label.text = banner_radiance
+	radiance_label.visible = true
+	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
+	banner.position.y = BANNER_TOP
+
+
 # Экран конца забега: Enter, Space, R и кнопка «В хаб». Без синглтона (бенчи) — прежний перезапуск сцены.
 func _to_hub() -> void:
 	if not _run_over():
@@ -1768,8 +1783,10 @@ func _to_hub() -> void:
 # Баннер: заголовок, текст, дневник (другим цветом), подсказка. Пустая часть скрыта; всё пусто — баннер скрыт.
 func _show_banner(text: String, story := "", hint := "", title := "") -> void:
 	banner_parts = PackedStringArray([title, text, story, hint])
+	banner_radiance = ""
 	if banner == null:
 		return
+	radiance_label.visible = false
 	var any := false
 	for k in banner_labels.size():
 		banner_labels[k].text = banner_parts[k]
@@ -2264,6 +2281,15 @@ func _setup_fps_label() -> void:
 		l.visible = false
 		banner_box.add_child(l)
 		banner_labels.append(l)
+	radiance_label = Label.new()   # «+N Сияния»: только на экране итога, перед подсказкой
+	radiance_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	radiance_label.add_theme_font_size_override("font_size", 36)
+	radiance_label.add_theme_color_override("font_color", RADIANCE_COLOR)
+	radiance_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	radiance_label.add_theme_constant_override("outline_size", 8)
+	radiance_label.visible = false
+	banner_box.add_child(radiance_label)
+	banner_box.move_child(radiance_label, 3)
 	hub_button = Button.new()   # только на экране конца забега; баннер клики пропускает, кнопка — нет
 	hub_button.text = "В хаб"
 	hub_button.add_theme_font_size_override("font_size", 36)

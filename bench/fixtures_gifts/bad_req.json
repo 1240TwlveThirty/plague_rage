@@ -1,0 +1,3 @@
+[
+	{"id": "x", "name": "X", "stat": "damage", "target": "all_units", "op": "add_pct", "levels": [8, 16], "req_sieges": [0]}
+]

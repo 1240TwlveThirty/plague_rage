@@ -1,11 +1,21 @@
 extends Control
-# Хаб-заглушка между забегами: осада, итог последнего забега, рекорды, «Начать забег», «Дневник» и «В меню».
-# Интерфейс строится кодом. Выбор осады виден, только когда открыто больше одной.
+# Хаб-заглушка между забегами, две вкладки. «Осада»: осада, итог последнего забега, рекорды, «Начать забег», «Дневник» и «В меню».
+# «Дары»: магазин даров за Сияние (правила покупки — в Game). Интерфейс строится кодом. Выбор осады виден, только когда открыто больше одной.
 const BG_COLOR := Color(0.08, 0.08, 0.1)
 const WARN_COLOR := Color(1.0, 0.75, 0.35)
 const STORY_COLOR := Color(1.0, 0.88, 0.6)   # как у дневника в баннере боя
 const DIARY_SIZE := Vector2(0.5, 0.7)        # панель дневника: доля экрана
 const DIARY_EMPTY := "Записей пока нет."
+const RADIANCE_COLOR := Color(0.6, 0.9, 1.0)
+const RADIANCE_ICON := "res://art/shine.png"
+const GIFT_ICON := "res://art/card_meta_perk.png"   # общая заглушка; своя иконка дара — art/gift_<id>.png, если есть
+const GIFT_ICON_SIZE := Vector2(40.0, 60.0)
+const GIFT_FONT := 26
+const GIFT_MAX := "—"
+# Тексты эффекта: «+8% к урону всех воинов». Цели игрока и ворот в тексте не называются.
+const STAT_TEXT := {"damage": "к урону", "hp": "к здоровью", "bounty": "золота за убитых", "income": "от дохода прошлой волны в начале каждой волны",
+	"gate_hp": "к прочности ворот", "start_units": "воинов в каждом стартовом отряде"}
+const TARGET_TEXT := {"all_units": " всех воинов", "infantry": " пехоты", "archer": " лучников", "player": "", "gate": ""}
 
 var game: Node
 var chosen := 1                # осада, с которой начнётся забег
@@ -20,6 +30,9 @@ var menu_button: Button
 var diary_panel: PanelContainer
 var diary_box: VBoxContainer   # строки дневника внутри прокрутки
 var diary_close: Button
+var tabs: TabContainer         # «Осада» и «Дары»
+var radiance_label: Label      # баланс Сияния на вкладке «Дары»
+var gift_rows := {}            # id дара -> {level, effect, price, button, reason}: подписи и кнопка строки магазина
 
 
 func _ready() -> void:
@@ -40,6 +53,15 @@ func _ready() -> void:
 	warning_label = _label(box, game.save_warning, 26)
 	warning_label.add_theme_color_override("font_color", WARN_COLOR)
 	warning_label.visible = game.save_warning != ""
+	tabs = TabContainer.new()
+	tabs.tab_alignment = TabBar.ALIGNMENT_CENTER
+	tabs.add_theme_font_size_override("font_size", 30)
+	box.add_child(tabs)
+	var top := box
+	box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 16)
+	tabs.add_child(box)
+	tabs.set_tab_title(0, "Осада")
 	siege_label = _label(box, "", 40)
 	last_label = _label(box, "", 30)
 	for s in range(1, game.siege_count + 1):
@@ -62,6 +84,9 @@ func _ready() -> void:
 	diary_button.disabled = game.story.is_empty()   # story.json не загрузился: ошибка уже выведена
 	menu_button = _button(box, "В меню")
 	menu_button.pressed.connect(_on_menu)
+	_setup_gifts()
+	tabs.tab_changed.connect(_on_tab_changed)
+	top.move_child(tabs, top.get_child_count() - 1)
 	_setup_diary()
 	_refresh()
 	start_button.grab_focus()   # Enter начинает забег
@@ -82,6 +107,108 @@ func _button(box: Container, text: String) -> Button:
 	b.add_theme_font_size_override("font_size", 36)
 	box.add_child(b)
 	return b
+
+
+# Вкладка «Дары»: баланс Сияния и таблица — иконка, название, уровень, эффект следующего уровня, цена, «Купить», причина отказа.
+func _setup_gifts() -> void:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 16)
+	tabs.add_child(col)
+	tabs.set_tab_title(1, "Дары")
+	var bal := HBoxContainer.new()
+	bal.alignment = BoxContainer.ALIGNMENT_CENTER
+	bal.add_theme_constant_override("separation", 12)
+	col.add_child(bal)
+	bal.add_child(_icon(RADIANCE_ICON, Vector2(40.0, 40.0)))
+	radiance_label = _label(bal, "", 40)
+	radiance_label.add_theme_color_override("font_color", RADIANCE_COLOR)
+	var grid := GridContainer.new()
+	grid.columns = 7
+	grid.add_theme_constant_override("h_separation", 24)
+	grid.add_theme_constant_override("v_separation", 10)
+	col.add_child(grid)
+	for head in ["", "Дар", "Уровень", "Следующий уровень", "Цена", "", ""]:
+		_cell(grid, head, Color(1.0, 1.0, 1.0, 0.6))
+	for id in game.gift_defs:
+		var own := "res://art/gift_%s.png" % id
+		grid.add_child(_icon(own if ResourceLoader.exists(own) else GIFT_ICON, GIFT_ICON_SIZE))
+		_cell(grid, game.gift_defs[id].name)
+		var row := {"level": _cell(grid), "effect": _cell(grid), "price": _cell(grid, "", RADIANCE_COLOR)}
+		var b := Button.new()
+		b.text = "Купить"
+		b.add_theme_font_size_override("font_size", GIFT_FONT)
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		b.pressed.connect(_on_buy.bind(id))
+		grid.add_child(b)
+		row["button"] = b
+		row["reason"] = _cell(grid, "", WARN_COLOR)
+		gift_rows[id] = row
+	if game.gift_defs.is_empty():
+		_label(col, "Дары не загрузились.", 28)   # gifts.json с ошибкой: она уже выведена
+	_refresh_gifts()
+
+
+func _icon(path: String, size: Vector2) -> TextureRect:
+	var t := TextureRect.new()
+	if ResourceLoader.exists(path):
+		t.texture = load(path)
+	t.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST   # пиксельный арт
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	t.custom_minimum_size = size
+	t.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return t
+
+
+func _cell(grid: GridContainer, text := "", color := Color.WHITE) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", GIFT_FONT)
+	l.add_theme_color_override("font_color", color)
+	grid.add_child(l)
+	return l
+
+
+# Эффект уровня дара одной строкой: «+8% к урону всех воинов», «+40 воинов в каждом стартовом отряде».
+static func effect_text(def: Dictionary, level: int) -> String:
+	var v: float = def.levels[level - 1]
+	var what: String = STAT_TEXT.get(def.stat, def.stat) + TARGET_TEXT.get(def.target, "")
+	var num := str(int(v)) if v == floorf(v) else String.num(v)   # 8, а не 8.0
+	match def.op:
+		"add_pct":
+			return "+%s%% %s" % [num, what]
+		"mult":
+			return "x%s %s" % [num, what]
+	return "+%s %s" % [num, what]
+
+
+# Баланс и строки магазина по состоянию Game: уровень, эффект и цена следующего уровня, кнопка и причина, если купить нельзя.
+func _refresh_gifts() -> void:
+	radiance_label.text = "Сияние: %d" % game.radiance
+	for id in gift_rows:
+		var row: Dictionary = gift_rows[id]
+		var def: Dictionary = game.gift_defs[id]
+		var lvl: int = game.gift_levels.get(id, 0)
+		var top: bool = lvl >= def.levels.size()
+		var price: int = game.gift_price(id, lvl + 1)
+		var block: String = game.buy_block(id)
+		row.level.text = "%d / %d" % [lvl, def.levels.size()]
+		row.effect.text = GIFT_MAX if top else effect_text(def, lvl + 1)
+		row.price.text = GIFT_MAX if top or price < 0 else str(price)
+		row.button.disabled = block != ""
+		row.reason.text = block
+
+
+func _on_buy(id: String) -> void:
+	if game.buy_gift(id):
+		_refresh_gifts()
+
+
+func _on_tab_changed(tab: int) -> void:
+	if tab == 0:
+		start_button.grab_focus()   # Enter снова начинает забег
+	else:
+		_refresh_gifts()
 
 
 # Панель дневника поверх хаба: заголовок, прокрутка со строками, «Закрыть». Скрыта, пока не открыта кнопкой.

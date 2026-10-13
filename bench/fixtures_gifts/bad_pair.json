@@ -1,0 +1,3 @@
+[
+	{"id": "x", "name": "X", "stat": "start_units", "target": "all_units", "op": "add_flat", "levels": [40]}
+]

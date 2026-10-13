@@ -1,0 +1,4 @@
+[
+	{"id": "cheap", "name": "Дешёвый", "stat": "damage", "target": "all_units", "op": "add_pct", "levels": [8, 16, 24], "prices": [10, 20, 30], "req_sieges": [0, 0, 3]},
+	{"id": "plain", "name": "Обычный", "stat": "hp", "target": "infantry", "op": "add_pct", "levels": [5, 10, 15]}
+]

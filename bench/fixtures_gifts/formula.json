@@ -3,6 +3,6 @@
 	{"id": "a20", "name": "B", "stat": "damage", "target": "all_units", "op": "add_pct", "levels": [10, 20]},
 	{"id": "m15", "name": "C", "stat": "damage", "target": "all_units", "op": "mult", "levels": [1.5, 2.0]},
 	{"id": "inf", "name": "D", "stat": "damage", "target": "infantry", "op": "add_pct", "levels": [50]},
-	{"id": "f40", "name": "E", "stat": "start_units", "target": "all_units", "op": "add_flat", "levels": [40]},
-	{"id": "f25", "name": "F", "stat": "start_units", "target": "all_units", "op": "add_flat", "levels": [25]}
+	{"id": "f40", "name": "E", "stat": "start_units", "target": "player", "op": "add_flat", "levels": [40]},
+	{"id": "f25", "name": "F", "stat": "start_units", "target": "player", "op": "add_flat", "levels": [25]}
 ]
