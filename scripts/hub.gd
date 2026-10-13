@@ -37,7 +37,7 @@ var gift_rows := {}            # id дара -> {level, effect, price, button, r
 
 func _ready() -> void:
 	game = get_node("/root/Game")
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
 	bg.color = BG_COLOR
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
