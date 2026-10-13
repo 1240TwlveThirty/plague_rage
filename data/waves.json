@@ -12,7 +12,7 @@
 	"spawn_columns": 40,
 	"spawn_spacing": 8,
 	"wave_bonus_gold": 20,
-	"gold_per_kill": 2.0,
+	"gold_per_kill": 1.5,
 	"start_gold": 100,
 	"runner_from_wave": 3,
 	"runner_share_early": 0.10,
