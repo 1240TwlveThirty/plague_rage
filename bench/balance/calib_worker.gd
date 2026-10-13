@@ -84,6 +84,6 @@ func _initialize() -> void:
 		if m.wave_state == m.WS_BATTLE:
 			full = 0
 			break
-	print("RUN,%s,%d,%d,%d" % [bot, seed, defeat, full])
+	print("RUN,%s,%d,%d,%d,%d" % [bot, seed, defeat, full, floori(m.gold)])   # последнее поле — золото, не потраченное к концу забега
 	m.free()
 	quit()

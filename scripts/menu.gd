@@ -1,15 +1,15 @@
 extends Control
-# Главное меню: заголовок, «Играть» (в хаб) и «Выход». Интерфейс строится кодом.
-const BG_COLOR := Color(0.08, 0.08, 0.1)
+# Главное меню: заголовок, «Играть» (в хаб) и «Выход». Интерфейс строится кодом, по центру экрана.
+const UI := preload("res://scripts/ui.gd")
 
 var play_button: Button
 var quit_button: Button
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
-	bg.color = BG_COLOR
+	bg.color = UI.BG_COLOR
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
@@ -35,6 +35,7 @@ func _button(box: Container, text: String) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.add_theme_font_size_override("font_size", 36)
+	UI.gold_button(b)
 	box.add_child(b)
 	return b
 

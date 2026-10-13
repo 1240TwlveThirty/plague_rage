@@ -40,6 +40,8 @@ const GAME_SCRIPT := preload("res://scripts/game.gd")   # общий загру�
 const STORY_PATH := "res://data/story.json"   # дневник: тексты баннеров (на механику не влияет)
 const GIFTS_PATH := "res://data/gifts.json"   # дары: модификаторы забега
 const MODS := preload("res://scripts/mods.gd")
+const ESC_MENU := preload("res://scripts/esc_menu.gd")   # меню паузы по Esc: «Продолжить», «Выйти в меню», «Выход из игры»
+const ESC_NOTE := "Выход в меню засчитает поражение"
 const BANNER_WIDTH := 700.0                   # ширина баннера, px: длинный текст переносится по словам
 const STORY_COLOR := Color(1.0, 0.88, 0.6)    # цвет текста дневника в баннере
 const RADIANCE_COLOR := Color(0.6, 0.9, 1.0)  # цвет строки «+N Сияния» на экране итога
@@ -293,6 +295,7 @@ var banner_any := false                # в баннере есть текст
 var banner_hidden := false             # скрыт клавишей H (до следующего текста)
 var banner_labels: Array[Label] = []   # заголовок, текст, дневник, подсказка
 var banner_parts := PackedStringArray(["", "", "", ""])   # что сейчас в баннере (тесты читают и без интерфейса)
+var esc_menu: CanvasLayer = null       # меню паузы по Esc; null без интерфейса (бенчи)
 var radiance_label: Label              # «+N Сияния» на экране итога, между дневником и подсказкой
 var banner_radiance := ""              # её текст или "" (тесты читают и без интерфейса)
 var squad_user_width := PackedInt32Array()   # ширина строя, заданная перетаскиванием; 0 = авто (squad_aspect)
@@ -1759,6 +1762,24 @@ func _show_hub_button() -> void:
 		banner.position.y = BANNER_TOP
 
 
+# Esc вне протяжки и рамки: меню паузы (дерево сцен встаёт на паузу: бой, окно сигнала и play_time стоят).
+# Только с синглтоном Game: в бенчах выходить некуда.
+func _open_esc_menu() -> void:
+	if esc_menu != null and game != null:
+		esc_menu.open("" if _run_over() else ESC_NOTE)
+
+
+# «Выйти в меню» посреди забега: поражение с начислением Сияния, без экрана итога. В бою — на текущей волне,
+# в передышке — на следующей (пройденные волны засчитаны все). Забег уже кончился — итог записан, повторно не пишется.
+func _abandon_run() -> void:
+	if game == null or _run_over():
+		return
+	var w := wave_number if wave_state == WS_BATTLE else wave_number + 1
+	wave_state = WS_DEFEAT
+	set_physics_process(false)
+	game.end_run("loss", w, run_kills)
+
+
 # Экран итога: строка «+N Сияния» между дневником и подсказкой (после _show_banner: он её прячет).
 func _show_radiance(n: int) -> void:
 	banner_radiance = "+%d Сияния" % n
@@ -2299,6 +2320,9 @@ func _setup_fps_label() -> void:
 	banner_box.add_child(hub_button)
 	banner.visible = false
 	layer.add_child(banner)
+	esc_menu = ESC_MENU.new()
+	esc_menu.before_menu = _abandon_run
+	add_child(esc_menu)
 	# HUD сверху по центру
 	hud_label = Label.new()
 	hud_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -4104,12 +4128,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _run_over():
 			if event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_R]:
 				_to_hub()
+			elif event.keycode == KEY_ESCAPE:
+				_open_esc_menu()
 			return   # экран конца забега: остальные клавиши не действуют
 		match event.keycode:
 			KEY_ESCAPE:
-				drag_active = false   # Esc отменяет протяжку и рамку
-				box_active = false
-				queue_redraw()
+				if drag_active or box_active:
+					drag_active = false   # Esc отменяет протяжку и рамку
+					box_active = false
+					queue_redraw()
+				else:
+					_open_esc_menu()
 			KEY_F:
 				if drag_active:
 					drag_flip = not drag_flip   # во время протяжки: лицо строя наоборот

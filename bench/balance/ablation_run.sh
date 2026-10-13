@@ -1,8 +1,10 @@
 #!/bin/sh
-# Абляция даров: sh bench/balance/ablation_run.sh "<godot.exe>"   (из корня проекта; около 5 минут)
+# Абляция даров: sh bench/balance/ablation_run.sh "<godot.exe>"   (из корня проекта; время прогона — в шапке итога)
 # Боты B2 и B5, seed 1-5, осада I, волны без предела. Наборы: без даров, каждый дар отдельно на уровнях 1-3, все шесть на уровне 1, 2, 3.
-# Забеги — bench/balance/calib_worker.gd --gifts ...; файлы bench/balance/ablation_runs/<набор>_<бот>_s<seed>.txt; итог — bench/gift_ablation_v1.txt.
-GODOT="$1"; DIR="bench/balance/ablation_runs"
+# Забеги — bench/balance/calib_worker.gd --gifts ...; файлы bench/balance/ablation_v2_runs/<набор>_<бот>_s<seed>.txt; итог — bench/gift_ablation_v2.txt.
+# Прежний прогон (золото за убитого 2): bench/gift_ablation_v1.txt и bench/balance/ablation_runs/ — не пересчитываются.
+GODOT="$1"; DIR="bench/balance/ablation_v2_runs"
+T0=$(date +%s)
 GIFTS="tempered_steel sturdy_shields spoils mine fortress_walls reserve"
 mkdir -p "$DIR"; rm -f "$DIR"/*.txt
 run() {   # <набор> <аргумент --gifts или пусто>
@@ -28,4 +30,4 @@ for lvl in 1 2 3; do
 done
 wait
 echo "завершено: $(grep -l '^RUN,' "$DIR"/*.txt | wc -l) из 220, с ошибками: $(find "$DIR" -name '*_err.txt' -size +0 | wc -l)"
-"$GODOT" --headless --path . -s res://bench/balance/ablation_aggregate.gd
+"$GODOT" --headless --path . -s res://bench/balance/ablation_aggregate.gd -- $(( $(date +%s) - T0 ))

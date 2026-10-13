@@ -1,7 +1,8 @@
 extends Control
 # Хаб-заглушка между забегами, две вкладки. «Осада»: осада, итог последнего забега, рекорды, «Начать забег», «Дневник» и «В меню».
 # «Дары»: магазин даров за Сияние (правила покупки — в Game). Интерфейс строится кодом. Выбор осады виден, только когда открыто больше одной.
-const BG_COLOR := Color(0.08, 0.08, 0.1)
+const UI := preload("res://scripts/ui.gd")
+const ESC_MENU := preload("res://scripts/esc_menu.gd")
 const WARN_COLOR := Color(1.0, 0.75, 0.35)
 const STORY_COLOR := Color(1.0, 0.88, 0.6)   # как у дневника в баннере боя
 const DIARY_SIZE := Vector2(0.5, 0.7)        # панель дневника: доля экрана
@@ -30,6 +31,7 @@ var menu_button: Button
 var diary_panel: PanelContainer
 var diary_box: VBoxContainer   # строки дневника внутри прокрутки
 var diary_close: Button
+var esc_menu: CanvasLayer      # меню паузы по Esc: «Продолжить», «Выйти в меню», «Выход из игры»
 var tabs: TabContainer         # «Осада» и «Дары»
 var radiance_label: Label      # баланс Сияния на вкладке «Дары»
 var gift_rows := {}            # id дара -> {level, effect, price, button, reason}: подписи и кнопка строки магазина
@@ -39,7 +41,7 @@ func _ready() -> void:
 	game = get_node("/root/Game")
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
-	bg.color = BG_COLOR
+	bg.color = UI.BG_COLOR
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
@@ -88,6 +90,8 @@ func _ready() -> void:
 	tabs.tab_changed.connect(_on_tab_changed)
 	top.move_child(tabs, top.get_child_count() - 1)
 	_setup_diary()
+	esc_menu = ESC_MENU.new()
+	add_child(esc_menu)
 	_refresh()
 	start_button.grab_focus()   # Enter начинает забег
 
@@ -105,6 +109,7 @@ func _button(box: Container, text: String) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.add_theme_font_size_override("font_size", 36)
+	UI.gold_button(b)
 	box.add_child(b)
 	return b
 
@@ -137,6 +142,7 @@ func _setup_gifts() -> void:
 		var b := Button.new()
 		b.text = "Купить"
 		b.add_theme_font_size_override("font_size", GIFT_FONT)
+		UI.gold_button(b)
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		b.pressed.connect(_on_buy.bind(id))
 		grid.add_child(b)
@@ -285,10 +291,13 @@ func _close_diary() -> void:
 	start_button.grab_focus()
 
 
-# Esc закрывает дневник.
+# Esc закрывает дневник; дневник закрыт — открывает меню паузы.
 func _unhandled_input(event: InputEvent) -> void:
-	if diary_panel.visible and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
-		_close_diary()
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		if diary_panel.visible:
+			_close_diary()
+		else:
+			esc_menu.open()
 		get_viewport().set_input_as_handled()
 
 
