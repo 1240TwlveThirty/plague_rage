@@ -103,7 +103,7 @@ const PUSH_K := 0.5          # доля перекрытия, которую с�
 const VIEW_RANGE := CELL_SIZE   # равен CELL_SIZE: окно 3x3 его гарантированно покрывает
 # --- Карта замка (вертикальная, 1920x1080; игрок внизу, зомби сверху) ---
 const BG_PATH := "res://art/castle_map.png"   # 1831x859, пиксель-арт
-const FG_PATH := "res://art/castle_walls_and_trees.png"   # передний план (кроны, верх стены), прозрачный PNG того же размера
+const FG_PATH := "res://art/walls_and_trees.png"   # передний план (кроны, стена и башни, двор и крыши), прозрачный PNG того же размера
 const BG_SCALE := 1056.0 / 859.0   # фон по высоте ровно на поле (1056 px), как прежний castle_bg.jpg 1500x704 с масштабом 1.5
 const BG_OFFSET := Vector2(-21, 0)
 const FG_ALPHA := 1.0              # прозрачность переднего плана
