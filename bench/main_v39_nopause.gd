@@ -108,6 +108,65 @@ const BG_SCALE := 1056.0 / 859.0   # фон по высоте ровно на п
 const BG_OFFSET := Vector2(-21, 0)
 const FG_ALPHA := 1.0              # прозрачность переднего плана
 const FG_Z := 1                    # передний план выше юнитов, снарядов и полос HP ворот (всё на z 0), ниже интерфейса (CanvasLayer)
+# Мягкие эффекты (только отрисовка: время кадра и TIME шейдера, без тиков и генераторов боя). false — картинка как без них.
+const FX_ENABLED := true
+# Вода на фоне: пиксель воды — синий канал больше красного и зелёного на WATER_MARGIN; сдвиг по x на 0 или ±1 тексель
+# (round(WATER_AMP * sin(...)), берётся сосед, только если он тоже вода — берег не тянется в воду)
+const WATER_MARGIN := 0.03
+const WATER_AMP := 0.7          # не больше 1; меньше 1 — меньше пикселей сдвинуто в каждый момент
+const WATER_SPEED := 1.6        # рад/с
+const WATER_FREQ_Y := 0.45      # рад на тексель по y: полосы ряби
+const WATER_FREQ_X := 0.06      # рад на тексель по x: полосы слегка наклонены
+# Деревья на переднем плане: зелёный канал больше красного и синего на WIND_MARGIN (непрозрачные пиксели); стена не зелёная.
+# Волна бежит слева направо: сдвиг round(WIND_AMP * sin(TAU * (x / WIND_WAVELEN - t / WIND_PERIOD))), x в текселях.
+const WIND_MARGIN := 0.0
+const WIND_AMP := 0.7
+const WIND_PERIOD := 3.0        # с
+const WIND_WAVELEN := 420.0     # текселей
+# Листва: частицы от левого края поля вправо, выше юнитов и переднего плана, ниже интерфейса
+const LEAF_AMOUNT := 36         # слотов; с разбросом жизни одновременно летит около 30
+const LEAF_LIFE_MIN := 10.0     # с
+const LEAF_LIFE_MAX := 15.0
+const LEAF_SPEED_MIN := 225.0   # px/с: даже самый медленный и короткоживущий успевает вылететь за правый край
+const LEAF_SPEED_MAX := 260.0
+const LEAF_SPREAD := 4.0        # градусов
+const LEAF_PX_MIN := 2.0        # размер, px
+const LEAF_PX_MAX := 3.0
+const LEAF_ALPHA := 0.7
+const LEAF_SWAY_AMP := 2.5      # покачивание по вертикали в размерах листа: шейдер сдвигает вершины до масштаба частицы, на экране 5-7.5 px
+const LEAF_SWAY_FREQ := 2.2     # рад/с
+const LEAF_COLORS: Array[Color] = [Color(0.36, 0.62, 0.22), Color(0.25, 0.48, 0.16), Color(0.78, 0.66, 0.24), Color(0.6, 0.42, 0.18)]
+const LEAF_Z := 2
+# Сдвиг пикселей маски на целый тексель по x; вершинный цвет (modulate) сохраняется.
+const FX_SHIFT_SHADER := """shader_type canvas_item;
+uniform float margin;
+uniform float amp;
+varying vec4 vcol;
+bool masked(vec4 c) {
+#if WATER
+	return c.b > max(c.r, c.g) + margin;
+#else
+	return c.a > 0.5 && c.g > max(c.r, c.b) + margin;
+#endif
+}
+void vertex() {
+	vcol = COLOR;
+}
+void fragment() {
+	vec2 px = floor(UV / TEXTURE_PIXEL_SIZE);
+	float off = round(amp * sin(PHASE));
+	vec4 c = texture(TEXTURE, UV);
+	vec4 s = texture(TEXTURE, UV + vec2(off * TEXTURE_PIXEL_SIZE.x, 0.0));
+	COLOR = vcol * (masked(c) && masked(s) ? s : c);
+}
+"""
+const LEAF_SHADER := """shader_type canvas_item;
+uniform float amp;
+uniform float freq;
+void vertex() {
+	VERTEX.y += amp * sin(TIME * freq + float(INSTANCE_ID) * 2.4);
+}
+"""
 const ROAD_X := 970.0                  # ось дороги, по которой идёт орда
 const GATE_POS := Vector2(1010, 745)   # ворота замка
 const WALL_Y := 745.0                  # временный пол: ниже не заходит ни один юнит, пока нет стен
@@ -413,6 +472,7 @@ var sel_sig := 0.0                            # отпечаток выбран�
 var sel_boxes := []                           # границы живых слотов отрядов для контуров (_squad_boxes), пока строи те же
 var sel_boxes_key := 0.0
 var hint_label: Label
+var fx_enabled := FX_ENABLED                  # бенчи переопределяют до _ready
 var paused := false                           # активная пауза: _physics_process не выполняется, команды только меняют данные
 var split_frac := 0.5                         # деление: доля уходящих в новый отряд
 var split_mode := 0                           # кто уходит: 0 правые, 1 левые, 2 задние ряды, 3 передние ряды
@@ -469,6 +529,9 @@ func _setup_background() -> void:
 		return
 	var bg := _map_sprite(BG_PATH)
 	bg.z_index = -1   # ниже MultiMeshInstance2D юнитов (z 0)
+	if fx_enabled:
+		bg.material = _fx_shift_material(true, WATER_MARGIN, WATER_AMP,
+			"px.y * %f + px.x * %f + TIME * %f" % [WATER_FREQ_Y, WATER_FREQ_X, WATER_SPEED])
 	add_child(bg)
 	# Передний план: те же позиция и масштаб, что у фона
 	if not ResourceLoader.exists(FG_PATH):
@@ -477,7 +540,57 @@ func _setup_background() -> void:
 	var fg := _map_sprite(FG_PATH)
 	fg.z_index = FG_Z
 	fg.modulate.a = FG_ALPHA
+	if fx_enabled:
+		fg.material = _fx_shift_material(false, WIND_MARGIN, WIND_AMP,
+			"TAU * (px.x / %f - TIME / %f)" % [WIND_WAVELEN, WIND_PERIOD])
 	add_child(fg)
+	if fx_enabled:
+		_setup_leaves()
+
+
+# Шейдер сдвига пикселей маски (вода или зелень); фаза волны — выражение от px (тексель) и TIME.
+func _fx_shift_material(water: bool, margin: float, amp: float, phase: String) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = FX_SHIFT_SHADER.replace("#if WATER", "#if %d" % int(water)).replace("PHASE", phase)
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	mat.set_shader_parameter("margin", margin)
+	mat.set_shader_parameter("amp", minf(amp, 1.0))
+	return mat
+
+
+# Листва: CPUParticles2D со своим генератором; движение — по времени кадра, покачивание — в шейдере по TIME.
+func _setup_leaves() -> void:
+	var p := CPUParticles2D.new()
+	p.amount = LEAF_AMOUNT
+	p.lifetime = LEAF_LIFE_MAX
+	p.lifetime_randomness = 1.0 - LEAF_LIFE_MIN / LEAF_LIFE_MAX
+	p.preprocess = LEAF_LIFE_MAX   # поле с листьями с первого кадра
+	p.position = Vector2(0.0, FIELD.y * 0.5)
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	p.emission_rect_extents = Vector2(1.0, FIELD.y * 0.5)
+	p.direction = Vector2.RIGHT
+	p.spread = LEAF_SPREAD
+	p.gravity = Vector2.ZERO
+	p.initial_velocity_min = LEAF_SPEED_MIN
+	p.initial_velocity_max = LEAF_SPEED_MAX
+	p.scale_amount_min = LEAF_PX_MIN   # без текстуры частица — квадрат 1x1 px
+	p.scale_amount_max = LEAF_PX_MAX
+	var ramp := Gradient.new()   # случайная точка рампы на частицу; ступенчатая рампа — один из цветов LEAF_COLORS
+	ramp.interpolation_mode = Gradient.GRADIENT_INTERPOLATE_CONSTANT
+	ramp.offsets = PackedFloat32Array(range(LEAF_COLORS.size()).map(func(k: int) -> float: return float(k) / LEAF_COLORS.size()))
+	ramp.colors = PackedColorArray(LEAF_COLORS)
+	p.color_initial_ramp = ramp
+	p.modulate.a = LEAF_ALPHA
+	p.z_index = LEAF_Z
+	var sh := Shader.new()
+	sh.code = LEAF_SHADER
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	mat.set_shader_parameter("amp", LEAF_SWAY_AMP)
+	mat.set_shader_parameter("freq", LEAF_SWAY_FREQ)
+	p.material = mat
+	add_child(p)
 
 
 func _map_sprite(path: String) -> Sprite2D:
