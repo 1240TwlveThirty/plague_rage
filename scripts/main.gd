@@ -102,7 +102,12 @@ const MIN_DIST := roundf(6.67 * SCALE_REL * 100.0) / 100.0   # ближе это
 const PUSH_K := 0.5          # доля перекрытия, которую снимаем за тик
 const VIEW_RANGE := CELL_SIZE   # равен CELL_SIZE: окно 3x3 его гарантированно покрывает
 # --- Карта замка (вертикальная, 1920x1080; игрок внизу, зомби сверху) ---
-const BG_PATH := "res://art/castle_bg.jpg"   # 1500x704, рисуется с масштабом 1.5
+const BG_PATH := "res://art/castle_map.png"   # 1831x859, пиксель-арт
+const FG_PATH := "res://art/castle_walls_and_trees.png"   # передний план (кроны, верх стены), прозрачный PNG того же размера
+const BG_SCALE := 1056.0 / 859.0   # фон по высоте ровно на поле (1056 px), как прежний castle_bg.jpg 1500x704 с масштабом 1.5
+const BG_OFFSET := Vector2(-21, 0)
+const FG_ALPHA := 1.0              # прозрачность переднего плана
+const FG_Z := 1                    # передний план выше юнитов, снарядов и полос HP ворот (всё на z 0), ниже интерфейса (CanvasLayer)
 const ROAD_X := 970.0                  # ось дороги, по которой идёт орда
 const GATE_POS := Vector2(1010, 745)   # ворота замка
 const WALL_Y := 745.0                  # временный пол: ниже не заходит ни один юнит, пока нет стен
@@ -462,14 +467,27 @@ func _setup_background() -> void:
 	if not ResourceLoader.exists(BG_PATH):
 		push_warning("Нет фона %s: поле рисуется без фона" % BG_PATH)
 		return
-	var bg := Sprite2D.new()
-	bg.texture = load(BG_PATH)
-	bg.centered = false
-	bg.scale = Vector2(1.5, 1.5)
-	bg.position = Vector2(-21, 0)
-	bg.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	var bg := _map_sprite(BG_PATH)
 	bg.z_index = -1   # ниже MultiMeshInstance2D юнитов (z 0)
 	add_child(bg)
+	# Передний план: те же позиция и масштаб, что у фона
+	if not ResourceLoader.exists(FG_PATH):
+		push_warning("Нет переднего плана %s: рисуется без него" % FG_PATH)
+		return
+	var fg := _map_sprite(FG_PATH)
+	fg.z_index = FG_Z
+	fg.modulate.a = FG_ALPHA
+	add_child(fg)
+
+
+func _map_sprite(path: String) -> Sprite2D:
+	var sp := Sprite2D.new()
+	sp.texture = load(path)
+	sp.centered = false
+	sp.scale = Vector2(BG_SCALE, BG_SCALE)
+	sp.position = BG_OFFSET
+	sp.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	return sp
 
 
 # Фиксированная камера на центре поля, без отдаления.
