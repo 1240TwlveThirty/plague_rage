@@ -108,21 +108,57 @@ const BG_SCALE := 1056.0 / 859.0   # фон по высоте ровно на п
 const BG_OFFSET := Vector2(-21, 0)
 const FG_ALPHA := 1.0              # прозрачность переднего плана
 const FG_Z := 1                    # передний план выше юнитов, снарядов и полос HP ворот (всё на z 0), ниже интерфейса (CanvasLayer)
-# Мягкие эффекты (только отрисовка: время кадра и TIME шейдера, без тиков и генераторов боя). false — картинка как без них.
+# Мягкие пиксельные эффекты: сдвиги только на целый тексель, без интерполяции; всё по времени отрисовки (TIME шейдера,
+# delta кадра), без тиков и генераторов боя. false — картинка как без них (этап А).
 const FX_ENABLED := true
-# Вода на фоне: пиксель воды — синий канал больше красного и зелёного на WATER_MARGIN; сдвиг по x на 0 или ±1 тексель
-# (round(WATER_AMP * sin(...)), берётся сосед, только если он тоже вода — берег не тянется в воду)
+const FX_RATE := 15.0           # кадров анимации переднего плана в секунду (деревья, факелы)
+# Деревья (передний план): непрозрачный пиксель, зелёный канал больше красного и синего на TREE_MARGIN. Сдвиг по x на 0 или ±1
+# тексель по знаку низкочастотного шума n в [-1, 1]: гладкий по x (TREE_NOISE_SCALE.x текселей на ячейку) и времени
+# (TREE_NOISE_SPEED ячеек в секунду), свой в каждой полосе из TREE_NOISE_SCALE.y рядов; |n| <= порога — на месте.
+# Ряды внутри кроны шевелятся вразнобой, соседние кроны тоже.
+# Берётся сосед, только если он тоже дерево: силуэт кроны не меняется.
+const TREE_MARGIN := 0.0
+const TREE_NOISE_SCALE := Vector2(40.0, 3.0)   # текселей на ячейку шума по x, рядов в полосе по y
+const TREE_NOISE_SPEED := 0.5   # ячеек шума в секунду
+const TREE_CALM := 0.6          # порог |n| без ветра: сдвинуто около 18% рядов (0.5 — 28%, 0.4 — 40%)
+const TREE_GUST_CALM := 0.25    # порог в порыв: около 61% рядов (0.15 — 76%)
+const GUST_EVERY_MIN := 8.0     # с между порывами (в диапазоне по хэшу номера порыва)
+const GUST_EVERY_MAX := 15.0
+const GUST_LEN_MIN := 1.0       # с, длительность порыва
+const GUST_LEN_MAX := 2.0
+const GUST_RAMP := 0.3          # с на нарастание и спад
+# Факелы (передний план): оранжево-жёлтые пиксели (r >= FIRE_R_MIN, g >= FIRE_G_MIN, b <= FIRE_B_MAX, r - g >= FIRE_RG_GAP),
+# связные области (8 соседей) не меньше FIRE_MIN_PIXELS — отдельные факелы, у каждого своя фаза. Яркость пикселя
+# (границы FIRE_LUM) задаёт один из трёх оттенков FIRE_SHADES, оттенок идёт по кругу FIRE_CYCLE_SPEED шагов в секунду.
+# Верхние FIRE_TOP_ROWS рядов пламени долю FIRE_FLICK_DUTY времени выше на 1 тексель (FIRE_FLICK_RATE циклов в секунду).
+const FIRE_R_MIN := 0.85
+const FIRE_G_MIN := 0.35
+const FIRE_B_MAX := 0.35
+const FIRE_RG_GAP := 0.15
+const FIRE_MIN_PIXELS := 60     # мельче — не факел (золотая отделка крыш)
+const FIRE_LUM := Vector2(0.55, 0.75)   # границы тёмного, среднего и светлого оттенка
+const FIRE_SHADES: Array[Color] = [Color(0.85, 0.32, 0.08), Color(0.98, 0.58, 0.12), Color(1.0, 0.86, 0.35)]
+const FIRE_CYCLE_SPEED := 6.0
+const FIRE_TOP_ROWS := 2
+const FIRE_FLICK_RATE := 1.3
+const FIRE_FLICK_DUTY := 0.25
+# Вода (фон): синий канал больше красного и зелёного на WATER_MARGIN. Ряд сдвигается на round(WATER_AMP * sin(y * WATER_FREQ_Y
+# + t * WATER_SPEED)) тексель (сосед — тоже вода, берег не тянется); блики — доля WATER_GLINT_DENSITY пикселей воды,
+# новые места WATER_GLINT_RATE раз в секунду, светлее на WATER_GLINT_LIGHT.
 const WATER_MARGIN := 0.03
-const WATER_AMP := 0.7          # не больше 1; меньше 1 — меньше пикселей сдвинуто в каждый момент
-const WATER_SPEED := 1.6        # рад/с
-const WATER_FREQ_Y := 0.45      # рад на тексель по y: полосы ряби
-const WATER_FREQ_X := 0.06      # рад на тексель по x: полосы слегка наклонены
-# Деревья на переднем плане: зелёный канал больше красного и синего на WIND_MARGIN (непрозрачные пиксели); стена не зелёная.
-# Волна бежит слева направо: сдвиг round(WIND_AMP * sin(TAU * (x / WIND_WAVELEN - t / WIND_PERIOD))), x в текселях.
-const WIND_MARGIN := 0.0
-const WIND_AMP := 0.7
-const WIND_PERIOD := 3.0        # с
-const WIND_WAVELEN := 420.0     # текселей
+const WATER_AMP := 0.7          # не больше 1; меньше 1 — меньше рядов сдвинуто в каждый момент
+const WATER_SPEED := 0.6        # рад/с, медленный ритм
+const WATER_FREQ_Y := 0.7       # рад на ряд
+const WATER_GLINT_DENSITY := 0.0015
+const WATER_GLINT_RATE := 3.0
+const WATER_GLINT_LIGHT := 0.45
+# Отладка масок (F2 в debug-сборке, вместе с раскраской юнитов по ряду): деревья, факелы, вода — своими цветами,
+# пиксели цвета огня, отсеянные по размеру области, — FX_DEBUG_FIRE_REJECTED; остальное затемнено.
+const FX_DEBUG_TREE := Color(1.0, 0.0, 1.0)
+const FX_DEBUG_FIRE := Color(1.0, 1.0, 1.0)
+const FX_DEBUG_FIRE_REJECTED := Color(1.0, 0.0, 0.0)
+const FX_DEBUG_WATER := Color(0.0, 1.0, 1.0)
+const FX_DEBUG_DIM := 0.3
 # Листва: частицы от левого края поля вправо, выше юнитов и переднего плана, ниже интерфейса
 const LEAF_AMOUNT := 36         # слотов; с разбросом жизни одновременно летит около 30
 const LEAF_LIFE_MIN := 10.0     # с
@@ -137,27 +173,124 @@ const LEAF_SWAY_AMP := 2.5      # покачивание по вертикали
 const LEAF_SWAY_FREQ := 2.2     # рад/с
 const LEAF_COLORS: Array[Color] = [Color(0.36, 0.62, 0.22), Color(0.25, 0.48, 0.16), Color(0.78, 0.66, 0.24), Color(0.6, 0.42, 0.18)]
 const LEAF_Z := 2
-# Сдвиг пикселей маски на целый тексель по x; вершинный цвет (modulate) сохраняется.
-const FX_SHIFT_SHADER := """shader_type canvas_item;
-uniform float margin;
-uniform float amp;
+const FX_NOISE_GLSL := """
+float hash3(vec3 p) {
+	p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+	p += dot(p, p.yxz + 33.33);
+	return fract((p.x + p.y) * p.z);
+}
+// шум, гладкий по p.x и p.y (время), без интерполяции между полосами band: 4 хэша на пиксель
+float vnoise_band(vec2 p, float band) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash3(vec3(i, band)), hash3(vec3(i + vec2(1, 0), band)), f.x),
+		mix(hash3(vec3(i + vec2(0, 1), band)), hash3(vec3(i + vec2(1, 1), band)), f.x), f.y);
+}
+"""
+# Передний план: деревья и факелы. fire_map (по текселю): r — факел, g — верхние ряды пламени, b — фаза факела.
+const FG_SHADER := """shader_type canvas_item;
+uniform sampler2D fire_map : filter_nearest;
+uniform float tree_margin;
+uniform vec2 tree_noise_scale;
+uniform float tree_noise_speed;
+uniform float tree_calm;
+uniform vec4 fire_test;    // r_min, g_min, b_max, rg_gap
+uniform vec2 fire_lum;
+uniform vec4 fire_shade0 : source_color;
+uniform vec4 fire_shade1 : source_color;
+uniform vec4 fire_shade2 : source_color;
+uniform float fire_cycle_speed;
+uniform float fire_flick_rate;
+uniform float fire_flick_duty;
+uniform bool debug_masks = false;
+uniform vec4 debug_tree : source_color;
+uniform vec4 debug_fire : source_color;
+uniform vec4 debug_fire_rejected : source_color;
+uniform float debug_dim;
 varying vec4 vcol;
-bool masked(vec4 c) {
-#if WATER
-	return c.b > max(c.r, c.g) + margin;
-#else
-	return c.a > 0.5 && c.g > max(c.r, c.b) + margin;
-#endif
+NOISE
+bool is_tree(vec4 c) {
+	return c.a > 0.5 && c.g > max(c.r, c.b) + tree_margin;
+}
+bool is_fire_color(vec4 c) {
+	return c.a > 0.5 && c.r >= fire_test.x && c.g >= fire_test.y && c.b <= fire_test.z && c.r - c.g >= fire_test.w;
+}
+vec4 fire_shade(vec4 c, float phase) {
+	float lum = dot(c.rgb, vec3(0.3, 0.59, 0.11));
+	float i = lum < fire_lum.x ? 0.0 : (lum < fire_lum.y ? 1.0 : 2.0);
+	float k = mod(i + floor(TIME * fire_cycle_speed + phase * 3.0), 3.0);
+	vec4 s = k < 0.5 ? fire_shade0 : (k < 1.5 ? fire_shade1 : fire_shade2);
+	return vec4(s.rgb, c.a);
 }
 void vertex() {
 	vcol = COLOR;
 }
 void fragment() {
-	vec2 px = floor(UV / TEXTURE_PIXEL_SIZE);
-	float off = round(amp * sin(PHASE));
+	vec2 tp = TEXTURE_PIXEL_SIZE;
+	vec2 px = floor(UV / tp);
 	vec4 c = texture(TEXTURE, UV);
-	vec4 s = texture(TEXTURE, UV + vec2(off * TEXTURE_PIXEL_SIZE.x, 0.0));
-	COLOR = vcol * (masked(c) && masked(s) ? s : c);
+	vec4 res = c;
+	if (debug_masks) {
+		vec4 m = texture(fire_map, UV);
+		res = is_tree(c) ? debug_tree : (m.r > 0.5 ? debug_fire : (is_fire_color(c) ? debug_fire_rejected : vec4(c.rgb * debug_dim, c.a)));
+	} else if (is_tree(c)) {
+		float n = vnoise_band(vec2(px.x / tree_noise_scale.x, TIME * tree_noise_speed), floor(px.y / tree_noise_scale.y)) * 2.0 - 1.0;
+		float off = abs(n) > tree_calm ? sign(n) : 0.0;
+		if (off != 0.0) {
+			vec4 s = texture(TEXTURE, UV + vec2(off * tp.x, 0.0));
+			res = is_tree(s) ? s : c;
+		}
+	} else {
+		vec4 below = texture(fire_map, UV + vec2(0.0, tp.y));
+		if (below.g > 0.5 && fract(TIME * fire_flick_rate + below.b * 7.13) < fire_flick_duty) {
+			res = fire_shade(texture(TEXTURE, UV + vec2(0.0, tp.y)), below.b);   // верх пламени на тексель выше
+		} else if (c.a > 0.5) {
+			vec4 m = texture(fire_map, UV);   // факелы только среди непрозрачных пикселей
+			if (m.r > 0.5) {
+				res = fire_shade(c, m.b);
+			}
+		}
+	}
+	COLOR = vcol * res;
+}
+"""
+# Фон: вода — сдвиг рядов и блики.
+const BG_SHADER := """shader_type canvas_item;
+uniform float water_margin;
+uniform float water_amp;
+uniform float water_speed;
+uniform float water_freq_y;
+uniform float glint_density;
+uniform float glint_rate;
+uniform float glint_light;
+uniform bool debug_masks = false;
+uniform vec4 debug_water : source_color;
+uniform float debug_dim;
+varying vec4 vcol;
+NOISE
+bool is_water(vec4 c) {
+	return c.b > max(c.r, c.g) + water_margin;
+}
+void vertex() {
+	vcol = COLOR;
+}
+void fragment() {
+	vec2 tp = TEXTURE_PIXEL_SIZE;
+	vec2 px = floor(UV / tp);
+	vec4 c = texture(TEXTURE, UV);
+	vec4 res = c;
+	if (debug_masks) {
+		res = is_water(c) ? debug_water : vec4(c.rgb * debug_dim, c.a);
+	} else if (is_water(c)) {
+		float off = round(water_amp * sin(px.y * water_freq_y + TIME * water_speed));
+		vec4 s = texture(TEXTURE, UV + vec2(off * tp.x, 0.0));
+		res = is_water(s) ? s : c;
+		if (hash3(vec3(px, floor(TIME * glint_rate))) < glint_density) {
+			res.rgb = mix(res.rgb, vec3(1.0), glint_light);
+		}
+	}
+	COLOR = vcol * res;
 }
 """
 const LEAF_SHADER := """shader_type canvas_item;
@@ -473,6 +606,16 @@ var sel_boxes := []                           # границы живых сло
 var sel_boxes_key := 0.0
 var hint_label: Label
 var fx_enabled := FX_ENABLED                  # бенчи переопределяют до _ready
+var fx_bg_mat: ShaderMaterial = null          # материалы эффектов; null при fx_enabled = false
+var fx_fg_mat: ShaderMaterial = null
+var fx_fg_vp: SubViewport = null             # вьюпорт переднего плана с эффектами
+var fx_bake_t := 0.0                          # с до следующей перерисовки вьюпорта
+static var fx_fire_map: ImageTexture = null   # карта факелов, строится один раз за запуск
+static var fx_torches := 0                    # найдено факелов
+var fx_gust_n := 0                            # номер порыва: интервал и длительность — хэш от номера (без генераторов)
+var fx_gust_wait := 0.0                       # с до порыва
+var fx_gust_left := 0.0                       # с до конца порыва
+var fx_gust := 0.0                            # сила порыва 0..1
 var paused := false                           # активная пауза: _physics_process не выполняется, команды только меняют данные
 var split_frac := 0.5                         # деление: доля уходящих в новый отряд
 var split_mode := 0                           # кто уходит: 0 правые, 1 левые, 2 задние ряды, 3 передние ряды
@@ -530,8 +673,10 @@ func _setup_background() -> void:
 	var bg := _map_sprite(BG_PATH)
 	bg.z_index = -1   # ниже MultiMeshInstance2D юнитов (z 0)
 	if fx_enabled:
-		bg.material = _fx_shift_material(true, WATER_MARGIN, WATER_AMP,
-			"px.y * %f + px.x * %f + TIME * %f" % [WATER_FREQ_Y, WATER_FREQ_X, WATER_SPEED])
+		fx_bg_mat = _fx_material(BG_SHADER, {"water_margin": WATER_MARGIN, "water_amp": minf(WATER_AMP, 1.0),
+			"water_speed": WATER_SPEED, "water_freq_y": WATER_FREQ_Y, "glint_density": WATER_GLINT_DENSITY,
+			"glint_rate": WATER_GLINT_RATE, "glint_light": WATER_GLINT_LIGHT, "debug_water": FX_DEBUG_WATER, "debug_dim": FX_DEBUG_DIM})
+		bg.material = fx_bg_mat
 	add_child(bg)
 	# Передний план: те же позиция и масштаб, что у фона
 	if not ResourceLoader.exists(FG_PATH):
@@ -541,22 +686,155 @@ func _setup_background() -> void:
 	fg.z_index = FG_Z
 	fg.modulate.a = FG_ALPHA
 	if fx_enabled:
-		fg.material = _fx_shift_material(false, WIND_MARGIN, WIND_AMP,
-			"TAU * (px.x / %f - TIME / %f)" % [WIND_WAVELEN, WIND_PERIOD])
+		if fx_fire_map == null:
+			fx_fire_map = _build_fire_map(fg.texture.get_image())
+		fx_fg_mat = _fx_material(FG_SHADER, {"fire_map": fx_fire_map, "tree_margin": TREE_MARGIN,
+			"tree_noise_scale": TREE_NOISE_SCALE, "tree_noise_speed": TREE_NOISE_SPEED, "tree_calm": TREE_CALM,
+			"fire_test": Vector4(FIRE_R_MIN, FIRE_G_MIN, FIRE_B_MAX, FIRE_RG_GAP), "fire_lum": FIRE_LUM,
+			"fire_shade0": FIRE_SHADES[0], "fire_shade1": FIRE_SHADES[1], "fire_shade2": FIRE_SHADES[2],
+			"fire_cycle_speed": FIRE_CYCLE_SPEED, "fire_flick_rate": FIRE_FLICK_RATE, "fire_flick_duty": FIRE_FLICK_DUTY,
+			"debug_tree": FX_DEBUG_TREE, "debug_fire": FX_DEBUG_FIRE, "debug_fire_rejected": FX_DEBUG_FIRE_REJECTED, "debug_dim": FX_DEBUG_DIM})
+		fg.material = fx_fg_mat
+		fg = _fx_bake(fg)
+		fx_gust_wait = lerpf(GUST_EVERY_MIN, GUST_EVERY_MAX, _fx_hash(0))
 	add_child(fg)
 	if fx_enabled:
 		_setup_leaves()
+		_sync_fx_debug()
 
 
-# Шейдер сдвига пикселей маски (вода или зелень); фаза волны — выражение от px (тексель) и TIME.
-func _fx_shift_material(water: bool, margin: float, amp: float, phase: String) -> ShaderMaterial:
+func _fx_material(code: String, params: Dictionary) -> ShaderMaterial:
 	var sh := Shader.new()
-	sh.code = FX_SHIFT_SHADER.replace("#if WATER", "#if %d" % int(water)).replace("PHASE", phase)
+	sh.code = code.replace("NOISE", FX_NOISE_GLSL)
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
-	mat.set_shader_parameter("margin", margin)
-	mat.set_shader_parameter("amp", minf(amp, 1.0))
+	for k in params:
+		mat.set_shader_parameter(k, params[k])
 	return mat
+
+
+# Передний план с эффектами рисуется в SubViewport размера текстуры раз в 1 / FX_RATE с (_update_fx), на экран — готовая
+# текстура тем же спрайтом, что без эффектов: шейдер не считается каждый кадр. Вьюпорт хранит цвет, умноженный на альфу,
+# поэтому смешивание premultiplied (и FG_ALPHA — во всех каналах modulate).
+func _fx_bake(inner: Sprite2D) -> Sprite2D:
+	var vp := SubViewport.new()
+	vp.size = Vector2i(inner.texture.get_size())
+	vp.transparent_bg = true
+	vp.disable_3d = true
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	inner.position = Vector2.ZERO
+	inner.scale = Vector2.ONE
+	inner.z_index = 0
+	inner.modulate = Color.WHITE
+	vp.add_child(inner)
+	add_child(vp)
+	fx_fg_vp = vp
+	var out := Sprite2D.new()
+	out.texture = vp.get_texture()
+	out.centered = false
+	out.scale = Vector2(BG_SCALE, BG_SCALE)
+	out.position = BG_OFFSET
+	out.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	out.z_index = FG_Z
+	out.modulate = Color(FG_ALPHA, FG_ALPHA, FG_ALPHA, FG_ALPHA)
+	var cm := CanvasItemMaterial.new()
+	cm.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+	out.material = cm
+	return out
+
+
+# Карта факелов по текселям переднего плана: связные области цвета огня от FIRE_MIN_PIXELS. r — факел, g — верхние
+# FIRE_TOP_ROWS рядов области, b — фаза (золотое сечение от номера факела). Один раз за запуск игры (статическое поле).
+func _build_fire_map(img: Image) -> ImageTexture:
+	if img.is_compressed():
+		img.decompress()
+	img.convert(Image.FORMAT_RGBA8)
+	var w := img.get_width()
+	var h := img.get_height()
+	var src := img.get_data()
+	var r_min := int(FIRE_R_MIN * 255.0)
+	var g_min := int(FIRE_G_MIN * 255.0)
+	var b_max := int(FIRE_B_MAX * 255.0)
+	var gap := int(FIRE_RG_GAP * 255.0)
+	var fire := PackedByteArray()
+	fire.resize(w * h)
+	for i in w * h:
+		var o := i * 4
+		var r := src[o]
+		if r >= r_min and src[o + 3] > 127 and src[o + 1] >= g_min and src[o + 2] <= b_max and r - src[o + 1] >= gap:
+			fire[i] = 1
+	var out := PackedByteArray()
+	out.resize(w * h * 4)
+	var torches := 0
+	for i in w * h:
+		if fire[i] != 1:
+			continue
+		var area := PackedInt32Array([i])
+		fire[i] = 2
+		var k := 0
+		while k < area.size():
+			var q := area[k]
+			k += 1
+			var qx := q % w
+			var qy := q / w
+			for dy in [-1, 0, 1]:
+				for dx in [-1, 0, 1]:
+					var x: int = qx + dx
+					var y: int = qy + dy
+					if x >= 0 and y >= 0 and x < w and y < h and fire[y * w + x] == 1:
+						fire[y * w + x] = 2
+						area.append(y * w + x)
+		if area.size() < FIRE_MIN_PIXELS:
+			continue
+		var top := h
+		for q in area:
+			top = mini(top, q / w)
+		var phase := int(fposmod(torches * 0.618034, 1.0) * 255.0)
+		torches += 1
+		for q in area:
+			out[q * 4] = 255
+			out[q * 4 + 1] = 255 if q / w < top + FIRE_TOP_ROWS else 0
+			out[q * 4 + 2] = phase
+			out[q * 4 + 3] = 255
+	fx_torches = torches
+	return ImageTexture.create_from_image(Image.create_from_data(w, h, false, Image.FORMAT_RGBA8, out))
+
+
+# Порывы ветра по времени кадра: порог шума деревьев плавно опускается за GUST_RAMP с и обратно.
+func _update_fx(delta: float) -> void:
+	if fx_fg_mat == null:
+		return
+	fx_bake_t -= delta
+	if fx_bake_t <= 0.0:
+		fx_bake_t = maxf(fx_bake_t + 1.0 / FX_RATE, 0.0)
+		fx_fg_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	if fx_gust_left > 0.0:
+		fx_gust_left -= delta
+		if fx_gust_left <= 0.0:
+			fx_gust_n += 1
+			fx_gust_wait = lerpf(GUST_EVERY_MIN, GUST_EVERY_MAX, _fx_hash(fx_gust_n * 2))
+	else:
+		fx_gust_wait -= delta
+		if fx_gust_wait <= 0.0:
+			fx_gust_left = lerpf(GUST_LEN_MIN, GUST_LEN_MAX, _fx_hash(fx_gust_n * 2 + 1))
+	var g := move_toward(fx_gust, 1.0 if fx_gust_left > 0.0 else 0.0, delta / GUST_RAMP)
+	if g != fx_gust:
+		fx_gust = g
+		fx_fg_mat.set_shader_parameter("tree_calm", lerpf(TREE_CALM, TREE_GUST_CALM, g))
+
+
+# Псевдослучайное 0..1 от целого (для порывов ветра).
+func _fx_hash(k: int) -> float:
+	return fposmod(sin(k * 12.9898 + 1.0) * 43758.5453, 1.0)
+
+
+# Отладка масок эффектов: F2 (раскраска по ряду) в debug-сборке.
+func _sync_fx_debug() -> void:
+	var on := OS.is_debug_build() and color_mode == 1
+	for mat in [fx_bg_mat, fx_fg_mat]:
+		if mat != null:
+			mat.set_shader_parameter("debug_masks", on)
+	fx_bake_t = 0.0   # передний план перерисуется в ближайшем кадре
 
 
 # Листва: CPUParticles2D со своим генератором; движение — по времени кадра, покачивание — в шейдере по TIME.
@@ -2943,6 +3221,7 @@ func _physics_process(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	var t := Time.get_ticks_usec()
+	_update_fx(delta)
 	ui_t -= delta
 	if ui_t <= 0.0:
 		ui_t = 0.1
@@ -4378,8 +4657,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_buy(SHOP_KEYS.find(event.keycode))
 			KEY_F1:
 				color_mode = 0
+				_sync_fx_debug()
 			KEY_F2, KEY_F3, KEY_F4:
 				if DEBUG_COLORS:
 					color_mode = event.keycode - KEY_F1
+					_sync_fx_debug()
 			KEY_F5:
 				sprites_on = not sprites_on   # спрайты / все юниты квадратами
