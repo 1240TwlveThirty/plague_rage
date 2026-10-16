@@ -118,14 +118,12 @@ const CASTLE_ALPHA := 1.0          # прозрачность слоя замк�
 const FG_Z := 1                    # слои леса и замка (замок поверх леса) выше юнитов, снарядов и полос HP ворот (всё на z 0), ниже интерфейса (CanvasLayer)
 # Мягкие пиксельные эффекты: сдвиги только на целый тексель, без интерполяции; всё по времени отрисовки (TIME шейдера,
 # delta кадра), без тиков и генераторов боя. false — картинка как без них (этап А).
-const FX_ENABLED := false
-const FX_RATE := 15.0           # кадров анимации переднего плана в секунду (деревья, факелы)
-# Деревья (передний план): непрозрачный пиксель, зелёный канал больше красного и синего на TREE_MARGIN. Сдвиг по x на 0 или ±1
-# тексель по знаку низкочастотного шума n в [-1, 1]: гладкий по x (TREE_NOISE_SCALE.x текселей на ячейку) и времени
-# (TREE_NOISE_SPEED ячеек в секунду), свой в каждой полосе из TREE_NOISE_SCALE.y рядов; |n| <= порога — на месте.
-# Ряды внутри кроны шевелятся вразнобой, соседние кроны тоже.
-# Берётся сосед, только если он тоже дерево: силуэт кроны не меняется.
-const TREE_MARGIN := 0.0
+const FX_ENABLED := true
+const FX_RATE := 15.0           # кадров анимации слоёв леса и замка в секунду (деревья, факелы)
+# Деревья (слой леса): любой непрозрачный пиксель слоя. Сдвиг по x на 0 или ±1 тексель по знаку низкочастотного шума
+# n в [-1, 1]: гладкий по x (TREE_NOISE_SCALE.x текселей на ячейку) и времени (TREE_NOISE_SPEED ячеек в секунду), свой
+# в каждой полосе из TREE_NOISE_SCALE.y рядов; |n| <= порога — на месте. Ряды внутри кроны шевелятся вразнобой, соседние
+# кроны тоже. Берётся сосед, только если он тоже непрозрачный: силуэт кроны не меняется.
 const TREE_NOISE_SCALE := Vector2(40.0, 3.0)   # текселей на ячейку шума по x, рядов в полосе по y
 const TREE_NOISE_SPEED := 0.5   # ячеек шума в секунду
 const TREE_CALM := 0.6          # порог |n| без ветра: сдвинуто около 18% рядов (0.5 — 28%, 0.4 — 40%)
@@ -135,19 +133,21 @@ const GUST_EVERY_MAX := 15.0
 const GUST_LEN_MIN := 1.0       # с, длительность порыва
 const GUST_LEN_MAX := 2.0
 const GUST_RAMP := 0.3          # с на нарастание и спад
-# Факелы (передний план): оранжево-жёлтые пиксели (r >= FIRE_R_MIN, g >= FIRE_G_MIN, b <= FIRE_B_MAX, r - g >= FIRE_RG_GAP),
-# связные области (8 соседей) не меньше FIRE_MIN_PIXELS — отдельные факелы, у каждого своя фаза. Яркость пикселя
+# Факелы (слой замка): оранжево-жёлтые пиксели (r >= FIRE_R_MIN, g >= FIRE_G_MIN, b <= FIRE_B_MAX, r - g >= FIRE_RG_GAP),
+# связные области (8 соседей) не меньше FIRE_MIN_PIXELS и не уже FIRE_MIN_SPAN текселей по обеим осям — отдельные
+# факелы, у каждого своя фаза. Остальной слой замка не меняется. Яркость пикселя
 # (границы FIRE_LUM) задаёт один из трёх оттенков FIRE_SHADES, оттенок идёт по кругу FIRE_CYCLE_SPEED шагов в секунду.
 # Верхние FIRE_TOP_ROWS рядов пламени долю FIRE_FLICK_DUTY времени выше на 1 тексель (FIRE_FLICK_RATE циклов в секунду).
 const FIRE_R_MIN := 0.85
 const FIRE_G_MIN := 0.35
 const FIRE_B_MAX := 0.35
 const FIRE_RG_GAP := 0.15
-const FIRE_MIN_PIXELS := 60     # мельче — не факел (золотая отделка крыш)
+const FIRE_MIN_PIXELS := 300    # мельче — не факел (у факела 550-620)
+const FIRE_MIN_SPAN := 20       # уже — не факел: золотая отделка крыш — полосы в 3-5 текселей (у факела 32x47)
 const FIRE_LUM := Vector2(0.55, 0.75)   # границы тёмного, среднего и светлого оттенка
 const FIRE_SHADES: Array[Color] = [Color(0.85, 0.32, 0.08), Color(0.98, 0.58, 0.12), Color(1.0, 0.86, 0.35)]
 const FIRE_CYCLE_SPEED := 6.0
-const FIRE_TOP_ROWS := 2
+const FIRE_TOP_ROWS := 4
 const FIRE_FLICK_RATE := 1.3
 const FIRE_FLICK_DUTY := 0.25
 # Вода (фон): синий канал больше красного и зелёного на WATER_MARGIN. Ряд сдвигается на round(WATER_AMP * sin(y * WATER_FREQ_Y
@@ -160,14 +160,13 @@ const WATER_FREQ_Y := 0.7       # рад на ряд
 const WATER_GLINT_DENSITY := 0.0015
 const WATER_GLINT_RATE := 3.0
 const WATER_GLINT_LIGHT := 0.45
-# Отладка масок (F2 в debug-сборке, вместе с раскраской юнитов по ряду): деревья, факелы, вода — своими цветами,
-# пиксели цвета огня, отсеянные по размеру области, — FX_DEBUG_FIRE_REJECTED; остальное затемнено.
-const FX_DEBUG_TREE := Color(1.0, 0.0, 1.0)
+# Отладка масок (F2 в debug-сборке, вместе с раскраской юнитов по ряду): факелы и вода — своими цветами, пиксели цвета
+# огня, отсеянные по размеру области, — FX_DEBUG_FIRE_REJECTED; остальное (и лес) затемнено.
 const FX_DEBUG_FIRE := Color(1.0, 1.0, 1.0)
 const FX_DEBUG_FIRE_REJECTED := Color(1.0, 0.0, 0.0)
 const FX_DEBUG_WATER := Color(0.0, 1.0, 1.0)
 const FX_DEBUG_DIM := 0.3
-# Листва: частицы от левого края поля вправо, выше юнитов и переднего плана, ниже интерфейса
+# Листва: частицы от левого края поля вправо, выше юнитов и слоёв леса и замка, ниже интерфейса
 const LEAF_AMOUNT := 36         # слотов; с разбросом жизни одновременно летит около 30
 const LEAF_LIFE_MIN := 10.0     # с
 const LEAF_LIFE_MAX := 15.0
@@ -196,13 +195,39 @@ float vnoise_band(vec2 p, float band) {
 		mix(hash3(vec3(i + vec2(0, 1), band)), hash3(vec3(i + vec2(1, 1), band)), f.x), f.y);
 }
 """
-# Передний план: деревья и факелы. fire_map (по текселю): r — факел, g — верхние ряды пламени, b — фаза факела.
-const FG_SHADER := """shader_type canvas_item;
-uniform sampler2D fire_map : filter_nearest;
-uniform float tree_margin;
+# Слой леса: ряды непрозрачных пикселей сдвигаются на 0 или ±1 тексель.
+const TREES_SHADER := """shader_type canvas_item;
 uniform vec2 tree_noise_scale;
 uniform float tree_noise_speed;
 uniform float tree_calm;
+uniform bool debug_masks = false;
+uniform float debug_dim;
+varying vec4 vcol;
+NOISE
+void vertex() {
+	vcol = COLOR;
+}
+void fragment() {
+	vec2 tp = TEXTURE_PIXEL_SIZE;
+	vec2 px = floor(UV / tp);
+	vec4 c = texture(TEXTURE, UV);
+	vec4 res = c;
+	if (debug_masks) {
+		res = vec4(c.rgb * debug_dim, c.a);
+	} else if (c.a > 0.5) {
+		float n = vnoise_band(vec2(px.x / tree_noise_scale.x, TIME * tree_noise_speed), floor(px.y / tree_noise_scale.y)) * 2.0 - 1.0;
+		float off = abs(n) > tree_calm ? sign(n) : 0.0;
+		if (off != 0.0) {
+			vec4 s = texture(TEXTURE, UV + vec2(off * tp.x, 0.0));
+			res = s.a > 0.5 ? s : c;
+		}
+	}
+	COLOR = vcol * res;
+}
+"""
+# Слой замка: факелы. fire_map (по текселю): r — факел, g — верхние ряды пламени, b — фаза факела.
+const CASTLE_SHADER := """shader_type canvas_item;
+uniform sampler2D fire_map : filter_nearest;
 uniform vec4 fire_test;    // r_min, g_min, b_max, rg_gap
 uniform vec2 fire_lum;
 uniform vec4 fire_shade0 : source_color;
@@ -212,15 +237,10 @@ uniform float fire_cycle_speed;
 uniform float fire_flick_rate;
 uniform float fire_flick_duty;
 uniform bool debug_masks = false;
-uniform vec4 debug_tree : source_color;
 uniform vec4 debug_fire : source_color;
 uniform vec4 debug_fire_rejected : source_color;
 uniform float debug_dim;
 varying vec4 vcol;
-NOISE
-bool is_tree(vec4 c) {
-	return c.a > 0.5 && c.g > max(c.r, c.b) + tree_margin;
-}
 bool is_fire_color(vec4 c) {
 	return c.a > 0.5 && c.r >= fire_test.x && c.g >= fire_test.y && c.b <= fire_test.z && c.r - c.g >= fire_test.w;
 }
@@ -236,19 +256,11 @@ void vertex() {
 }
 void fragment() {
 	vec2 tp = TEXTURE_PIXEL_SIZE;
-	vec2 px = floor(UV / tp);
 	vec4 c = texture(TEXTURE, UV);
 	vec4 res = c;
 	if (debug_masks) {
 		vec4 m = texture(fire_map, UV);
-		res = is_tree(c) ? debug_tree : (m.r > 0.5 ? debug_fire : (is_fire_color(c) ? debug_fire_rejected : vec4(c.rgb * debug_dim, c.a)));
-	} else if (is_tree(c)) {
-		float n = vnoise_band(vec2(px.x / tree_noise_scale.x, TIME * tree_noise_speed), floor(px.y / tree_noise_scale.y)) * 2.0 - 1.0;
-		float off = abs(n) > tree_calm ? sign(n) : 0.0;
-		if (off != 0.0) {
-			vec4 s = texture(TEXTURE, UV + vec2(off * tp.x, 0.0));
-			res = is_tree(s) ? s : c;
-		}
+		res = m.r > 0.5 ? debug_fire : (is_fire_color(c) ? debug_fire_rejected : vec4(c.rgb * debug_dim, c.a));
 	} else {
 		vec4 below = texture(fire_map, UV + vec2(0.0, tp.y));
 		if (below.g > 0.5 && fract(TIME * fire_flick_rate + below.b * 7.13) < fire_flick_duty) {
@@ -615,8 +627,9 @@ var sel_boxes_key := 0.0
 var hint_label: Label
 var fx_enabled := FX_ENABLED                  # бенчи переопределяют до _ready
 var fx_bg_mat: ShaderMaterial = null          # материалы эффектов; null при fx_enabled = false
-var fx_fg_mat: ShaderMaterial = null
-var fx_fg_vp: SubViewport = null             # вьюпорт переднего плана с эффектами
+var fx_trees_mat: ShaderMaterial = null
+var fx_castle_mat: ShaderMaterial = null
+var fx_vps: Array[SubViewport] = []          # вьюпорты слоёв леса и замка с эффектами
 var fx_bake_t := 0.0                          # с до следующей перерисовки вьюпорта
 static var fx_fire_map: ImageTexture = null   # карта факелов, строится один раз за запуск
 static var fx_torches := 0                    # найдено факелов
@@ -689,23 +702,26 @@ func _setup_background() -> void:
 	# Слои леса и замка поверх юнитов; замок добавлен позже — поверх леса
 	var trees := _layer_sprite(TREES_LAYER_PATH, TREES_TX_OFFSET, TREES_TX_SCALE, TREES_ALPHA)
 	if trees != null:
+		if fx_enabled:
+			fx_trees_mat = _fx_material(TREES_SHADER, {"tree_noise_scale": TREE_NOISE_SCALE,
+				"tree_noise_speed": TREE_NOISE_SPEED, "tree_calm": TREE_CALM, "debug_dim": FX_DEBUG_DIM})
+			trees.material = fx_trees_mat
+			trees = _fx_bake(trees)
+			fx_gust_wait = lerpf(GUST_EVERY_MIN, GUST_EVERY_MAX, _fx_hash(0))
 		add_child(trees)
-	var fg := _layer_sprite(CASTLE_LAYER_PATH, CASTLE_TX_OFFSET, CASTLE_TX_SCALE, CASTLE_ALPHA)
-	if fg == null:
-		return
-	if fx_enabled:
-		if fx_fire_map == null:
-			fx_fire_map = _build_fire_map(fg.texture.get_image())
-		fx_fg_mat = _fx_material(FG_SHADER, {"fire_map": fx_fire_map, "tree_margin": TREE_MARGIN,
-			"tree_noise_scale": TREE_NOISE_SCALE, "tree_noise_speed": TREE_NOISE_SPEED, "tree_calm": TREE_CALM,
-			"fire_test": Vector4(FIRE_R_MIN, FIRE_G_MIN, FIRE_B_MAX, FIRE_RG_GAP), "fire_lum": FIRE_LUM,
-			"fire_shade0": FIRE_SHADES[0], "fire_shade1": FIRE_SHADES[1], "fire_shade2": FIRE_SHADES[2],
-			"fire_cycle_speed": FIRE_CYCLE_SPEED, "fire_flick_rate": FIRE_FLICK_RATE, "fire_flick_duty": FIRE_FLICK_DUTY,
-			"debug_tree": FX_DEBUG_TREE, "debug_fire": FX_DEBUG_FIRE, "debug_fire_rejected": FX_DEBUG_FIRE_REJECTED, "debug_dim": FX_DEBUG_DIM})
-		fg.material = fx_fg_mat
-		fg = _fx_bake(fg)
-		fx_gust_wait = lerpf(GUST_EVERY_MIN, GUST_EVERY_MAX, _fx_hash(0))
-	add_child(fg)
+	var castle := _layer_sprite(CASTLE_LAYER_PATH, CASTLE_TX_OFFSET, CASTLE_TX_SCALE, CASTLE_ALPHA)
+	if castle != null:
+		if fx_enabled:
+			if fx_fire_map == null:
+				fx_fire_map = _build_fire_map(castle.texture.get_image())
+			fx_castle_mat = _fx_material(CASTLE_SHADER, {"fire_map": fx_fire_map,
+				"fire_test": Vector4(FIRE_R_MIN, FIRE_G_MIN, FIRE_B_MAX, FIRE_RG_GAP), "fire_lum": FIRE_LUM,
+				"fire_shade0": FIRE_SHADES[0], "fire_shade1": FIRE_SHADES[1], "fire_shade2": FIRE_SHADES[2],
+				"fire_cycle_speed": FIRE_CYCLE_SPEED, "fire_flick_rate": FIRE_FLICK_RATE, "fire_flick_duty": FIRE_FLICK_DUTY,
+				"debug_fire": FX_DEBUG_FIRE, "debug_fire_rejected": FX_DEBUG_FIRE_REJECTED, "debug_dim": FX_DEBUG_DIM})
+			castle.material = fx_castle_mat
+			castle = _fx_bake(castle)
+		add_child(castle)
 	if fx_enabled:
 		_setup_leaves()
 		_sync_fx_debug()
@@ -743,7 +759,7 @@ func _fx_bake(inner: Sprite2D) -> Sprite2D:
 	inner.modulate = Color.WHITE
 	vp.add_child(inner)
 	add_child(vp)
-	fx_fg_vp = vp
+	fx_vps.append(vp)
 	out.texture = vp.get_texture()
 	out.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var cm := CanvasItemMaterial.new()
@@ -752,7 +768,7 @@ func _fx_bake(inner: Sprite2D) -> Sprite2D:
 	return out
 
 
-# Карта факелов по текселям переднего плана: связные области цвета огня от FIRE_MIN_PIXELS. r — факел, g — верхние
+# Карта факелов по текселям слоя замка: связные области цвета огня от FIRE_MIN_PIXELS и FIRE_MIN_SPAN. r — факел, g — верхние
 # FIRE_TOP_ROWS рядов области, b — фаза (золотое сечение от номера факела). Один раз за запуск игры (статическое поле).
 func _build_fire_map(img: Image) -> ImageTexture:
 	if img.is_compressed():
@@ -796,8 +812,16 @@ func _build_fire_map(img: Image) -> ImageTexture:
 		if area.size() < FIRE_MIN_PIXELS:
 			continue
 		var top := h
+		var bottom := 0
+		var left := w
+		var right := 0
 		for q in area:
 			top = mini(top, q / w)
+			bottom = maxi(bottom, q / w)
+			left = mini(left, q % w)
+			right = maxi(right, q % w)
+		if mini(bottom - top, right - left) + 1 < FIRE_MIN_SPAN:
+			continue
 		var phase := int(fposmod(torches * 0.618034, 1.0) * 255.0)
 		torches += 1
 		for q in area:
@@ -811,12 +835,15 @@ func _build_fire_map(img: Image) -> ImageTexture:
 
 # Порывы ветра по времени кадра: порог шума деревьев плавно опускается за GUST_RAMP с и обратно.
 func _update_fx(delta: float) -> void:
-	if fx_fg_mat == null:
+	if fx_vps.is_empty():
 		return
 	fx_bake_t -= delta
 	if fx_bake_t <= 0.0:
 		fx_bake_t = maxf(fx_bake_t + 1.0 / FX_RATE, 0.0)
-		fx_fg_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+		for vp in fx_vps:
+			vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	if fx_trees_mat == null:
+		return
 	if fx_gust_left > 0.0:
 		fx_gust_left -= delta
 		if fx_gust_left <= 0.0:
@@ -829,7 +856,7 @@ func _update_fx(delta: float) -> void:
 	var g := move_toward(fx_gust, 1.0 if fx_gust_left > 0.0 else 0.0, delta / GUST_RAMP)
 	if g != fx_gust:
 		fx_gust = g
-		fx_fg_mat.set_shader_parameter("tree_calm", lerpf(TREE_CALM, TREE_GUST_CALM, g))
+		fx_trees_mat.set_shader_parameter("tree_calm", lerpf(TREE_CALM, TREE_GUST_CALM, g))
 
 
 # Псевдослучайное 0..1 от целого (для порывов ветра).
@@ -840,10 +867,10 @@ func _fx_hash(k: int) -> float:
 # Отладка масок эффектов: F2 (раскраска по ряду) в debug-сборке.
 func _sync_fx_debug() -> void:
 	var on := OS.is_debug_build() and color_mode == 1
-	for mat in [fx_bg_mat, fx_fg_mat]:
+	for mat in [fx_bg_mat, fx_trees_mat, fx_castle_mat]:
 		if mat != null:
 			mat.set_shader_parameter("debug_masks", on)
-	fx_bake_t = 0.0   # передний план перерисуется в ближайшем кадре
+	fx_bake_t = 0.0   # слои перерисуются в ближайшем кадре
 
 
 # Листва: CPUParticles2D со своим генератором; движение — по времени кадра, покачивание — в шейдере по TIME.
