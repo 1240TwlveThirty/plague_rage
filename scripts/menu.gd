@@ -1,9 +1,12 @@
 extends Control
-# Главное меню: заголовок, «Играть» (в хаб) и «Выход». Интерфейс строится кодом, по центру экрана.
+# Главное меню: заголовок, «Играть» (в хаб), «Настройки» и «Выход». Интерфейс строится кодом, по центру экрана.
 const UI := preload("res://scripts/ui.gd")
+const SETTINGS_MENU := preload("res://scripts/settings_menu.gd")
 
 var play_button: Button
+var settings_button: Button
 var quit_button: Button
+var settings_menu: CanvasLayer   # экран «Настройки» поверх меню
 
 
 func _ready() -> void:
@@ -26,8 +29,13 @@ func _ready() -> void:
 	box.add_child(title)
 	play_button = _button(box, "Играть")
 	play_button.pressed.connect(_on_play)
+	settings_button = _button(box, "Настройки")
+	settings_button.pressed.connect(_open_settings)
 	quit_button = _button(box, "Выход")
 	quit_button.pressed.connect(_on_quit)
+	settings_menu = SETTINGS_MENU.new()
+	settings_menu.closed.connect(func(): settings_button.grab_focus())
+	add_child(settings_menu)
 	play_button.grab_focus()   # Enter нажимает «Играть»
 
 
@@ -42,6 +50,10 @@ func _button(box: Container, text: String) -> Button:
 
 func _on_play() -> void:
 	get_node("/root/Game").go_hub()
+
+
+func _open_settings() -> void:
+	settings_menu.open()
 
 
 func _on_quit() -> void:
