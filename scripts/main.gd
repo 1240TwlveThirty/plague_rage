@@ -103,14 +103,22 @@ const PUSH_K := 0.5          # доля перекрытия, которую с�
 const VIEW_RANGE := CELL_SIZE   # равен CELL_SIZE: окно 3x3 его гарантированно покрывает
 # --- Карта замка (вертикальная, 1920x1080; игрок внизу, зомби сверху) ---
 const BG_PATH := "res://art/castle_map.png"   # 1831x859, пиксель-арт
-const FG_PATH := "res://art/walls_and_trees.png"   # передний план (кроны, стена и башни, двор и крыши), прозрачный PNG того же размера
+const TREES_LAYER_PATH := "res://art/trees_lay.png"        # слой леса: кроны по краям поля, прозрачный PNG 1823x863
+const CASTLE_LAYER_PATH := "res://art/castle_lay_two.png"  # слой замка: стены, башни с факелами, крыши; двор и вода прозрачные, 1831x859
 const BG_SCALE := 1056.0 / 859.0   # фон по высоте ровно на поле (1056 px), как прежний castle_bg.jpg 1500x704 с масштабом 1.5
 const BG_OFFSET := Vector2(-21, 0)
-const FG_ALPHA := 1.0              # прозрачность переднего плана
-const FG_Z := 1                    # передний план выше юнитов, снарядов и полос HP ворот (всё на z 0), ниже интерфейса (CanvasLayer)
+# Слои в текселях фона: тексель слоя (u, v) ложится на тексель фона *_TX_OFFSET + *_TX_SCALE * (u, v). Найдено перебором
+# масштаба и сдвига по цвету фона, где лес и прежний замок уже нарисованы (bench/align_layers.py).
+const TREES_TX_OFFSET := Vector2(-2, 5)
+const TREES_TX_SCALE := 1.004
+const CASTLE_TX_OFFSET := Vector2(455, 519)
+const CASTLE_TX_SCALE := 0.448
+const TREES_ALPHA := 1.0           # прозрачность слоя леса
+const CASTLE_ALPHA := 1.0          # прозрачность слоя замка
+const FG_Z := 1                    # слои леса и замка (замок поверх леса) выше юнитов, снарядов и полос HP ворот (всё на z 0), ниже интерфейса (CanvasLayer)
 # Мягкие пиксельные эффекты: сдвиги только на целый тексель, без интерполяции; всё по времени отрисовки (TIME шейдера,
 # delta кадра), без тиков и генераторов боя. false — картинка как без них (этап А).
-const FX_ENABLED := true
+const FX_ENABLED := false
 const FX_RATE := 15.0           # кадров анимации переднего плана в секунду (деревья, факелы)
 # Деревья (передний план): непрозрачный пиксель, зелёный канал больше красного и синего на TREE_MARGIN. Сдвиг по x на 0 или ±1
 # тексель по знаку низкочастотного шума n в [-1, 1]: гладкий по x (TREE_NOISE_SCALE.x текселей на ячейку) и времени
@@ -678,13 +686,13 @@ func _setup_background() -> void:
 			"glint_rate": WATER_GLINT_RATE, "glint_light": WATER_GLINT_LIGHT, "debug_water": FX_DEBUG_WATER, "debug_dim": FX_DEBUG_DIM})
 		bg.material = fx_bg_mat
 	add_child(bg)
-	# Передний план: те же позиция и масштаб, что у фона
-	if not ResourceLoader.exists(FG_PATH):
-		push_warning("Нет переднего плана %s: рисуется без него" % FG_PATH)
+	# Слои леса и замка поверх юнитов; замок добавлен позже — поверх леса
+	var trees := _layer_sprite(TREES_LAYER_PATH, TREES_TX_OFFSET, TREES_TX_SCALE, TREES_ALPHA)
+	if trees != null:
+		add_child(trees)
+	var fg := _layer_sprite(CASTLE_LAYER_PATH, CASTLE_TX_OFFSET, CASTLE_TX_SCALE, CASTLE_ALPHA)
+	if fg == null:
 		return
-	var fg := _map_sprite(FG_PATH)
-	fg.z_index = FG_Z
-	fg.modulate.a = FG_ALPHA
 	if fx_enabled:
 		if fx_fire_map == null:
 			fx_fire_map = _build_fire_map(fg.texture.get_image())
@@ -713,10 +721,17 @@ func _fx_material(code: String, params: Dictionary) -> ShaderMaterial:
 	return mat
 
 
-# Передний план с эффектами рисуется в SubViewport размера текстуры раз в 1 / FX_RATE с (_update_fx), на экран — готовая
-# текстура тем же спрайтом, что без эффектов: шейдер не считается каждый кадр. Вьюпорт хранит цвет, умноженный на альфу,
-# поэтому смешивание premultiplied (и FG_ALPHA — во всех каналах modulate).
+# Слой с эффектами рисуется в SubViewport размера текстуры раз в 1 / FX_RATE с (_update_fx), на экран — готовая
+# текстура спрайтом с теми же позицией, масштабом и z: шейдер не считается каждый кадр. Вьюпорт хранит цвет, умноженный
+# на альфу, поэтому смешивание premultiplied (и прозрачность слоя — во всех каналах modulate).
 func _fx_bake(inner: Sprite2D) -> Sprite2D:
+	var out := Sprite2D.new()
+	out.centered = false
+	out.position = inner.position
+	out.scale = inner.scale
+	out.z_index = inner.z_index
+	var a := inner.modulate.a
+	out.modulate = Color(a, a, a, a)
 	var vp := SubViewport.new()
 	vp.size = Vector2i(inner.texture.get_size())
 	vp.transparent_bg = true
@@ -729,14 +744,8 @@ func _fx_bake(inner: Sprite2D) -> Sprite2D:
 	vp.add_child(inner)
 	add_child(vp)
 	fx_fg_vp = vp
-	var out := Sprite2D.new()
 	out.texture = vp.get_texture()
-	out.centered = false
-	out.scale = Vector2(BG_SCALE, BG_SCALE)
-	out.position = BG_OFFSET
 	out.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	out.z_index = FG_Z
-	out.modulate = Color(FG_ALPHA, FG_ALPHA, FG_ALPHA, FG_ALPHA)
 	var cm := CanvasItemMaterial.new()
 	cm.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
 	out.material = cm
@@ -871,13 +880,25 @@ func _setup_leaves() -> void:
 	add_child(p)
 
 
-func _map_sprite(path: String) -> Sprite2D:
+# Спрайт карты: тексель (u, v) — тексель фона tx_offset + tx_scale * (u, v); фон — с нулевым сдвигом и масштабом 1.
+func _map_sprite(path: String, tx_offset := Vector2.ZERO, tx_scale := 1.0) -> Sprite2D:
 	var sp := Sprite2D.new()
 	sp.texture = load(path)
 	sp.centered = false
-	sp.scale = Vector2(BG_SCALE, BG_SCALE)
-	sp.position = BG_OFFSET
+	sp.scale = Vector2(BG_SCALE, BG_SCALE) * tx_scale
+	sp.position = BG_OFFSET + tx_offset * BG_SCALE
 	sp.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	return sp
+
+
+# Слой поверх юнитов (z FG_Z) с прозрачностью alpha; нет файла — null с предупреждением.
+func _layer_sprite(path: String, tx_offset: Vector2, tx_scale: float, alpha: float) -> Sprite2D:
+	if not ResourceLoader.exists(path):
+		push_warning("Нет слоя %s: рисуется без него" % path)
+		return null
+	var sp := _map_sprite(path, tx_offset, tx_scale)
+	sp.z_index = FG_Z
+	sp.modulate.a = alpha
 	return sp
 
 
