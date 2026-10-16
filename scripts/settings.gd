@@ -3,7 +3,7 @@ extends Node
 # загружается и применяется при старте, сохраняется при каждом изменении. F11 в любой момент переключает полный экран.
 # Под тестовым скриптом (-s bench/...) файл игрока не читается и не пишется: тесты идут на значениях по умолчанию,
 # а свои настройки проверяют, подменив path и вызвав load_settings.
-signal changed(key: String)   # «display/fullscreen» и т. п.: экраны настроек обновляют вид
+signal changed(key: String)   # «display/fullscreen», «input» и т. п.: экраны настроек обновляют вид
 
 const PATH := "user://settings.cfg"
 const WINDOW_SIZE := Vector2i(1920, 1080)       # окно по умолчанию
@@ -29,6 +29,7 @@ func load_settings() -> void:
 		push_warning("%s не читается: настройки по умолчанию" % path)
 		cfg = ConfigFile.new()
 	fullscreen = bool(cfg.get_value("display", "fullscreen", false))
+	_load_keys(cfg)
 
 
 func save_settings() -> void:
@@ -36,6 +37,7 @@ func save_settings() -> void:
 		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("display", "fullscreen", fullscreen)
+	_save_keys(cfg)
 	if cfg.save(path) != OK:
 		push_warning("Не удалось сохранить настройки в %s" % path)
 
@@ -76,3 +78,116 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F11:
 		toggle_fullscreen()
 		get_viewport().set_input_as_handled()
+
+
+# --- Клавиши: действия InputMap (по умолчанию — секция [input] project.godot), переназначаемые хранятся в [input] файла ---
+
+# Переназначаемые действия в порядке списка на вкладке «Управление»: [действие, подпись].
+const REBINDABLE := [
+	["squad_select_1", "Отряд 1"], ["squad_select_2", "Отряд 2"], ["squad_select_3", "Отряд 3"], ["squad_select_4", "Отряд 4"],
+	["squad_select_5", "Отряд 5"], ["squad_select_6", "Отряд 6"], ["squad_select_7", "Отряд 7"], ["squad_select_8", "Отряд 8"],
+	["squad_new", "Новый отряд"], ["squad_split", "Разделить"], ["squad_merge", "Слить"], ["split_side", "Сторона ухода"],
+	["wave_start", "Начать волну / пауза"], ["buy_1", "Купить: пехота"], ["buy_2", "Купить: лучники"], ["buy_3", "Купить: оружие"],
+	["buy_4", "Купить: ремонт ворот"]]
+# Остальные действия игры: клавиши фиксированы (их нельзя занять переназначением).
+const FIXED_ACTIONS := ["order_attack", "order_hold", "order_retreat", "about_face", "banner_toggle", "auto_width", "pause",
+	"post_left", "post_top", "post_right", "post_back", "select_all", "to_hub", "debug_restart"]
+# Не назначаются никогда: Esc, F1–F12, модификаторы (Shift добавляет к выбору).
+const RESERVED_KEYS := [KEY_ESCAPE, KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12,
+	KEY_SHIFT, KEY_CTRL, KEY_ALT, KEY_META, KEY_CAPSLOCK]
+
+
+# Клавиша действия для подсказок: «Z», «Space», «Ctrl+A»; нет действия или клавиши — «—». Работает и без автозагрузки
+# (бенчи без дерева): читает InputMap.
+static func key_label(action: String) -> String:
+	var k := action_key_event(action)
+	return "—" if k == null else OS.get_keycode_string(k.get_keycode_with_modifiers())
+
+
+static func action_key_event(action: String) -> InputEventKey:
+	if not InputMap.has_action(action):
+		return null
+	for e in InputMap.action_get_events(action):
+		if e is InputEventKey and (e as InputEventKey).keycode != KEY_NONE:
+			return e
+	return null
+
+
+static func action_key(action: String) -> Key:
+	var k := action_key_event(action)
+	return KEY_NONE if k == null else k.keycode
+
+
+# Подпись переназначаемого действия или само имя.
+static func action_title(action: String) -> String:
+	for r in REBINDABLE:
+		if r[0] == action:
+			return r[1]
+	return action
+
+
+static func _set_key(action: String, code: Key) -> void:
+	InputMap.action_erase_events(action)
+	if code != KEY_NONE:
+		var e := InputEventKey.new()
+		e.keycode = code
+		InputMap.action_add_event(action, e)
+
+
+# Занята ли клавиша фиксированным действием (без модификаторов: Ctrl+A не занимает A).
+static func _fixed_owner(code: Key) -> String:
+	for a in FIXED_ACTIONS:
+		if InputMap.has_action(a):
+			for e in InputMap.action_get_events(a):
+				if e is InputEventKey and e.keycode == code and not (e.ctrl_pressed or e.alt_pressed or e.shift_pressed or e.meta_pressed):
+					return a
+	return ""
+
+
+# Назначить клавишу переназначаемому действию. Занята другим переназначаемым — клавиши меняются местами.
+# Результат: {ok, msg} — msg для показа игроку (пусто, если сказать нечего).
+func rebind(action: String, code: Key) -> Dictionary:
+	if REBINDABLE.all(func(r): return r[0] != action):
+		return {"ok": false, "msg": "Действие %s не переназначается" % action}
+	if code in RESERVED_KEYS or code == KEY_NONE:
+		return {"ok": false, "msg": "Клавишу %s назначить нельзя" % OS.get_keycode_string(code)}
+	var fixed := _fixed_owner(code)
+	if fixed != "":
+		return {"ok": false, "msg": "Клавиша %s занята постоянной командой" % OS.get_keycode_string(code)}
+	var old := action_key(action)
+	if old == code:
+		return {"ok": true, "msg": ""}
+	var msg := ""
+	for r in REBINDABLE:
+		if r[0] != action and action_key(r[0]) == code:
+			_set_key(r[0], old)
+			msg = "%s была у «%s»: клавиши поменялись местами" % [OS.get_keycode_string(code), r[1]]
+	_set_key(action, code)
+	save_settings()
+	changed.emit("input")
+	return {"ok": true, "msg": msg}
+
+
+# Клавиши по умолчанию (секция [input] project.godot).
+func reset_keys() -> void:
+	InputMap.load_from_project_settings()
+	save_settings()
+	changed.emit("input")
+
+
+func _load_keys(cfg: ConfigFile) -> void:
+	InputMap.load_from_project_settings()
+	for r in REBINDABLE:
+		var v = cfg.get_value("input", r[0], "")
+		if not v is String or v == "":
+			continue
+		var code := OS.find_keycode_from_string(v)
+		if code == KEY_NONE or code in RESERVED_KEYS or _fixed_owner(code) != "":
+			push_warning("%s: клавиша «%s» для %s не подходит, оставлена по умолчанию" % [path, v, r[0]])
+			continue
+		_set_key(r[0], code)
+
+
+func _save_keys(cfg: ConfigFile) -> void:
+	for r in REBINDABLE:
+		cfg.set_value("input", r[0], OS.get_keycode_string(action_key(r[0])))
