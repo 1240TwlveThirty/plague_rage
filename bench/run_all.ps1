@@ -1,6 +1,7 @@
 ﻿# Рабочий минимум тестов plague-rage по очереди: PASS или FAIL и время каждого шага.
 # Запуск из любого места:  $env:GODOT_EXE = "<путь к godot.exe>";  powershell -File bench\run_all.ps1 [-Quick]
-# -Quick пропускает серию 50 боёв и замеры тика. Смоуки открывают окно игры: во время них не трогать мышь и клавиатуру.
+# -Quick пропускает серию 50 боёв и замеры тика. Каждый шаг не дольше 300 с ($StepTimeoutSec): иначе процесс убивается, шаг FAIL,
+# зависшие шаги перечисляются в конце. Смоуки открывают окно игры: во время них не трогать мышь и клавиатуру.
 # Регрессия сравнивает рабочий scripts/main.gd с эталоном bench/ref/main_ref.gd (обновить: python bench/make_ref.py [коммит]).
 param([switch]$Quick)
 
@@ -14,6 +15,8 @@ if (-not $godot -or -not (Test-Path $godot)) {
 $tmp = Join-Path $env:TEMP "plague_rage_run_all"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 $failed = 0
+$StepTimeoutSec = 300   # шаг дольше — процесс убивается, шаг считается проваленным
+$hungSteps = @()
 $total = [System.Diagnostics.Stopwatch]::StartNew()
 
 # Один шаг: программа с аргументами, вывод в файл; PASS — код 0, нет слов провала, есть ожидаемая строка.
@@ -21,11 +24,20 @@ function Step([string]$name, [string]$exe, [string[]]$argv, [string]$expect) {
 	$out = Join-Path $tmp "out.txt"
 	$err = Join-Path $tmp "err.txt"
 	$sw = [System.Diagnostics.Stopwatch]::StartNew()
-	$p = Start-Process -FilePath $exe -ArgumentList $argv -WorkingDirectory $root -NoNewWindow -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+	$p = Start-Process -FilePath $exe -ArgumentList $argv -WorkingDirectory $root -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+	$null = $p.Handle   # без этого ExitCode после WaitForExit(мс) бывает пустым
+	$hung = -not $p.WaitForExit($StepTimeoutSec * 1000)
+	if ($hung) {
+		# завис: убить процесс, шаг провален, прогон идёт дальше
+		try { $p.Kill() } catch {}
+		$p.WaitForExit(10000) | Out-Null
+		$script:hungSteps += ("{0} ({1:N0} с)" -f $name, $sw.Elapsed.TotalSeconds)
+	}
 	$sw.Stop()
 	$text = (Get-Content $out -Raw -Encoding UTF8) + "`n" + (Get-Content $err -Raw -Encoding UTF8)
 	$bad = [regex]::Matches($text, "НЕТ|FAIL|SCRIPT ERROR|Parse Error|Failed to load").Count
-	$ok = ($p.ExitCode -eq 0) -and ($bad -eq 0) -and ($text -match $expect)
+	$ok = (-not $hung) -and ($p.ExitCode -eq 0) -and ($bad -eq 0) -and ($text -match $expect)
+	if ($hung) { $text += "`nFAIL: таймаут $StepTimeoutSec с, процесс убит" }
 	$line = ""
 	if ($text -match "(?m)^.*($expect).*$") { $line = $Matches[0].Trim() }
 	if ($line.Length -gt 150) { $line = $line.Substring(0, 150) }
@@ -67,5 +79,10 @@ if (-not $Quick) {
 	Godot "тик: 3000 юнитов, синтетика" "res://bench/time_v39.gd" "SYN\|" @("res://bench/main_v39_3000.gd")
 }
 $total.Stop()
+if ($hungSteps.Count -gt 0) {
+	Write-Host ("Зависли (таймаут {0} с): {1}" -f $StepTimeoutSec, ($hungSteps -join "; "))
+} else {
+	Write-Host "Зависших шагов нет"
+}
 Write-Host ("{0}: провалов {1}, всего {2:N0} с" -f $(if ($failed -eq 0) { "ИТОГ PASS" } else { "ИТОГ FAIL" }), $failed, $total.Elapsed.TotalSeconds)
 exit $(if ($failed -eq 0) { 0 } else { 1 })
