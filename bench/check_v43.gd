@@ -131,7 +131,7 @@ func t_loader() -> void:
 		"mine": ["income", "player", "add_pct"], "fortress_walls": ["gate_hp", "gate", "add_pct"], "reserve": ["start_units", "player", "add_flat"]}
 	var ok := defs.size() == want.size()
 	for id in want:
-		ok = ok and defs.has(id) and [defs[id].stat, defs[id].target, defs[id].op] == want[id] and defs[id].levels.size() == 3 and defs[id].name != ""
+		ok = ok and defs.has(id) and [defs[id].stat, defs[id].target, defs[id].op] == want[id] and defs[id].levels.size() == 3 and defs[id].name_key != "" and defs[id].desc_key != ""
 	check("data/gifts.json грузится: 6 даров, stat / target / op как в задании, по 3 уровня", ok, str(defs.keys()))
 	for name in ["bad_stat", "bad_target", "bad_op", "no_field", "bad_levels", "dup_id", "not_array", "missing_file"]:
 		check("повреждённый %s.json не грузится" % name, MODS.load_gifts(FIX + name + ".json").is_empty())

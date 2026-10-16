@@ -1,6 +1,7 @@
 extends CanvasLayer
 # Экран «Настройки» поверх того, откуда открыт (главное меню, меню паузы): вкладки, «Назад». Esc тоже закрывает
 # и дальше не идёт — меню под ним остаётся открытым. Значения читает и пишет автозагрузка Settings.
+# Тексты — ключи перевода: метки и кнопки переводятся сами, собранные строки обновляются при смене языка.
 const UI := preload("res://scripts/ui.gd")
 const BG := Color(0.0, 0.0, 0.0, 1.0)   # непрозрачный: меню под экраном не просвечивает
 const FONT := 30
@@ -11,10 +12,12 @@ var settings: Node
 var tabs: TabContainer
 var fullscreen_check: CheckButton
 var back_button: Button
+var key_titles := {}            # действие -> подпись строки на вкладке «Управление»
 var key_buttons := {}           # действие -> кнопка с клавишей на вкладке «Управление»
 var key_msg: Label              # итог последнего назначения (обмен, отказ) или пусто
 var reset_keys_button: Button
 var waiting_action := ""        # ждём клавишу для этого действия; "" — не ждём
+var lang_buttons := {}          # "ru" / "en" -> кнопка выбора языка
 
 
 func _ready() -> void:
@@ -33,7 +36,7 @@ func _ready() -> void:
 	box.add_theme_constant_override("separation", 24)
 	center.add_child(box)
 	var title := Label.new()
-	title.text = "Настройки"
+	title.text = "UI_SETTINGS_TITLE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 64)
 	box.add_child(title)
@@ -44,8 +47,9 @@ func _ready() -> void:
 	box.add_child(tabs)
 	_setup_video()
 	_setup_controls()
+	_setup_language()
 	back_button = Button.new()
-	back_button.text = "Назад"
+	back_button.text = "UI_SETTINGS_BACK"
 	back_button.add_theme_font_size_override("font_size", 36)
 	back_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	UI.gold_button(back_button)
@@ -55,7 +59,12 @@ func _ready() -> void:
 	_set_focusable(self, false)
 
 
-# Вкладка: колонка с отступами; title — заголовок вкладки.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and tabs != null:
+		_refresh_keys()
+
+
+# Вкладка: колонка с отступами; title — ключ заголовка вкладки (TabBar переводит сам).
 func _tab(title: String) -> VBoxContainer:
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
@@ -69,9 +78,9 @@ func _tab(title: String) -> VBoxContainer:
 
 
 func _setup_video() -> void:
-	var col := _tab("Видео")
+	var col := _tab("UI_SETTINGS_TAB_VIDEO")
 	fullscreen_check = CheckButton.new()
-	fullscreen_check.text = "Полный экран (F11)"
+	fullscreen_check.text = "UI_SETTINGS_FULLSCREEN"
 	fullscreen_check.add_theme_font_size_override("font_size", FONT)
 	fullscreen_check.button_pressed = settings.fullscreen
 	fullscreen_check.toggled.connect(settings.set_fullscreen)
@@ -80,7 +89,7 @@ func _setup_video() -> void:
 
 # Вкладка «Управление»: «действие — клавиша»; клик по клавише и нажатие новой назначает её (Esc — отмена).
 func _setup_controls() -> void:
-	var col := _tab("Управление")
+	var col := _tab("UI_SETTINGS_TAB_CONTROLS")
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -91,25 +100,26 @@ func _setup_controls() -> void:
 	grid.add_theme_constant_override("h_separation", 32)
 	grid.add_theme_constant_override("v_separation", 8)
 	scroll.add_child(grid)
-	for r in settings.REBINDABLE:
+	for a in settings.REBINDABLE:
 		var l := Label.new()
-		l.text = r[1]
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		l.add_theme_font_size_override("font_size", 26)
 		grid.add_child(l)
+		key_titles[a] = l
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(320, 0)
 		b.add_theme_font_size_override("font_size", 26)
-		b.pressed.connect(_wait_key.bind(r[0]))
+		b.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # названия клавиш не переводятся
+		b.pressed.connect(_wait_key.bind(a))
 		grid.add_child(b)
-		key_buttons[r[0]] = b
+		key_buttons[a] = b
 	key_msg = Label.new()
 	key_msg.add_theme_font_size_override("font_size", 24)
 	key_msg.add_theme_color_override("font_color", Color(1.0, 0.75, 0.35))
 	key_msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(key_msg)
 	reset_keys_button = Button.new()
-	reset_keys_button.text = "Сбросить по умолчанию"
+	reset_keys_button.text = "UI_SETTINGS_KEYS_RESET"
 	reset_keys_button.add_theme_font_size_override("font_size", 26)
 	reset_keys_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	reset_keys_button.pressed.connect(_reset_keys)
@@ -117,9 +127,25 @@ func _setup_controls() -> void:
 	_refresh_keys()
 
 
+# Вкладка «Язык»: «Русский» и «English», переключение сразу.
+func _setup_language() -> void:
+	var col := _tab("UI_SETTINGS_TAB_LANGUAGE")
+	var group := ButtonGroup.new()
+	for l in settings.LANGUAGES:
+		var b := CheckBox.new()
+		b.text = "UI_SETTINGS_LANG_" + l.to_upper()
+		b.button_group = group
+		b.add_theme_font_size_override("font_size", FONT)
+		b.button_pressed = settings.language == l
+		b.pressed.connect(settings.set_language.bind(l))
+		col.add_child(b)
+		lang_buttons[l] = b
+
+
 func _refresh_keys() -> void:
 	for a in key_buttons:
-		key_buttons[a].text = "Нажмите клавишу… (Esc — отмена)" if a == waiting_action else settings.key_label(a)
+		key_titles[a].text = settings.action_title(a)
+		key_buttons[a].text = tr("UI_SETTINGS_KEY_WAIT") if a == waiting_action else settings.key_label(a)
 
 
 func _wait_key(action: String) -> void:
@@ -131,7 +157,7 @@ func _wait_key(action: String) -> void:
 func _reset_keys() -> void:
 	waiting_action = ""
 	settings.reset_keys()
-	key_msg.text = "Клавиши по умолчанию"
+	key_msg.text = "MSG_KEYS_RESET_DONE"
 	_refresh_keys()
 
 
@@ -148,6 +174,8 @@ func assign_key(event: InputEventKey) -> void:
 
 func _on_changed(_key: String) -> void:
 	fullscreen_check.set_pressed_no_signal(settings.fullscreen)
+	for l in lang_buttons:
+		lang_buttons[l].set_pressed_no_signal(settings.language == l)
 	_refresh_keys()
 
 

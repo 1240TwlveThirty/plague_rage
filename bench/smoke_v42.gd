@@ -48,7 +48,7 @@ func is_scene(scene_name: String) -> bool:
 func diary_texts(h: Node) -> PackedStringArray:
 	var out := PackedStringArray()
 	for c in h.diary_box.get_children():
-		out.append(c.text)
+		out.append(tr(c.text))   # метки — ключи или уже переведённые строки
 	return out
 
 func real_stamp() -> String:
@@ -73,7 +73,7 @@ func _run() -> void:
 	await step(40)   # окно только что открылось: первый клик сразу после старта иногда теряется
 	await click(current_scene.play_button)
 	var h := current_scene
-	check("меню -> хаб: кнопка «Дневник» есть, предупреждения о сохранении нет, панель дневника скрыта", is_scene("Hub") and h.diary_button.text == "Дневник"
+	check("меню -> хаб: кнопка «Дневник» есть, предупреждения о сохранении нет, панель дневника скрыта", is_scene("Hub") and tr(h.diary_button.text) == "Дневник"
 		and not h.diary_button.disabled and not h.warning_label.visible and not h.diary_panel.visible)
 	await click(h.diary_button)
 	check("клик «Дневник»: панель открыта, в ней «Записей пока нет.»", h.diary_panel.visible and diary_texts(h) == PackedStringArray(["Записей пока нет."]))
@@ -82,7 +82,7 @@ func _run() -> void:
 	await click(h.start_button)
 	var m := current_scene as Node2D
 	check("«Начать забег»: стартовый баннер со вступлением дневника", is_scene("Main") and m.banner.visible and m.banner_parts[0] == "Дневник военачальника"
-		and m.banner_parts[2] == g.story.intro and m.banner_labels[2].is_visible_in_tree())
+		and m.banner_parts[2] == tr(g.story.intro) and m.banner_labels[2].is_visible_in_tree())
 	# волна 1 проходится быстро: зомби снимаются по мере появления (только в смоуке)
 	await key(KEY_SPACE)
 	var t := 0
@@ -98,7 +98,7 @@ func _run() -> void:
 	var entry := ""
 	for e in g.story.entries:
 		if e.id == "s1w1":
-			entry = e.text
+			entry = tr(e.text)
 	check("волна 1 пройдена: в баннере итога запись дневника s1w1, она сохранена", m.wave_state == m.WS_RESPITE and m.wave_number == 1 and entry != "" and m.banner_parts[2] == entry
 		and m.banner_labels[2].is_visible_in_tree() and g.diary_seen == ["intro", "s1w1"], "кадров %d" % t)
 	await key(KEY_SPACE)
@@ -113,14 +113,14 @@ func _run() -> void:
 		and m.banner_parts[3] == "Лучшая волна осады I: 2. Enter — в хаб", m.banner_parts[3])
 	await key(KEY_ENTER)
 	h = current_scene
-	check("Enter -> хаб: «Последний забег: поражение на волне 2», рекорд из сохранения", is_scene("Hub") and h.last_label.text == "Последний забег: поражение на волне 2"
-		and h.record_labels[0].text == "Осада I: лучшая волна 2, побед 0, забегов 1")
+	check("Enter -> хаб: «Последний забег: поражение на волне 2», рекорд из сохранения", is_scene("Hub") and tr(h.last_label.text) == "Последний забег: поражение на волне 2"
+		and tr(h.record_labels[0].text) == "Осада I: лучшая волна 2, побед 0, забегов 1")
 	var saved = JSON.parse_string(FileAccess.get_file_as_string(g.save_path))
 	check("сохранение на диске: забегов 1, лучшая волна 2, дневник intro и s1w1; временного файла нет", saved is Dictionary and saved.runs_total == 1.0 and saved.records["1"].best_wave == 2.0
 		and saved.diary_seen == ["intro", "s1w1"] and DirAccess.get_files_at(DIR).size() == 1)
 	await click(h.diary_button)
 	check("«Дневник»: вступление и запись «Осада I, волна 1», больше ничего", h.diary_panel.visible and h.diary_panel.is_visible_in_tree()
-		and diary_texts(h) == PackedStringArray([g.story.intro, "Осада I, волна 1", entry]), str(diary_texts(h).size()))
+		and diary_texts(h) == PackedStringArray([tr(g.story.intro), "Осада I, волна 1", entry]), str(diary_texts(h).size()))
 	await key(KEY_ESCAPE)
 	check("Esc закрывает дневник, хаб на месте", is_scene("Hub") and not h.diary_panel.visible and h.start_button.has_focus())
 	await click(h.diary_button)

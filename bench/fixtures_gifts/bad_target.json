@@ -1,1 +1,1 @@
-[{"id": "g", "name": "Дар", "stat": "damage", "target": "zombies", "op": "add_pct", "levels": [8, 16, 24]}]
+[{"id": "g", "name_key": "Дар", "desc_key": "GIFT_TEST_DESC", "stat": "damage", "target": "zombies", "op": "add_pct", "levels": [8, 16, 24]}]

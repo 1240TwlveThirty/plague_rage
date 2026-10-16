@@ -192,7 +192,7 @@ func t_win() -> void:
 	check("last_run: win, осада 1, волна 10, kills = все зомби 10 волн (%d)" % planned,
 		g.last_run == {"siege": 1, "result": "win", "wave": 10, "kills": planned, "radiance": g.run_reward("win", 10)}, str(g.last_run))
 	check("баннер: «Осада пережита. Волн: 10 из 10.» и «Enter — в хаб», кнопка «В хаб» видна", m.banner.visible and m.banner_parts[1] == "Осада пережита. Волн: 10 из 10."
-		and m.banner_parts[3] == "Enter — в хаб" and m.hub_button.visible and m.hub_button.text == "В хаб", str(m.banner_parts))
+		and m.banner_parts[3] == "Enter — в хаб" and m.hub_button.visible and tr(m.hub_button.text) == "В хаб", str(m.banner_parts))
 	check("HUD «Волна 10/10», магазин скрыт", m.hud_label.text.begins_with("Волна 10/10 · ") and not m.shop_panel.visible)
 	m._start_wave()
 	key(m, KEY_P)
@@ -204,7 +204,7 @@ func t_win() -> void:
 	key(m, KEY_ENTER)
 	await step(3)
 	check("Enter на экране победы ведёт в хаб: строка итога и выбор осады (две)", current_scene != null and current_scene.name == "Hub"
-		and current_scene.last_label.text == "Последний забег: победа на 10-й волне" and current_scene.siege_option.visible and current_scene.siege_option.item_count == 2,
+		and tr(current_scene.last_label.text) == "Последний забег: победа на 10-й волне" and current_scene.siege_option.visible and current_scene.siege_option.item_count == 2,
 		"" if current_scene == null else current_scene.last_label.text)
 
 # (г) поражение: ворота 1 HP на волне 3; второй забег — поражение на волне 2.
@@ -229,8 +229,8 @@ func t_loss() -> void:
 	key(m, KEY_ENTER)
 	await step(3)
 	check("Enter ведёт в хаб: «Последний забег: поражение на волне 3», выбор осады скрыт", current_scene != null and current_scene.name == "Hub"
-		and current_scene.last_label.text == "Последний забег: поражение на волне 3" and not current_scene.siege_option.visible)
-	check("хаб: строка рекордов «Осада I: лучшая волна 3, побед 0, забегов 1»", current_scene.record_labels[0].text == "Осада I: лучшая волна 3, побед 0, забегов 1", current_scene.record_labels[0].text)
+		and tr(current_scene.last_label.text) == "Последний забег: поражение на волне 3" and not current_scene.siege_option.visible)
+	check("хаб: строка рекордов «Осада I: лучшая волна 3, побед 0, забегов 1»", tr(current_scene.record_labels[0].text) == "Осада I: лучшая волна 3, побед 0, забегов 1", current_scene.record_labels[0].text)
 	m = await from_hub()
 	check("второй забег с нуля: волна 0, run_index 2, last_run очищен", m.wave_number == 0 and m.tick_counter == 0 and g.run_index == 2 and g.last_run.result == "")
 	boost(m)
@@ -242,7 +242,7 @@ func t_loss() -> void:
 	check("user://record.json не тронут", record_stamp() == stamp)
 	m.hub_button.pressed.emit()
 	await step(3)
-	check("кнопка «В хаб» ведёт в хаб: «поражение на волне 2»", current_scene != null and current_scene.name == "Hub" and current_scene.last_label.text == "Последний забег: поражение на волне 2")
+	check("кнопка «В хаб» ведёт в хаб: «поражение на волне 2»", current_scene != null and current_scene.name == "Hub" and tr(current_scene.last_label.text) == "Последний забег: поражение на волне 2")
 
 # Один забег теста (д): снимок на тике 0, покупки, волна 1, 600 тиков, снимок, поражение, хаб.
 func one_run(first: bool) -> Array:
@@ -299,10 +299,10 @@ func t_hub() -> void:
 	g.go_hub()
 	await step(3)
 	var h := current_scene
-	check("хаб без забегов: выбор осады скрыт, итог пуст, «Осада I», три строки рекордов", h != null and h.name == "Hub" and not h.siege_option.visible and h.last_label.text == ""
-		and h.siege_label.text == "Осада I" and h.record_labels.size() == 3 and h.record_labels[2].text == "Осада III: лучшая волна 0, побед 0, забегов 0")
-	check("главная кнопка «Начать забег» в фокусе, фокус у кнопок по умолчанию", h.start_button.has_focus() and h.start_button.text == "Начать забег"
-		and h.menu_button.focus_mode == Control.FOCUS_ALL and h.menu_button.text == "В меню")
+	check("хаб без забегов: выбор осады скрыт, итог пуст, «Осада I», три строки рекордов", h != null and h.name == "Hub" and not h.siege_option.visible and tr(h.last_label.text) == ""
+		and tr(h.siege_label.text) == "Осада I" and h.record_labels.size() == 3 and tr(h.record_labels[2].text) == "Осада III: лучшая волна 0, побед 0, забегов 0")
+	check("главная кнопка «Начать забег» в фокусе, фокус у кнопок по умолчанию", h.start_button.has_focus() and tr(h.start_button.text) == "Начать забег"
+		and h.menu_button.focus_mode == Control.FOCUS_ALL and tr(h.menu_button.text) == "В меню")
 	g.unlocked_siege = 2
 	g.go_hub()
 	await step(3)
@@ -312,7 +312,7 @@ func t_hub() -> void:
 	check("по умолчанию выбрана первая (забегов не было)", h.chosen == 1 and h.siege_option.get_selected_id() == 1)
 	h.siege_option.select(1)
 	h.siege_option.item_selected.emit(1)
-	check("выбрана осада II: строка «Осада II»", h.chosen == 2 and h.siege_label.text == "Осада II")
+	check("выбрана осада II: строка «Осада II»", h.chosen == 2 and tr(h.siege_label.text) == "Осада II")
 	var m := await from_hub()
 	check("Game.start_run взял выбранную: siege 2, сцена боя на слое 2", g.siege == 2 and m != null and m.debug_layer == 2 and m._layer() == m.wave_cfg.layers[1])
 	var ref2: Node2D = load(MAIN).new()   # вне дерева: синглтона нет, слой задаётся вручную
@@ -331,10 +331,10 @@ func t_hub() -> void:
 	key(m, KEY_ENTER)
 	await step(3)
 	h = current_scene
-	check("хаб после забега: выбрана последняя сыгранная осада II", h.chosen == 2 and h.siege_option.get_selected_id() == 2 and h.siege_label.text == "Осада II")
-	check("строка рекордов осады II: «Осада II: лучшая волна 1, побед 0, забегов 1»", h.record_labels[1].text == "Осада II: лучшая волна 1, побед 0, забегов 1", h.record_labels[1].text)
+	check("хаб после забега: выбрана последняя сыгранная осада II", h.chosen == 2 and h.siege_option.get_selected_id() == 2 and tr(h.siege_label.text) == "Осада II")
+	check("строка рекордов осады II: «Осада II: лучшая волна 1, побед 0, забегов 1»", tr(h.record_labels[1].text) == "Осада II: лучшая волна 1, побед 0, забегов 1", h.record_labels[1].text)
 	h.menu_button.pressed.emit()
 	await step(3)
 	check("«В меню» ведёт в меню: заголовок, «Играть» в фокусе, «Выход»", current_scene != null and current_scene.name == "Menu" and current_scene.play_button.has_focus()
-		and current_scene.play_button.text == "Играть" and current_scene.quit_button.text == "Выход")
+		and tr(current_scene.play_button.text) == "Играть" and tr(current_scene.quit_button.text) == "Выход")
 	check("Game после меню не сброшен: unlocked_siege 2, records[2].runs 1", g.unlocked_siege == 2 and g.records[2].runs == 1)

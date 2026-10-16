@@ -43,7 +43,7 @@ static func load_gifts(path: String) -> Dictionary:
 		if out.has(e.id):
 			push_error("%s: дар \"%s\" повторяется" % [path, e.id])
 			return {}
-		for key in ["name", "stat", "target", "op"]:
+		for key in ["name_key", "desc_key", "stat", "target", "op"]:
 			if not e.get(key) is String:
 				push_error("%s: у дара \"%s\" нет строкового поля %s" % [path, e.id, key])
 				return {}
@@ -85,7 +85,7 @@ static func load_gifts(path: String) -> Dictionary:
 				req = PackedInt32Array(e[key])
 			else:
 				prices = PackedInt32Array(e[key])
-		out[e.id] = {"name": e.name, "stat": e.stat, "target": e.target, "op": e.op, "levels": levels, "req_sieges": req, "prices": prices}
+		out[e.id] = {"name_key": e.name_key, "desc_key": e.desc_key, "stat": e.stat, "target": e.target, "op": e.op, "levels": levels, "req_sieges": req, "prices": prices}
 	return out
 
 

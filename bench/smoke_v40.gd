@@ -103,7 +103,7 @@ func _run() -> void:
 		if c != m.hint_label and (c as Control).is_visible_in_tree() and (c as Control).get_global_rect().grow(-1.0).intersects(hint):
 			overlap = true
 	check("подсказка внизу левой панели мелким шрифтом, ничего не перекрывает", m.hint_label.is_visible_in_tree() and panel.encloses(hint) and not overlap
-		and m.hint_label.text == "ЛКМ выбор · ПКМ приказ · Shift добавить" and Rect2(0, 0, 1920, 1080).encloses(panel), "подсказка %s, панель %s" % [hint, panel])
+		and tr(m.hint_label.text) == "ЛКМ выбор · ПКМ приказ · Shift добавить" and Rect2(0, 0, 1920, 1080).encloses(panel), "подсказка %s, панель %s" % [hint, panel])
 	var t0: PackedVector2Array = m.squad_target.duplicate()
 	# ЛКМ
 	await click(MOUSE_BUTTON_LEFT, scr(m.squad_pos[2]))

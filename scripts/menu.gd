@@ -1,5 +1,6 @@
 extends Control
-# Главное меню: заголовок, «Играть» (в хаб), «Настройки» и «Выход». Интерфейс строится кодом, по центру экрана.
+# Главное меню: заголовок, «Играть» (в хаб), «Настройки» и «Выход». Интерфейс строится кодом, по центру экрана;
+# тексты — ключи перевода (Label и Button переводятся сами).
 const UI := preload("res://scripts/ui.gd")
 const SETTINGS_MENU := preload("res://scripts/settings_menu.gd")
 
@@ -23,15 +24,15 @@ func _ready() -> void:
 	box.add_theme_constant_override("separation", 24)
 	center.add_child(box)
 	var title := Label.new()
-	title.text = "Plague Wrath"
+	title.text = "UI_MENU_TITLE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 72)
 	box.add_child(title)
-	play_button = _button(box, "Играть")
+	play_button = _button(box, "UI_MENU_PLAY")
 	play_button.pressed.connect(_on_play)
-	settings_button = _button(box, "Настройки")
+	settings_button = _button(box, "UI_MENU_SETTINGS")
 	settings_button.pressed.connect(_open_settings)
-	quit_button = _button(box, "Выход")
+	quit_button = _button(box, "UI_MENU_QUIT")
 	quit_button.pressed.connect(_on_quit)
 	settings_menu = SETTINGS_MENU.new()
 	settings_menu.closed.connect(func(): settings_button.grab_focus())

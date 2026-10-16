@@ -1,22 +1,19 @@
 extends Control
 # Хаб-заглушка между забегами, две вкладки. «Осада»: осада, итог последнего забега, рекорды, «Начать забег», «Дневник» и «В меню».
 # «Дары»: магазин даров за Сияние (правила покупки — в Game). Интерфейс строится кодом. Выбор осады виден, только когда открыто больше одной.
+# Тексты — ключи перевода: постоянные метки и кнопки переводятся сами, собранные строки пересобираются при смене языка.
 const UI := preload("res://scripts/ui.gd")
 const ESC_MENU := preload("res://scripts/esc_menu.gd")
 const WARN_COLOR := Color(1.0, 0.75, 0.35)
 const STORY_COLOR := Color(1.0, 0.88, 0.6)   # как у дневника в баннере боя
 const DIARY_SIZE := Vector2(0.5, 0.7)        # панель дневника: доля экрана
-const DIARY_EMPTY := "Записей пока нет."
+const DIARY_EMPTY := "HUB_DIARY_EMPTY"
 const RADIANCE_COLOR := Color(0.6, 0.9, 1.0)
 const RADIANCE_ICON := "res://art/shine.png"
 const GIFT_ICON := "res://art/card_meta_perk.png"   # общая заглушка; своя иконка дара — art/gift_<id>.png, если есть
 const GIFT_ICON_SIZE := Vector2(40.0, 60.0)
 const GIFT_FONT := 26
 const GIFT_MAX := "—"
-# Тексты эффекта: «+8% к урону всех воинов». Цели игрока и ворот в тексте не называются.
-const STAT_TEXT := {"damage": "к урону", "hp": "к здоровью", "bounty": "золота за убитых", "income": "от дохода прошлой волны в начале каждой волны",
-	"gate_hp": "к прочности ворот", "start_units": "воинов в каждом стартовом отряде"}
-const TARGET_TEXT := {"all_units": " всех воинов", "infantry": " пехоты", "archer": " лучников", "player": "", "gate": ""}
 
 var game: Node
 var chosen := 1                # осада, с которой начнётся забег
@@ -51,7 +48,7 @@ func _ready() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 16)
 	center.add_child(box)
-	_label(box, "Хаб", 64)
+	_label(box, "HUB_TITLE", 64)
 	warning_label = _label(box, game.save_warning, 26)
 	warning_label.add_theme_color_override("font_color", WARN_COLOR)
 	warning_label.visible = game.save_warning != ""
@@ -63,7 +60,7 @@ func _ready() -> void:
 	box = VBoxContainer.new()
 	box.add_theme_constant_override("separation", 16)
 	tabs.add_child(box)
-	tabs.set_tab_title(0, "Осада")
+	tabs.set_tab_title(0, "HUB_TAB_SIEGE")
 	siege_label = _label(box, "", 40)
 	last_label = _label(box, "", 30)
 	for s in range(1, game.siege_count + 1):
@@ -79,12 +76,12 @@ func _ready() -> void:
 	siege_option.visible = game.unlocked_siege >= 2
 	siege_option.item_selected.connect(_on_siege_selected)
 	box.add_child(siege_option)
-	start_button = _button(box, "Начать забег")
+	start_button = _button(box, "HUB_START_RUN")
 	start_button.pressed.connect(_on_start)
-	diary_button = _button(box, "Дневник")
+	diary_button = _button(box, "HUB_DIARY")
 	diary_button.pressed.connect(_open_diary)
 	diary_button.disabled = game.story.is_empty()   # story.json не загрузился: ошибка уже выведена
-	menu_button = _button(box, "В меню")
+	menu_button = _button(box, "HUB_TO_MENU")
 	menu_button.pressed.connect(_on_menu)
 	_setup_gifts()
 	tabs.tab_changed.connect(_on_tab_changed)
@@ -119,7 +116,7 @@ func _setup_gifts() -> void:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 16)
 	tabs.add_child(col)
-	tabs.set_tab_title(1, "Дары")
+	tabs.set_tab_title(1, "HUB_TAB_GIFTS")
 	var bal := HBoxContainer.new()
 	bal.alignment = BoxContainer.ALIGNMENT_CENTER
 	bal.add_theme_constant_override("separation", 12)
@@ -132,15 +129,15 @@ func _setup_gifts() -> void:
 	grid.add_theme_constant_override("h_separation", 24)
 	grid.add_theme_constant_override("v_separation", 10)
 	col.add_child(grid)
-	for head in ["", "Дар", "Уровень", "Следующий уровень", "Цена", "", ""]:
+	for head in ["", "HUB_GIFTS_HEAD_GIFT", "HUB_GIFTS_HEAD_LEVEL", "HUB_GIFTS_HEAD_NEXT", "HUB_GIFTS_HEAD_PRICE", "", ""]:
 		_cell(grid, head, Color(1.0, 1.0, 1.0, 0.6))
 	for id in game.gift_defs:
 		var own := "res://art/gift_%s.png" % id
 		grid.add_child(_icon(own if ResourceLoader.exists(own) else GIFT_ICON, GIFT_ICON_SIZE))
-		_cell(grid, game.gift_defs[id].name)
+		_cell(grid, game.gift_defs[id].name_key)
 		var row := {"level": _cell(grid), "effect": _cell(grid), "price": _cell(grid, "", RADIANCE_COLOR)}
 		var b := Button.new()
-		b.text = "Купить"
+		b.text = "HUB_GIFT_BUY"
 		b.add_theme_font_size_override("font_size", GIFT_FONT)
 		UI.gold_button(b)
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -150,7 +147,7 @@ func _setup_gifts() -> void:
 		row["reason"] = _cell(grid, "", WARN_COLOR)
 		gift_rows[id] = row
 	if game.gift_defs.is_empty():
-		_label(col, "Дары не загрузились.", 28)   # gifts.json с ошибкой: она уже выведена
+		_label(col, "HUB_GIFTS_LOAD_FAILED", 28)   # gifts.json с ошибкой: она уже выведена
 	_refresh_gifts()
 
 
@@ -175,22 +172,16 @@ func _cell(grid: GridContainer, text := "", color := Color.WHITE) -> Label:
 	return l
 
 
-# Эффект уровня дара одной строкой: «+8% к урону всех воинов», «+40 воинов в каждом стартовом отряде».
+# Эффект уровня дара одной строкой по desc_key дара: «+8% к урону всех воинов», «+40 воинов в каждом стартовом отряде».
 static func effect_text(def: Dictionary, level: int) -> String:
 	var v: float = def.levels[level - 1]
-	var what: String = STAT_TEXT.get(def.stat, def.stat) + TARGET_TEXT.get(def.target, "")
 	var num := str(int(v)) if v == floorf(v) else String.num(v)   # 8, а не 8.0
-	match def.op:
-		"add_pct":
-			return "+%s%% %s" % [num, what]
-		"mult":
-			return "x%s %s" % [num, what]
-	return "+%s %s" % [num, what]
+	return String(TranslationServer.translate(def.desc_key)) % num
 
 
 # Баланс и строки магазина по состоянию Game: уровень, эффект и цена следующего уровня, кнопка и причина, если купить нельзя.
 func _refresh_gifts() -> void:
-	radiance_label.text = "Сияние: %d" % game.radiance
+	radiance_label.text = tr("HUB_RADIANCE") % game.radiance
 	for id in gift_rows:
 		var row: Dictionary = gift_rows[id]
 		var def: Dictionary = game.gift_defs[id]
@@ -231,7 +222,7 @@ func _setup_diary() -> void:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 16)
 	diary_panel.add_child(col)
-	_label(col, "Дневник военачальника", 40)
+	_label(col, "UI_DIARY_TITLE", 40)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -240,7 +231,7 @@ func _setup_diary() -> void:
 	diary_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	diary_box.add_theme_constant_override("separation", 20)
 	scroll.add_child(diary_box)
-	diary_close = _button(col, "Закрыть")
+	diary_close = _button(col, "HUB_DIARY_CLOSE")
 	diary_close.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	diary_close.pressed.connect(_close_diary)
 	diary_panel.visible = false
@@ -254,10 +245,10 @@ func _diary_lines() -> Array:
 	if game.story.is_empty():
 		return out
 	if game.diary_read(game.INTRO_ID):
-		out.append(["", game.story.intro])
+		out.append(["", tr(game.story.intro)])
 	for e in game.story.entries:
 		if game.diary_read(e.id):
-			out.append(["%s, волна %d" % [game.siege_name(e.siege), e.wave], e.text])
+			out.append([tr("HUB_DIARY_ENTRY_HEAD") % [game.siege_name(e.siege), e.wave], tr(e.text)])
 	return out
 
 
@@ -305,9 +296,9 @@ func _unhandled_input(event: InputEvent) -> void:
 func _last_text() -> String:
 	match game.last_run.result:
 		"win":
-			return "Последний забег: победа на %d-й волне" % game.last_run.wave
+			return tr("HUB_LAST_WIN") % game.last_run.wave
 		"loss":
-			return "Последний забег: поражение на волне %d" % game.last_run.wave
+			return tr("HUB_LAST_LOSS") % game.last_run.wave
 	return ""
 
 
@@ -316,7 +307,18 @@ func _refresh() -> void:
 	last_label.text = _last_text()
 	for k in record_labels.size():
 		var r: Dictionary = game.records[k + 1]
-		record_labels[k].text = "%s: лучшая волна %d, побед %d, забегов %d" % [game.siege_name(k + 1), r.best_wave, r.wins, r.runs]
+		record_labels[k].text = tr("HUB_RECORD") % [game.siege_name(k + 1), r.best_wave, r.wins, r.runs]
+	for i in siege_option.item_count:
+		siege_option.set_item_text(i, game.siege_name(siege_option.get_item_id(i)))
+
+
+# Смена языка: собранные строки (осада, итог, рекорды, магазин, открытый дневник) пересобрать.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
+		_refresh()
+		_refresh_gifts()
+		if diary_panel.visible:
+			_open_diary()
 
 
 func _on_siege_selected(index: int) -> void:

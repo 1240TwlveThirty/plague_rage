@@ -187,6 +187,10 @@ debug_restart={
 ]
 }
 
+[internationalization]
+
+locale/translations=PackedStringArray("res://data/translations.ru.translation", "res://data/translations.en.translation")
+
 [physics]
 
 common/physics_ticks_per_second=30

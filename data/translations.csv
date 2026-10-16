@@ -1,0 +1,161 @@
+keys,ru,en
+UI_MENU_TITLE,Plague Wrath,Plague Wrath
+UI_MENU_PLAY,Играть,Play
+UI_MENU_SETTINGS,Настройки,Settings
+UI_MENU_QUIT,Выход,Quit
+UI_PAUSE_TITLE,Пауза,Paused
+UI_PAUSE_RESUME,Продолжить,Resume
+UI_PAUSE_SETTINGS,Настройки,Settings
+UI_PAUSE_TO_MENU,Выйти в меню,Main menu
+UI_PAUSE_QUIT,Выход из игры,Quit game
+UI_PAUSE_NOTE_LOSS,Выход в меню засчитает поражение,Leaving now counts as a defeat
+UI_SETTINGS_TITLE,Настройки,Settings
+UI_SETTINGS_BACK,Назад,Back
+UI_SETTINGS_TAB_VIDEO,Видео,Video
+UI_SETTINGS_TAB_AUDIO,Звук,Audio
+UI_SETTINGS_TAB_CONTROLS,Управление,Controls
+UI_SETTINGS_TAB_LANGUAGE,Язык,Language
+UI_SETTINGS_FULLSCREEN,Полный экран (F11),Fullscreen (F11)
+UI_SETTINGS_KEY_WAIT,Нажмите клавишу… (Esc — отмена),Press a key… (Esc to cancel)
+UI_SETTINGS_KEYS_RESET,Сбросить по умолчанию,Reset to defaults
+UI_SETTINGS_LANG_RU,Русский,Русский
+UI_SETTINGS_LANG_EN,English,English
+UI_SETTINGS_MUSIC,Музыка,Music
+UI_SETTINGS_SFX,Эффекты,Sound effects
+MSG_KEYS_RESET_DONE,Клавиши по умолчанию,Default keys restored
+MSG_KEY_NOT_REBINDABLE,Действие %s не переназначается,%s can't be rebound
+MSG_KEY_RESERVED,Клавишу %s назначить нельзя,%s can't be assigned
+MSG_KEY_FIXED,Клавиша %s занята постоянной командой,%s is taken by a fixed command
+MSG_KEY_SWAPPED,%s была у «%s»: клавиши поменялись местами,"%s was bound to ""%s"": keys swapped"
+ACTION_SQUAD_SELECT,Отряд %d,Squad %d
+ACTION_SQUAD_NEW,Новый отряд,New squad
+ACTION_SQUAD_SPLIT,Разделить,Split squad
+ACTION_SQUAD_MERGE,Слить,Merge squads
+ACTION_SPLIT_SIDE,Сторона ухода,Split side
+ACTION_WAVE_START,Начать волну / пауза,Start wave / pause
+ACTION_BUY_1,Купить: пехота,Buy: infantry
+ACTION_BUY_2,Купить: лучники,Buy: archers
+ACTION_BUY_3,Купить: оружие,Buy: weapons
+ACTION_BUY_4,Купить: ремонт ворот,Buy: gate repair
+HUD_STATUS,Волна %s · зомби: %d · ворота: %d/%d · золото: %d,Wave %s · zombies: %d · gate: %d/%d · gold: %d
+HUD_PLAN,Дальше: волна %d,Next: wave %d
+HUD_PLAN_RUNNERS,бегуны %d,runners %d
+HUD_PLAN_KNIGHTS,рыцари %d,knights %d
+HUD_PAUSED,ПАУЗА,PAUSED
+HUD_MOUSE_HINT,ЛКМ выбор · ПКМ приказ · Shift добавить,LMB select · RMB order · Shift add
+HUD_BURST,Всплеск: %s,Surge: %s
+SIDE_TOP,сверху,north
+SIDE_LEFT,слева,west
+SIDE_RIGHT,справа,east
+ORDER_ATTACK,атака,attack
+ORDER_HOLD,держать,hold
+ORDER_RETREAT,отход,fall back
+SPLIT_MODE_RIGHT,правые,right flank
+SPLIT_MODE_LEFT,левые,left flank
+SPLIT_MODE_BACK,задние,rear ranks
+SPLIT_MODE_FRONT,передние,front ranks
+HUD_SPLIT_SHARE,Доля ухода: %d%%,Split off: %d%%
+HUD_SPLIT_SIDE,Уходят: %s (%s),Leaving: %s (%s)
+HUD_SQUAD_NEW,+ Отряд (%s),+ Squad (%s)
+HUD_SQUAD_SPLIT,Разделить (%s),Split (%s)
+HUD_SQUAD_MERGE,Слить (%s),Merge (%s)
+HUD_SHOP_ROW,%s  %s — %s (куплено %d),%s  %s — %s (bought %d)
+HUD_SHOP_MAX,макс.,max
+HUD_SHOP_PRICE,%d зол.,%d gold
+HUD_SHOP_TARGET,→ Отряд %d (%s),→ Squad %d (%s)
+HUD_PREVIEW_ONE,%d × %d · %d юн.,%d × %d · %d units
+HUD_PREVIEW_MANY,%d отр. · %d px,%d squads · %d px
+HUD_TO_HUB,В хаб,To hub
+SHOP_INF_PACK,+%d пехоты,+%d infantry
+SHOP_ARCHER_PACK,+%d лучников,+%d archers
+SHOP_WEAPONS,Оружие +%d%%,Weapons +%d%%
+SHOP_GATE,"Ремонт ворот, +%d HP","Repair gate, +%d HP"
+UNIT_INFANTRY,Пехота,Infantry
+UNIT_PEASANT,Зомби,Zombies
+UNIT_ARCHER,Лучники,Archers
+UNIT_RUNNER,Бегун,Runner
+UNIT_FALLEN_KNIGHT,Павший рыцарь,Fallen knight
+MSG_PICK_SQUAD,Выбери отряд,Select a squad
+MSG_NO_FREE_SQUADS,Свободных отрядов нет: занято %d из %d,No free squads: %d of %d in use
+MSG_PAUSE_FIRST,Поставь паузу (%s),Pause first (%s)
+MSG_PICK_ONE_SQUAD,Выбери один отряд,Select just one squad
+MSG_SQUAD_TOO_SMALL,В отряде меньше 2 юнитов: делить нечего,Fewer than 2 units: nothing to split
+MSG_NO_MERGE_PARTNER,Нет другого отряда этого типа,No other squad of this type
+MSG_MERGE_SAME_TYPE,Сливаются только отряды одного типа,Only squads of the same type can merge
+MSG_SQUADS_DONT_FIT,Отряды не помещаются в поле,The squads don't fit on the field
+MSG_BLOCK_OVERLAP,Блок пересекается с отрядом %d,Overlaps squad %d
+MSG_FORMATION_DOESNT_FIT,Строй не помещается в поле,The formation doesn't fit on the field
+MSG_WAVE_CLEARED,"Волна %d пройдена: убито %d, +%d золота. %s — волна %d","Wave %d cleared: %d killed, +%d gold. %s: wave %d"
+MSG_KILLS,убито: %s,slain: %s
+MSG_KILLS_PEASANTS,крестьяне %d,peasants %d
+MSG_KILLS_RUNNERS,бегуны %d,runners %d
+MSG_KILLS_KNIGHTS,рыцари %d,knights %d
+MSG_WAVE_START,Расставь отряды. %s — начать волну 1,Position your squads. %s: start wave 1
+MSG_RESTART,%s — заново,%s: restart
+END_DEFEAT_HINT,Лучшая волна осады %s: %d. %s — в хаб,Best wave in Siege %s: %d. %s: back to hub
+END_WIN_TITLE,Осада пережита. Волн: %d из %d.,Siege survived. Waves: %d of %d.
+END_TO_HUB_HINT,%s — в хаб,%s: back to hub
+END_RADIANCE,+%d Сияния,+%d Radiance
+UI_DIARY_TITLE,Дневник военачальника,Commander's diary
+HUB_TITLE,Хаб,Hub
+HUB_TAB_SIEGE,Осада,Siege
+HUB_TAB_GIFTS,Дары,Gifts
+HUB_START_RUN,Начать забег,Start run
+HUB_DIARY,Дневник,Diary
+HUB_TO_MENU,В меню,Main menu
+HUB_GIFTS_HEAD_GIFT,Дар,Gift
+HUB_GIFTS_HEAD_LEVEL,Уровень,Level
+HUB_GIFTS_HEAD_NEXT,Следующий уровень,Next level
+HUB_GIFTS_HEAD_PRICE,Цена,Price
+HUB_GIFT_BUY,Купить,Buy
+HUB_GIFTS_LOAD_FAILED,Дары не загрузились.,Gifts failed to load.
+HUB_RADIANCE,Сияние: %d,Radiance: %d
+HUB_DIARY_EMPTY,Записей пока нет.,No entries yet.
+HUB_DIARY_CLOSE,Закрыть,Close
+HUB_DIARY_ENTRY_HEAD,"%s, волна %d","%s, wave %d"
+HUB_LAST_WIN,Последний забег: победа на %d-й волне,Last run: victory on wave %d
+HUB_LAST_LOSS,Последний забег: поражение на волне %d,Last run: defeat on wave %d
+HUB_RECORD,"%s: лучшая волна %d, побед %d, забегов %d","%s: best wave %d, wins %d, runs %d"
+SIEGE_NAME,Осада %s,Siege %s
+MSG_SAVE_CORRUPT,"Сохранение повреждено, начато заново","Your save was damaged, so a new one was started"
+MSG_SAVE_NEWER,Сохранение от более новой версии,This save is from a newer version of the game
+GIFT_BLOCK_MAX,Максимальный уровень,Max level
+GIFT_BLOCK_SIEGE,Откроется после осады %s,Unlocks after Siege %s
+GIFT_BLOCK_RADIANCE,Не хватает Сияния,Not enough Radiance
+GIFT_BLOCK_DATA,Нет данных о цене,No price data
+GIFT_TEMPERED_STEEL_NAME,Закалённая сталь,Tempered Steel
+GIFT_TEMPERED_STEEL_DESC,+%s%% к урону всех воинов,+%s%% damage for all troops
+GIFT_STURDY_SHIELDS_NAME,Крепкие щиты,Sturdy Shields
+GIFT_STURDY_SHIELDS_DESC,+%s%% к здоровью всех воинов,+%s%% health for all troops
+GIFT_SPOILS_NAME,Трофеи,Spoils of War
+GIFT_SPOILS_DESC,+%s%% золота за убитых,+%s%% gold per kill
+GIFT_MINE_NAME,Рудник,Mine
+GIFT_MINE_DESC,+%s%% от дохода прошлой волны в начале каждой волны,Each wave starts with +%s%% of the last wave's income
+GIFT_FORTRESS_WALLS_NAME,Стены крепости,Fortress Walls
+GIFT_FORTRESS_WALLS_DESC,+%s%% к прочности ворот,+%s%% gate durability
+GIFT_RESERVE_NAME,Резерв,Reserves
+GIFT_RESERVE_DESC,+%s воинов в каждом стартовом отряде,+%s troops in each starting squad
+DEBUG_FPS_LINE,FPS: %d | юнитов: %d | сим. сред.: %.1f пик: %.1f | сетка: %.1f мс | цвет: F%d | ворота: %.0f | стрелы за волну: %d/%d,FPS: %d | units: %d | sim avg: %.1f peak: %.1f | grid: %.1f ms | color: F%d | gate: %.0f | arrows this wave: %d/%d
+DEBUG_FPS_PHASES,"фазы, мс/тик: %s | появилось за 10 с, максимум: %d","phases, ms/tick: %s | spawned per 10 s, max: %d"
+STORY_INTRO,"Король говорил со мной сегодня. Не голосом, болью. Одно слово: держись. Он верит, что снизу идёт тот, кто всё закончит. Мне нужно лишь дожить. Жена не вернулась от барона, Мира вернулась одна и не сказала ни слова. Ради неё я буду держаться и записывать, как мы это делали.","The King spoke to me today. Not with a voice, with pain. One word: hold. He believes someone is coming from below who will put an end to all of this. I only have to live that long. My wife never came back from the baron's. Mira came back alone and hasn't said a word. For her sake I will hold, and write down how we did it."
+STORY_S1W1,"Первые пришли ночью. Не кричали, и это хуже всего. Только шаги. Среди них был кузнец Томас из нижней деревни, я узнал его по плечам. Я приказал стрелять.","The first of them came at night. They didn't scream, and that was the worst of it. Only footsteps. Tomas the smith from the lower village was among them; I knew him by his shoulders. I gave the order to shoot."
+STORY_S1W2,"Мира не говорит с тех пор, как вернулась. Сидит у окна и смотрит на лес. Я принёс ей хлеб, она взяла и не поблагодарила. Хорошо, что взяла.",Mira hasn't spoken since she came back. She sits by the window and stares at the forest. I brought her bread; she took it without a word of thanks. At least she took it.
+STORY_S1W3,"Гонец не вернулся. Люди спрашивают, откуда я знаю, что король жив. Говорю: слышу его. Они делают вид, что верят.",The messenger never returned. People ask how I know the King is alive. I tell them I can hear him. They pretend to believe me.
+STORY_S1W5,"С севера весть: в глубине убили одного из шестерых, тех, что стояли рядом с королём. Боль короля стала тише. Я принял это за надежду.","Word from the north: deep in the land, one of the Six who stood beside the King has been killed. The King's pain grew quieter. I took it for hope."
+STORY_S1W6,Чума стала злее. Совпадение.,The plague has grown fiercer. A coincidence.
+STORY_S1W8,"Среди них было платье, которое жена шила прошлой зимой. Я не смог отдать приказ. Его отдал сержант. Мире я не сказал.",Among them was the dress my wife sewed last winter. I couldn't give the order. The sergeant gave it. I didn't tell Mira.
+STORY_S1W9,"Ещё один пал на севере. Я велел зажечь огни на стенах, люди плакали от радости. Мира впервые заговорила: спросила, когда всё кончится. Я сказал: скоро. Не знаю, зачем соврал.","Another one fell in the north. I had fires lit along the walls, and people wept for joy. Mira spoke for the first time: she asked when it would be over. I said: soon. I don't know why I lied."
+STORY_S2W3,"Мне снится свет. Тёплый, золотой. В нём стоит жена. Я просыпаюсь с чувством, что меня простили, и не помню, в чём виноват.","I dream of light. Warm and golden. My wife stands in it. I wake feeling forgiven, and I can't remember what for."
+STORY_S2W5,"Над лесом золотое свечение. Люди говорят: красиво. Я запретил на него смотреть. Мира смотрит каждый вечер, и я не могу ей запретить.","A golden glow hangs over the forest. People say it's beautiful. I forbade anyone to look at it. Mira looks every evening, and I can't bring myself to forbid her."
+STORY_S2W7,"Король больше не отвечает. Я пишу ему каждую ночь. Может, он слышит. Может, это я с собой.",The King no longer answers. I write to him every night. Maybe he hears. Maybe I'm only talking to myself.
+STORY_S2W9,Ещё один пал на севере. Огней я больше не зажигаю: после каждой такой вести чума приходит гуще. Не знаю почему. Не хочу знать.,Another one fell in the north. I no longer light the fires: after every such message the plague comes thicker. I don't know why. I don't want to know.
+STORY_S3W3,У стены снова кузнец Томас. Или другой с такими плечами. Теперь мне всё равно.,Tomas the smith is at the wall again. Or someone else with shoulders like his. I no longer care.
+STORY_S3W6,"Она не злая. Это самое страшное. Вчера, когда я совсем устал, голос сказал: отдохни, ты сделал достаточно, Мира будет жить. Он был добрым. Я проснулся и закрыл окна.","She isn't cruel. That is the most frightening part. Yesterday, when I was utterly spent, a voice said: rest, you've done enough, Mira will live. It was kind. I woke up and shut the windows."
+STORY_S3W9,"Ворота я не запер. Мира спит рядом, впервые за много месяцев. Пишу, и руки не дрожат.","I didn't lock the gate. Mira sleeps beside me, for the first time in many months. I write, and my hands don't shake."
+STORY_END_0,"День {wave}. Ворота пали раньше, чем я дописал вчерашнее. Мира, если ты это чита...","Day {wave}. The gate fell before I finished yesterday's entry. Mira, if you're reading th..."
+STORY_END_4,"День {wave}. Стража замолчала. В коридоре шаги, лёгкие, не солдатские. Мира?","Day {wave}. The guards have gone quiet. Footsteps in the corridor, light ones, not a soldier's. Mira?"
+STORY_END_7,День {wave}. Она вошла как гостья. Дверь в комнату Миры открыта. Я не пошёл смотреть.,Day {wave}. She came in like a guest. The door to Mira's room is open. I didn't go to look.
+STORY_END_10,День {wave}. Я больше не боюсь. В окне тёплый свет. Мира спит. Я пойду к ней.,Day {wave}. I'm no longer afraid. There's a warm light in the window. Mira is asleep. I'll go to her.
+STORY_VICTORY_1,"День десятый. Последний из них упал у ворот, и боль короля стихла. Я записал это, как записываю всё. Это не конец: Благодать умеет возвращаться.","Day ten. The last of them fell at the gate, and the King's pain subsided. I wrote it down, as I write down everything. This isn't the end: Grace knows how to return."
+STORY_VICTORY_2,"Снова десять дней, и снова ворота стоят. Свет над лесом стал ярче. Он красивый. Я перестал отводить глаза.","Ten days again, and again the gate holds. The light over the forest has grown brighter. It's beautiful. I've stopped looking away."
+STORY_VICTORY_3,"Ворота стоят, но я больше не держу их. Благодать вошла не как захватчик, а как та, кого я ждал. Я принимаю.","The gate still stands, but I no longer hold it. Grace came in not as a conqueror, but as the one I had been waiting for. I accept."

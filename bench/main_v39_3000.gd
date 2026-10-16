@@ -7,8 +7,15 @@ const MAX_UNITS := 4000       # ёмкость всех массивов юни�
 const WAVES_ENABLED := true   # false: как bak21 (300 зомби на старте, без волн) — для старых бенчей
 const WAVES_PATH := "res://data/waves.json"
 const SHOP_PATH := "res://data/shop.json"
-const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate"]   # порядок = клавиши Z X C V
-const SHOP_KEYS := [KEY_Z, KEY_X, KEY_C, KEY_V]
+const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate"]   # порядок = действия buy_1..buy_4 (по умолчанию Z X C V)
+const SETTINGS := preload("res://scripts/settings.gd")   # key_label(действие): клавиша для подсказок
+# Действия клавиатуры в порядке проверки (_key_action): с модификаторами раньше, чтобы Ctrl+A не ушло в действие на A
+const ACTION_TEXTS := ["HUD_SQUAD_NEW", "HUD_SQUAD_SPLIT", "HUD_SQUAD_MERGE"]   # кнопки под панелью отрядов (ключи, %s — клавиша)
+const ACTION_KEYS := ["squad_new", "squad_split", "squad_merge"]
+const KEY_ACTIONS := ["select_all", "debug_restart", "squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4",
+	"squad_select_5", "squad_select_6", "squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side",
+	"wave_start", "buy_1", "buy_2", "buy_3", "buy_4", "order_attack", "order_hold", "order_retreat", "about_face", "banner_toggle",
+	"auto_width", "pause", "post_left", "post_top", "post_right", "post_back"]
 const ROWS_MAX := 20       # строй не глубже: при большом отряде растёт ширина
 const WIDTH_MAX := 100     # и не шире
 const WAVE_DMG_TO_UNITS := true   # урон зомби по юнитам растёт с волной (team_dmg_mult[1])
@@ -31,7 +38,7 @@ const ORDER_ATTACK := 0   # как раньше: юниты идут на вра
 const ORDER_HOLD := 1     # держать: к врагу не идут, бьют только в дальности атаки
 const ORDER_RETREAT := 2  # отход: врага не ищут, не бьют, лучники не стреляют; скорость x1.5 до прихода
 const RETREAT_SPEED_MULT := 1.5
-const ORDER_NAMES := ["атака", "держать", "отход"]
+const ORDER_NAMES := ["ORDER_ATTACK", "ORDER_HOLD", "ORDER_RETREAT"]   # ключи перевода
 const UNIT_TYPES_PATH := "res://data/unit_types.json"
 const CASTLE_PATH := "res://data/castle.json"
 const RECORD_PATH := "user://record.json"   # прежний рекорд best_wave: в игре не читается и не пишется (рекорды в Game)
@@ -41,7 +48,7 @@ const STORY_PATH := "res://data/story.json"   # дневник: тексты б�
 const GIFTS_PATH := "res://data/gifts.json"   # дары: модификаторы забега
 const MODS := preload("res://scripts/mods.gd")
 const ESC_MENU := preload("res://scripts/esc_menu.gd")   # меню паузы по Esc: «Продолжить», «Выйти в меню», «Выход из игры»
-const ESC_NOTE := "Выход в меню засчитает поражение"
+const ESC_NOTE := "UI_PAUSE_NOTE_LOSS"   # ключ перевода
 const BANNER_WIDTH := 700.0                   # ширина баннера, px: длинный текст переносится по словам
 const STORY_COLOR := Color(1.0, 0.88, 0.6)    # цвет текста дневника в баннере
 const RADIANCE_COLOR := Color(0.6, 0.9, 1.0)  # цвет строки «+N Сияния» на экране итога
@@ -56,7 +63,7 @@ const FORM_MARGIN := 12.0                     # строй при расстан
 const PAUSE_ENABLED := true                   # активная пауза в бою (Space, P); false — паузы нет, как раньше
 const SIDE_POST_T := 0.45                     # стрелки: пост на отрезке ворота -> точка появления стороны, доля пути
 const GATE_POST_BACK := 90.0                  # стрелка вниз: пост у ворот, на столько выше стены
-const SPLIT_MODE_NAMES := ["правые", "левые", "задние", "передние"]
+const SPLIT_MODE_NAMES := ["SPLIT_MODE_RIGHT", "SPLIT_MODE_LEFT", "SPLIT_MODE_BACK", "SPLIT_MODE_FRONT"]   # ключи перевода
 const PICK_RADIUS := 1.5 * SLOT_SPACING       # ЛКМ мимо блоков: выбирается отряд ближайшего юнита игрока не дальше этого
 const BOX_SELECT_FRAC := 0.25                 # рамка выбирает отряд, если в ней его центр или не меньше этой доли живых
 const SORT_OFFSET := 1 << 20                  # сдвиг ключа сортировки _place_formation: координата * 16 всегда > 0
@@ -532,6 +539,7 @@ var banner: PanelContainer             # полупрозрачный фон, в
 var banner_any := false                # в баннере есть текст
 var banner_hidden := false             # скрыт клавишей H (до следующего текста)
 var banner_labels: Array[Label] = []   # заголовок, текст, дневник, подсказка
+var banner_build := Callable()        # собирает текущий баннер заново при смене языка (_set_banner) или пусто
 var banner_parts := PackedStringArray(["", "", "", ""])   # что сейчас в баннере (тесты читают и без интерфейса)
 var esc_menu: CanvasLayer = null       # меню паузы по Esc; null без интерфейса (бенчи)
 var radiance_label: Label              # «+N Сияния» на экране итога, между дневником и подсказкой
@@ -576,7 +584,7 @@ const SIDE_LEFT := 1
 const SIDE_RIGHT := 2
 const SIDE_ARROWS := ["↑", "←", "→"]
 const VIEW_HALF_H := 540.0   # и половина высоты
-const SIDE_WORDS := ["сверху", "слева", "справа"]
+const SIDE_WORDS := ["SIDE_TOP", "SIDE_LEFT", "SIDE_RIGHT"]   # ключи перевода
 const VIEW_HALF_W := 960.0   # половина ширины экрана в px мира без камеры (бенчи без дерева); с камерой край вида — view_rect()
 var wave_plan: Array = []              # состав следующей (в бою — текущей) волны: записи {type, side, count}
 var wave_plan_for := 0                 # для какой волны построен wave_plan
@@ -694,6 +702,9 @@ func _ready() -> void:
 	_setup_rendering()
 	_setup_camera()
 	_setup_fps_label()
+	var st := get_node_or_null("/root/Settings")
+	if st != null:
+		st.changed.connect(_on_settings_changed)   # переназначили клавишу — обновить подписи
 	queue_redraw()   # отладочные маркеры ворот и дороги (_draw)
 	# Звук сигнала всплеска: если файла нет — тихо, одно предупреждение за запуск.
 	if ResourceLoader.exists(SIGNAL_SOUND_PATH):
@@ -965,12 +976,12 @@ func _load_layer_tuning() -> void:
 func _save_layer_tuning() -> void:
 	var f := FileAccess.open(layer_tuning_path, FileAccess.WRITE)
 	if f == null:
-		tune_msg = "не сохранено: %s (%s)" % [layer_tuning_path, error_string(FileAccess.get_open_error())]
+		tune_msg = "не сохранено: %s (%s)" % [layer_tuning_path, error_string(FileAccess.get_open_error())]   # tr-skip: отладка или контекст лога
 		return
 	f.store_string(JSON.stringify({"castle_offset": [castle_offset.x, castle_offset.y],
 		"castle_scale_x": castle_scale.x, "castle_scale_y": castle_scale.y}, "\t", false) + "\n")
 	f.close()
-	tune_msg = "сохранено в %s" % layer_tuning_path
+	tune_msg = "сохранено в %s" % layer_tuning_path   # tr-skip: отладка или контекст лога
 
 
 # Подгонка замка (только debug-сборка): F3 включает и выключает; во включённом режиме стрелки — сдвиг на TUNE_STEP
@@ -1033,8 +1044,8 @@ func _tune_show() -> void:
 		layer.add_child(tune_label)
 		add_child(layer)
 	tune_label.visible = tune_on
-	tune_label.text = ("Подгонка замка (F3): смещение (%.2f, %.2f) текселей фона, масштаб x %.4f, y %.4f\n"
-		+ "стрелки — сдвиг 1 (Shift 0.25) · Q/E — масштаб -/+0.5%% (Shift 0.1%%) · Z/X — по x · C/V — по y · F4 — сохранить%s") % [
+	tune_label.text = ("Подгонка замка (F3): смещение (%.2f, %.2f) текселей фона, масштаб x %.4f, y %.4f\n"   # tr-skip: отладка или контекст лога
+		+ "стрелки — сдвиг 1 (Shift 0.25) · Q/E — масштаб -/+0.5%% (Shift 0.1%%) · Z/X — по x · C/V — по y · F4 — сохранить%s") % [   # tr-skip: отладка или контекст лога
 		castle_offset.x, castle_offset.y, castle_scale.x, castle_scale.y, ("\n" + tune_msg) if tune_msg != "" else ""]
 
 
@@ -1146,13 +1157,13 @@ func _draw() -> void:
 			var g := _formation_geometry(list[0], drag_start, drag_cur, drag_flip)
 			if g.n > 0:
 				_draw_block_preview(type_color[squad_type[list[0]]], g.centre, g.front, g.angle, g.width, g.rows, g.adjusted or g.overlap >= 0)
-				draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), "%d × %d · %d юн." % [g.width, g.rows, g.n],
+				draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), tr("HUD_PREVIEW_ONE") % [g.width, g.rows, g.n],
 					HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
 		elif list.size() > 1:
 			var mg := _multi_geometry(list, drag_start, drag_cur, drag_flip)
 			for it in mg.items:
 				_draw_block_preview(type_color[squad_type[it.s]], it.centre, it.front, mg.angle, it.width, it.rows, mg.adjusted or not mg.fits or mg.overlap >= 0)
-			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), "%d отр. · %d px" % [list.size(), roundi(mg.length)],
+			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), tr("HUD_PREVIEW_MANY") % [list.size(), roundi(mg.length)],
 				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
 	# Сигнал всплеска: пульсирующая золотая полоса вдоль края экрана и мигающий (2 Гц) треугольник 48 px у своей стороны
 	var vr := view_rect()
@@ -1303,7 +1314,7 @@ func _load_waves() -> bool:
 	for q in 3:
 		var layer = d.layers[q]
 		if not layer is Dictionary or not _require_numbers(layer, ["gap", "gap_jitter", "signal_lead", "pair_prob", "group_max", "side_weight_top", "side_weight_left",
-				"side_weight_right", "sides_from_wave", "burst_target_size", "burst_count_min", "burst_count_max"], "%s, слой %d" % [WAVES_PATH, q + 1]):
+				"side_weight_right", "sides_from_wave", "burst_target_size", "burst_count_min", "burst_count_max"], "%s, слой %d" % [WAVES_PATH, q + 1]):   # tr-skip: отладка или контекст лога
 			if not layer is Dictionary:
 				push_error("%s: слой %d не объект" % [WAVES_PATH, q + 1])
 			return false
@@ -1341,7 +1352,7 @@ func _load_shop() -> bool:
 		var keys := ["base", "growth", param_key[id]]
 		if id in ["inf_pack", "archer_pack"]:
 			keys.append("cap")
-		if not _require_numbers(e, keys, "%s, товар %s" % [SHOP_PATH, id]):
+		if not _require_numbers(e, keys, "%s, товар %s" % [SHOP_PATH, id]):   # tr-skip: отладка или контекст лога
 			return false
 		if not e.get("label") is String:
 			push_error("%s: у товара %s нет строкового поля label" % [SHOP_PATH, id])
@@ -1352,6 +1363,12 @@ func _load_shop() -> bool:
 		shop_param[k] = e[param_key[id]]
 		shop_cap[k] = e.get("cap", 0)   # только у отрядов; у остальных не используется
 	return true
+
+
+# Название товара на текущем языке: ключ из shop.json с числом из его параметра (оружие — в процентах).
+func _shop_title(k: int) -> String:
+	var v := shop_param[k]
+	return tr(shop_label[k]) % (roundi((v - 1.0) * 100.0) if SHOP_ITEMS[k] == "weapons" else roundi(v))
 
 
 # Синглтон Game (каркас забега) или null: в бенчах и headless-скриптах автозагрузки нет.
@@ -1505,15 +1522,15 @@ func _plan_text() -> String:
 			runners += r.count
 		elif r.type == knight_type:
 			knights += r.count
-	var text := "Дальше: волна %d" % wave_plan_for
+	var text := tr("HUD_PLAN") % wave_plan_for
 	for side in 3:
 		if by_side[side] > 0:
 			text += " · %s %d" % [SIDE_ARROWS[side], by_side[side]]
 	var extra := PackedStringArray()
 	if runners > 0:
-		extra.append("бегуны %d" % runners)
+		extra.append(tr("HUD_PLAN_RUNNERS") % runners)
 	if knights > 0:
-		extra.append("рыцари %d" % knights)
+		extra.append(tr("HUD_PLAN_KNIGHTS") % knights)
 	return text if extra.is_empty() else text + " (%s)" % ", ".join(extra)
 
 
@@ -1680,10 +1697,10 @@ func _update_bursts_layered(delta: float) -> void:
 		var g: int = wave_bursts[burst_signal_n].group
 		var words := PackedStringArray()
 		while burst_signal_n < wave_bursts.size() and wave_bursts[burst_signal_n].group == g:
-			words.append(SIDE_WORDS[wave_bursts[burst_signal_n].side])
+			words.append(tr(SIDE_WORDS[wave_bursts[burst_signal_n].side]))
 			burst_signal_n += 1
 		if SIGNAL_TEXT_SHOWN:
-			burst_msg = "Всплеск: %s" % ", ".join(words)
+			burst_msg = tr("HUD_BURST") % ", ".join(words)
 			burst_msg_until = wave_t + 3.0
 			ui_t = 0.0
 		if signal_player != null:
@@ -1776,7 +1793,7 @@ func _burst_signals() -> Array:
 func _update_bursts(delta: float) -> void:
 	wave_t += delta
 	while burst_signal_n < wave_bursts.size() and wave_t >= wave_bursts[burst_signal_n].t_start - wave_cfg.burst_signal_lead:
-		burst_msg = "Всплеск: %s" % SIDE_WORDS[wave_bursts[burst_signal_n].side]
+		burst_msg = tr("HUD_BURST") % tr(SIDE_WORDS[wave_bursts[burst_signal_n].side])
 		burst_msg_until = wave_t + 3.0
 		burst_signal_n += 1
 		ui_t = 0.0   # надпись и иконка сразу
@@ -1963,12 +1980,12 @@ func _spawn_zombie(p: Vector2, type: int) -> void:
 # Состав убитых за волну: «убито: крестьяне 90, бегуны 20, рыцари 4» (типы без убитых не показываются).
 func _kills_text() -> String:
 	var parts := PackedStringArray()
-	var names := ["крестьяне", "бегуны", "рыцари"]
+	var names := ["MSG_KILLS_PEASANTS", "MSG_KILLS_RUNNERS", "MSG_KILLS_KNIGHTS"]
 	var types := [zombie_type, runner_type, knight_type]
 	for q in 3:
 		if wave_kills_by_type[types[q]] > 0:
-			parts.append("%s %d" % [names[q], wave_kills_by_type[types[q]]])
-	return "" if parts.is_empty() else "убито: " + ", ".join(parts)
+			parts.append(tr(names[q]) % wave_kills_by_type[types[q]])
+	return "" if parts.is_empty() else tr("MSG_KILLS") % ", ".join(parts)
 
 
 func _wave_cleared() -> void:
@@ -1986,10 +2003,7 @@ func _wave_cleared() -> void:
 	wave_plan = _plan_wave(wave_number + 1)   # состав и всплески следующей волны известны с начала передышки
 	wave_plan_for = wave_number + 1
 	wave_bursts = _plan_bursts(wave_plan_for, wave_plan)
-	var summary := "Волна %d пройдена: убито %d, +%d золота. Space — волна %d" % [
-		wave_number, wave_kills, int(wave_cfg.wave_bonus_gold), wave_number + 1]
-	var killed := _kills_text()
-	_show_banner(summary if killed == "" else summary + "\n" + killed, _entry_text(wave_number))
+	_set_banner(_banner_wave_cleared.bind(_entry_text(wave_number), wave_number, wave_kills, int(wave_cfg.wave_bonus_gold)))
 	queue_redraw()   # маркеры разведки
 
 # --- Магазин ------------------------------------------------------------------
@@ -2166,11 +2180,11 @@ func _cmd_new_squad() -> bool:
 	if wave_state != WS_RESPITE:
 		return false
 	if sel_primary < 0:
-		_say("Выбери отряд")
+		_say(tr("MSG_PICK_SQUAD"))
 		return false
 	var s := _squad_create(sel_primary)
 	if s < 0:
-		_say("Свободных отрядов нет: занято %d из %d" % [SQUAD_MAX, SQUAD_MAX])
+		_say(tr("MSG_NO_FREE_SQUADS") % [SQUAD_MAX, SQUAD_MAX])
 		return false
 	_select_only(s)
 	return true
@@ -2185,19 +2199,19 @@ func _cmd_split() -> bool:
 		return false
 	if wave_state == WS_BATTLE and not paused:
 		if PAUSE_ENABLED:
-			_say("Поставь паузу (Space)")
+			_say(tr("MSG_PAUSE_FIRST") % SETTINGS.key_label("wave_start"))
 		return false
 	if sel_mask == 0 or sel_mask & (sel_mask - 1) != 0:
-		_say("Выбери один отряд")
+		_say(tr("MSG_PICK_ONE_SQUAD"))
 		return false
 	var s := sel_primary
 	var n := squad_n[s]
 	if squad_used[s] == 0 or n < 2:
-		_say("В отряде меньше 2 юнитов: делить нечего")
+		_say(tr("MSG_SQUAD_TOO_SMALL"))
 		return false
 	var t := _squad_create(s)
 	if t < 0:
-		_say("Свободных отрядов нет: занято %d из %d" % [SQUAD_MAX, SQUAD_MAX])
+		_say(tr("MSG_NO_FREE_SQUADS") % [SQUAD_MAX, SQUAD_MAX])
 		return false
 	squad_order[t] = squad_order[s]
 	squad_pos[t] = squad_pos[s]
@@ -2249,8 +2263,8 @@ func _next_split_mode() -> void:
 func _update_split_ui() -> void:
 	if split_label == null:
 		return
-	split_label.text = "Доля ухода: %d%%" % roundi(split_frac * 100.0)
-	split_mode_button.text = "Уходят: %s (K)" % SPLIT_MODE_NAMES[split_mode]
+	split_label.text = tr("HUD_SPLIT_SHARE") % roundi(split_frac * 100.0)
+	split_mode_button.text = tr("HUD_SPLIT_SIDE") % [tr(SPLIT_MODE_NAMES[split_mode]), SETTINGS.key_label("split_side")]
 
 
 # Пауза только в бою. При включении prev_pos = pos: после снятия юниты не отскакивают на долю тика назад.
@@ -2316,7 +2330,7 @@ func _cmd_merge() -> bool:
 				dst = s
 				break
 		if dst < 0:
-			_say("Нет другого отряда этого типа")
+			_say(tr("MSG_NO_MERGE_PARTNER"))
 			return false
 		if src < START_SQUADS:
 			srcs[0] = dst
@@ -2325,7 +2339,7 @@ func _cmd_merge() -> bool:
 		dst = srcs[0]
 		for s in srcs:
 			if squad_type[s] != squad_type[dst]:
-				_say("Сливаются только отряды одного типа")
+				_say(tr("MSG_MERGE_SAME_TYPE"))
 				return false
 		srcs.remove_at(0)
 	var k := 0
@@ -2351,12 +2365,13 @@ func _on_defeat() -> void:
 	set_physics_process(false)
 	best_wave = maxi(best_wave, wave_number)
 	if game == null:
-		_show_banner("", _ending_text(wave_number), "R — заново")
+		_set_banner(func(): _show_banner("", _ending_text(wave_number), tr("MSG_RESTART") % "R"))
 		return
 	game.end_run("loss", wave_number, run_kills)
-	_show_banner("", _ending_text(wave_number), "Лучшая волна осады %s: %d. Enter — в хаб" % [
-		GAME_SCRIPT.roman(game.siege), game.records[game.siege].best_wave])
-	_show_radiance(game.last_run.radiance)
+	_set_banner(func():
+		_show_banner("", _ending_text(wave_number), tr("END_DEFEAT_HINT") % [
+			GAME_SCRIPT.roman(game.siege), game.records[game.siege].best_wave, SETTINGS.key_label("to_hub")])
+		_show_radiance(game.last_run.radiance))
 	_show_hub_button()
 
 
@@ -2367,8 +2382,10 @@ func _on_win() -> void:
 	set_physics_process(false)
 	best_wave = maxi(best_wave, wave_number)
 	game.end_run("win", wave_number, run_kills)
-	_show_banner("Осада пережита. Волн: %d из %d." % [wave_number, waves_per_run], story_victories.get(debug_layer, ""), "Enter — в хаб")
-	_show_radiance(game.last_run.radiance)
+	_set_banner(func():
+		_show_banner(tr("END_WIN_TITLE") % [wave_number, waves_per_run], tr(story_victories.get(debug_layer, "")),
+			tr("END_TO_HUB_HINT") % SETTINGS.key_label("to_hub"))
+		_show_radiance(game.last_run.radiance))
 	_show_hub_button()
 	queue_redraw()
 
@@ -2404,7 +2421,7 @@ func _abandon_run() -> void:
 
 # Экран итога: строка «+N Сияния» между дневником и подсказкой (после _show_banner: он её прячет).
 func _show_radiance(n: int) -> void:
-	banner_radiance = "+%d Сияния" % n
+	banner_radiance = tr("END_RADIANCE") % n
 	if radiance_label == null:
 		return
 	radiance_label.text = banner_radiance
@@ -2425,6 +2442,7 @@ func _to_hub() -> void:
 
 # Баннер: заголовок, текст, дневник (другим цветом), подсказка. Пустая часть скрыта; всё пусто — баннер скрыт.
 func _show_banner(text: String, story := "", hint := "", title := "") -> void:
+	banner_build = Callable()   # новый баннер: прежний сборщик больше не нужен (_set_banner ставит свой после вызова)
 	banner_parts = PackedStringArray([title, text, story, hint])
 	banner_radiance = ""
 	if banner == null:
@@ -2506,10 +2524,42 @@ func _entry_text(w: int) -> String:
 		if game.diary_read(e.id):
 			return ""
 		game.mark_diary(e.id)
-	return e.text
+	return e.text   # ключ перевода записи
 
 
-# Вступление для стартового баннера: с синглтоном — только пока оно не прочитано. "" — баннер без дневника.
+# Баннер, собранный функцией build (тексты через tr): при смене языка build вызывается снова, скрытый (H) баннер
+# остаётся скрытым.
+func _set_banner(build: Callable) -> void:
+	build.call()
+	banner_build = build
+
+
+# Итог волны в передышке: entry — ключ записи дневника или "".
+func _banner_wave_cleared(entry: String, w: int, kills: int, bonus: int) -> void:
+	var summary: String = tr("MSG_WAVE_CLEARED") % [w, kills, bonus, SETTINGS.key_label("wave_start"), w + 1]
+	var killed := _kills_text()
+	_show_banner(summary if killed == "" else summary + "\n" + killed, tr(entry) if entry != "" else "")
+
+
+# Смена языка: баннер собрать заново (скрытый клавишей H остаётся скрытым), HUD и панели — сразу, не ждать таймера.
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_TRANSLATION_CHANGED:
+		return
+	if banner_build.is_valid():
+		var build := banner_build
+		var hidden := banner_hidden
+		build.call()
+		banner_build = build   # _show_banner его сбросил
+		if hidden and banner != null:
+			banner_hidden = true
+			banner.visible = false
+	if hud_label != null:
+		_update_split_ui()
+		_update_squad_panel()
+		_update_ui()
+
+
+# Вступление для стартового баннера (ключ перевода): с синглтоном — только пока оно не прочитано. "" — баннер без дневника.
 func _intro_text() -> String:
 	if game != null:
 		if game.diary_read(GAME_SCRIPT.INTRO_ID):
@@ -2524,7 +2574,7 @@ func _ending_text(w: int) -> String:
 	for k in story_end_wave.size():
 		if story_end_wave[k] <= w and (best < 0 or story_end_wave[k] > story_end_wave[best]):
 			best = k
-	return "" if best < 0 else story_end_text[best].replace("{wave}", str(w))
+	return "" if best < 0 else tr(story_end_text[best]).replace("{wave}", str(w))
 
 
 func _load_types() -> bool:
@@ -2566,7 +2616,7 @@ func _load_types() -> bool:
 			push_error("%s: тип #%d без поля name" % [UNIT_TYPES_PATH, t])
 			return false
 		if not _require_numbers(e, ["hp", "damage", "range", "cooldown", "speed", "block_mult", "leash_start", "leash_end",
-				"range_far", "volley_period", "draw_time", "spread", "arrow_dmg", "bounty_mult", "chase", "recoil_px"], "%s, тип \"%s\"" % [UNIT_TYPES_PATH, e.name]):
+				"range_far", "volley_period", "draw_time", "spread", "arrow_dmg", "bounty_mult", "chase", "recoil_px"], "%s, тип \"%s\"" % [UNIT_TYPES_PATH, e.name]):   # tr-skip: отладка или контекст лога
 			return false
 		if not e.get("label") is String:
 			push_error("%s: у типа \"%s\" нет строкового поля label" % [UNIT_TYPES_PATH, e.name])
@@ -2942,7 +2992,7 @@ func _setup_fps_label() -> void:
 	banner_box.add_child(radiance_label)
 	banner_box.move_child(radiance_label, 3)
 	hub_button = Button.new()   # только на экране конца забега; баннер клики пропускает, кнопка — нет
-	hub_button.text = "В хаб"
+	hub_button.text = "HUD_TO_HUB"
 	hub_button.add_theme_font_size_override("font_size", 36)
 	hub_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	hub_button.visible = false
@@ -2976,7 +3026,7 @@ func _setup_fps_label() -> void:
 	burst_label.visible = false
 	layer.add_child(burst_label)
 	pause_label = Label.new()
-	pause_label.text = "ПАУЗА"
+	pause_label.text = "HUD_PAUSED"
 	pause_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	pause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pause_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -3026,13 +3076,11 @@ func _setup_fps_label() -> void:
 		squad_swatches.append(sw)
 	# Внизу панели: создание, разделение, слияние (видны только в передышке)
 	squad_actions = HBoxContainer.new()
-	var action_names := ["+ Отряд (N)", "Разделить (G)", "Слить (M)"]
 	var action_calls := [_cmd_new_squad, _cmd_split, _cmd_merge]
-	for k in action_names.size():
+	for k in action_calls.size():
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size = Vector2(0, 36)
-		b.text = action_names[k]
 		b.pressed.connect(action_calls[k])
 		squad_actions.add_child(b)
 		action_buttons.append(b)
@@ -3061,7 +3109,7 @@ func _setup_fps_label() -> void:
 	squad_panel.add_child(split_box)
 	_update_split_ui()
 	hint_label = Label.new()
-	hint_label.text = "ЛКМ выбор · ПКМ приказ · Shift добавить"
+	hint_label.text = "HUD_MOUSE_HINT"
 	hint_label.add_theme_font_size_override("font_size", 13)
 	hint_label.modulate = Color(1.0, 1.0, 1.0, 0.7)
 	squad_panel.add_child(hint_label)
@@ -3071,8 +3119,17 @@ func _setup_fps_label() -> void:
 	_update_squad_panel()
 	if wave_state == WS_RESPITE:
 		var intro := _intro_text()
-		_show_banner("", intro, "Расставь отряды. Space — начать волну 1", "Дневник военачальника" if intro != "" else "")
+		_set_banner(func(): _show_banner("", tr(intro) if intro != "" else "", tr("MSG_WAVE_START") % SETTINGS.key_label("wave_start"),
+			tr("UI_DIARY_TITLE") if intro != "" else ""))
 	_update_ui()
+
+
+# Подписи с клавишами (кнопки отрядов, деления, магазина) — после переназначения в настройках.
+func _on_settings_changed(key: String) -> void:
+	if key == "input":
+		_update_split_ui()
+		_update_squad_panel()
+		_update_ui()
 
 
 # Ни один Control не берёт фокус клавиатуры: Space, Enter и стрелки не нажимают кнопки и не двигают ползунок.
@@ -3279,7 +3336,7 @@ func _squad_label(s: int) -> String:
 			same += 1
 			if q <= s:
 				rank += 1
-	return type_label[squad_type[s]] if same < 2 else "%s %d" % [type_label[squad_type[s]], rank]
+	return tr(type_label[squad_type[s]]) if same < 2 else "%s %d" % [tr(type_label[squad_type[s]]), rank]
 
 
 # Левая панель отрядов: раз в 0.25 с и сразу при выборе / смене приказа. Строки свободных индексов скрыты,
@@ -3295,9 +3352,13 @@ func _update_squad_panel() -> void:
 			continue
 		sig |= 2 << s
 		squad_swatches[s].color = type_color[squad_type[s]]
-		squad_buttons[s].text = "%d  %s — %d — %s" % [s + 1, _squad_label(s), squad_n[s], ORDER_NAMES[squad_order[s]]]
+		squad_buttons[s].text = "%s  %s — %d — %s" % [SETTINGS.key_label("squad_select_%d" % (s + 1)), _squad_label(s), squad_n[s], tr(ORDER_NAMES[squad_order[s]])]
 		squad_buttons[s].set_pressed_no_signal(_is_sel(s))
 	squad_actions.visible = acts
+	for k in action_buttons.size():   # подписи с актуальной клавишей (её могли переназначить)
+		var t: String = tr(ACTION_TEXTS[k]) % SETTINGS.key_label(ACTION_KEYS[k])
+		if action_buttons[k].text != t:
+			action_buttons[k].text = t
 	split_box.visible = acts
 	action_buttons[0].disabled = wave_state != WS_RESPITE   # новый отряд и слияние — только в передышке
 	action_buttons[2].disabled = wave_state != WS_RESPITE
@@ -3311,7 +3372,7 @@ func _update_squad_panel() -> void:
 func _update_ui() -> void:
 	if hud_label == null:
 		return
-	hud_label.text = "Волна %s · зомби: %d · ворота: %d/%d · золото: %d" % [
+	hud_label.text = tr("HUD_STATUS") % [
 		"%d/%d" % [wave_number, waves_per_run] if run_limit else str(wave_number), zombie_alive + wave_remaining, ceili(maxf(gate_hp, 0.0)), roundi(gate_hp_max), floori(gold)]
 	if scout_shown and waves_enabled and wave_state == WS_RESPITE:
 		hud_label.text += "\n" + _plan_text()   # разведка
@@ -3322,16 +3383,15 @@ func _update_ui() -> void:
 	shop_panel.visible = wave_state == WS_RESPITE
 	if not shop_panel.visible:
 		return
-	var key_names := ["Z", "X", "C", "V"]
 	for k in shop_buttons.size():
 		var price := _price(k)
 		var capped := _at_cap(k)
-		shop_buttons[k].text = "%s  %s — %s (куплено %d)" % [key_names[k], shop_label[k], "макс." if capped else "%d зол." % ceili(price), shop_bought[k]]
+		shop_buttons[k].text = tr("HUD_SHOP_ROW") % [SETTINGS.key_label("buy_%d" % (k + 1)), _shop_title(k), tr("HUD_SHOP_MAX") if capped else tr("HUD_SHOP_PRICE") % ceili(price), shop_bought[k]]
 		# Юниты идут в выбранный отряд своего типа, иначе в первый отряд типа.
 		var pack_type := infantry_type if SHOP_ITEMS[k] == "inf_pack" else (archer_type if SHOP_ITEMS[k] == "archer_pack" else -1)
 		if pack_type >= 0:
 			var target := _buy_target(pack_type)
-			shop_buttons[k].text += "\n→ Отряд %d (%s)" % [target + 1, _squad_label(target)]
+			shop_buttons[k].text += "\n" + tr("HUD_SHOP_TARGET") % [target + 1, _squad_label(target)]
 		shop_buttons[k].disabled = capped or gold < price   # серая при нехватке золота или на пределе
 
 
@@ -3339,7 +3399,7 @@ func _update_ui() -> void:
 var sim_ms := 0.0
 var draw_ms := 0.0
 # Профиль фаз тика (PROFILE; бенчи включают profile): сетка, юниты, движение, смерти, грубая сетка, остальное
-const PROF_NAMES := ["сетка", "юниты", "движение", "смерти", "грубая", "остальное"]
+const PROF_NAMES := ["сетка", "юниты", "движение", "смерти", "грубая", "остальное"]   # tr-skip: отладка или контекст лога
 var profile := PROFILE
 var prof_acc := PackedFloat64Array([0, 0, 0, 0, 0, 0])   # мкс за текущие 60 тиков
 var prof_avg := PackedFloat64Array([0, 0, 0, 0, 0, 0])   # мс на тик, среднее за прошлые 60 тиков
@@ -3549,13 +3609,13 @@ func _process(delta: float) -> void:
 	multimesh.visible_instance_count = count
 	multimesh.buffer = buf          # один вызов вместо UNIT_COUNT
 	draw_ms = (Time.get_ticks_usec() - t) / 1000.0
-	fps_label.text = "FPS: %d | units: %d | sim avg: %.1f peak: %.1f | grid: %.1f ms | цвет: F%d | ворота: %.0f | стрелы за волну: %d/%d" % [
+	fps_label.text = tr("DEBUG_FPS_LINE") % [
 		Engine.get_frames_per_second(), count, sim_avg, sim_peak, grid_ms, color_mode + 1, gate_hp, arrows_fired, arrows_hit]
 	if profile:
 		var parts := []
 		for q in 6:
 			parts.append("%s %.2f" % [PROF_NAMES[q], prof_avg[q]])
-		fps_label.text += "\nфазы, мс/тик: " + ", ".join(parts) + " | появилось за 10 с, максимум: %d" % arrivals_10s_max
+		fps_label.text += "\n" + tr("DEBUG_FPS_PHASES") % [", ".join(parts), arrivals_10s_max]
 	if gate_hp != drawn_gate_hp:
 		queue_redraw()   # полоса HP ворот
 
@@ -4158,7 +4218,7 @@ func _cmd_move_group(list: PackedInt32Array, p: Vector2) -> bool:
 	var lim := Vector2(FIELD.x, WALL_Y - FORM_MARGIN)
 	for axis in 2:
 		if hi[axis] - lo[axis] > lim[axis] + 0.01:
-			_say("Отряды не помещаются в поле", 2.0)
+			_say(tr("MSG_SQUADS_DONT_FIT"), 2.0)
 			return false
 		if lo[axis] < 0.0:
 			delta[axis] -= lo[axis]
@@ -4167,7 +4227,7 @@ func _cmd_move_group(list: PackedInt32Array, p: Vector2) -> bool:
 	for s in list:
 		var q := _target_overlap(s, squad_pos[s] + delta, mask)
 		if q >= 0:
-			_say("Блок пересекается с отрядом %d" % (q + 1), 2.0)   # цели не меняются ни у кого
+			_say(tr("MSG_BLOCK_OVERLAP") % (q + 1), 2.0)   # цели не меняются ни у кого
 			return false
 	for s in list:
 		squad_target[s] = squad_pos[s] + delta
@@ -4178,7 +4238,7 @@ func _cmd_move_group(list: PackedInt32Array, p: Vector2) -> bool:
 func _cmd_move(s: int, target: Vector2) -> bool:
 	var q := _target_overlap(s, target)
 	if q >= 0:
-		_say("Блок пересекается с отрядом %d" % (q + 1), 2.0)   # цель не меняется
+		_say(tr("MSG_BLOCK_OVERLAP") % (q + 1), 2.0)   # цель не меняется
 		return false
 	squad_target[s] = target
 	return true
@@ -4227,7 +4287,7 @@ func _place_formation(s: int, a: Vector2, b: Vector2, flip := false) -> void:
 	if n == 0:
 		return
 	if g.overlap >= 0:
-		_say("Блок пересекается с отрядом %d" % (g.overlap + 1), 2.0)   # отряд остаётся на месте
+		_say(tr("MSG_BLOCK_OVERLAP") % (g.overlap + 1), 2.0)   # отряд остаётся на месте
 		queue_redraw()
 		return
 	_apply_formation(s, g.width, g.rows, g.user_width, g.angle, g.centre, g.front)
@@ -4363,7 +4423,7 @@ func _place_formation_multi(list: PackedInt32Array, a: Vector2, b: Vector2, flip
 		return true
 	var g := _multi_geometry(list, a, b, flip)
 	if not g.fits or g.overlap >= 0:
-		_say("Строй не помещается в поле" if not g.fits else "Блок пересекается с отрядом %d" % (g.overlap + 1), 2.0)
+		_say(tr("MSG_FORMATION_DOESNT_FIT") if not g.fits else tr("MSG_BLOCK_OVERLAP") % (g.overlap + 1), 2.0)
 		queue_redraw()
 		return false
 	for it in g.items:
@@ -4730,6 +4790,14 @@ func _process_arrows() -> void:
 
 
 # Shift на момент последнего события мыши или клавиатуры: клик по строке панели сюда приходит раньше, чем кнопке.
+# Действие игры для нажатой клавиши или "". Сначала действия с модификаторами (Ctrl+A, Ctrl+R), затем остальные.
+func _key_action(event: InputEventKey) -> String:
+	for a in KEY_ACTIONS:
+		if InputMap.has_action(a) and event.is_action(a):
+			return a
+	return ""
+
+
 func _input(event: InputEvent) -> void:
 	if event is InputEventWithModifiers:
 		mod_shift = event.shift_pressed
@@ -4792,12 +4860,69 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Shift + колесо: поворот на месте (с Shift система может прислать горизонтальное колесо); без Shift колесо не занято
 		_cmd_rotate(-1 if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_LEFT] else 1)
 	elif event is InputEventKey and event.pressed and not event.echo:
+		# Команды игры — действия InputMap (клавиши по умолчанию в [input] project.godot, переназначение — Settings);
+		# Esc и F1–F5 постоянные и идут по keycode.
 		if _run_over():
-			if event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_R]:
+			if event.is_action("to_hub") or event.is_action("wave_start"):
 				_to_hub()
 			elif event.keycode == KEY_ESCAPE:
 				_open_esc_menu()
 			return   # экран конца забега: остальные клавиши не действуют
+		var act := _key_action(event)
+		if act.begins_with("squad_select_"):
+			var s := int(act.trim_prefix("squad_select_")) - 1
+			if event.shift_pressed:
+				_toggle_sel(s)
+			else:
+				_select_only(s)
+		elif act.begins_with("buy_"):
+			_buy(int(act.trim_prefix("buy_")) - 1)
+		match act:
+			"about_face":
+				if drag_active:
+					drag_flip = not drag_flip   # во время протяжки: лицо строя наоборот
+					queue_redraw()
+				else:
+					_cmd_about_face()
+			"banner_toggle":
+				_toggle_banner()
+			"auto_width":
+				for s in _sel_list():
+					squad_user_width[s] = 0   # ширина строя снова авто
+			"debug_restart":
+				if DEBUG_COLORS:
+					get_tree().reload_current_scene()   # отладочный перезапуск боя
+			"wave_start":
+				if PAUSE_ENABLED and wave_state == WS_BATTLE:
+					_set_paused(not paused)
+				else:
+					_start_wave()
+			"pause":
+				_set_paused(not paused)
+			"split_side":
+				_next_split_mode()
+			"post_left":
+				_cmd_side_post(SIDE_LEFT)
+			"post_top":
+				_cmd_side_post(SIDE_TOP)
+			"post_right":
+				_cmd_side_post(SIDE_RIGHT)
+			"post_back":
+				_cmd_side_post(-1)
+			"select_all":
+				_select_all()
+			"squad_new":
+				_cmd_new_squad()
+			"squad_split":
+				_cmd_split()
+			"squad_merge":
+				_cmd_merge()
+			"order_attack":
+				_set_order(ORDER_ATTACK)
+			"order_hold":
+				_set_order(ORDER_HOLD)
+			"order_retreat":
+				_set_order(ORDER_RETREAT)
 		match event.keycode:
 			KEY_ESCAPE:
 				if drag_active or box_active:
@@ -4806,59 +4931,6 @@ func _unhandled_input(event: InputEvent) -> void:
 					queue_redraw()
 				else:
 					_open_esc_menu()
-			KEY_F:
-				if drag_active:
-					drag_flip = not drag_flip   # во время протяжки: лицо строя наоборот
-					queue_redraw()
-				else:
-					_cmd_about_face()
-			KEY_H:
-				_toggle_banner()
-			KEY_T:
-				for s in _sel_list():
-					squad_user_width[s] = 0   # ширина строя снова авто
-			KEY_R:
-				if DEBUG_COLORS and event.ctrl_pressed:
-					get_tree().reload_current_scene()   # отладочный перезапуск боя
-			KEY_SPACE:
-				if PAUSE_ENABLED and wave_state == WS_BATTLE:
-					_set_paused(not paused)
-				else:
-					_start_wave()
-			KEY_P:
-				_set_paused(not paused)
-			KEY_K:
-				_next_split_mode()
-			KEY_LEFT:
-				_cmd_side_post(SIDE_LEFT)
-			KEY_UP:
-				_cmd_side_post(SIDE_TOP)
-			KEY_RIGHT:
-				_cmd_side_post(SIDE_RIGHT)
-			KEY_DOWN:
-				_cmd_side_post(-1)
-			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8:
-				if event.shift_pressed:
-					_toggle_sel(event.keycode - KEY_1)
-				else:
-					_select_only(event.keycode - KEY_1)
-			KEY_A:
-				if event.ctrl_pressed:
-					_select_all()
-			KEY_N:
-				_cmd_new_squad()
-			KEY_G:
-				_cmd_split()
-			KEY_M:
-				_cmd_merge()
-			KEY_Q:
-				_set_order(ORDER_ATTACK)
-			KEY_W:
-				_set_order(ORDER_HOLD)
-			KEY_E:
-				_set_order(ORDER_RETREAT)
-			KEY_Z, KEY_X, KEY_C, KEY_V:
-				_buy(SHOP_KEYS.find(event.keycode))
 			KEY_F1:
 				color_mode = 0
 				_sync_fx_debug()

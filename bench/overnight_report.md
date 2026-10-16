@@ -106,3 +106,74 @@
   нажатия через окно (push_input), проходят на InputMap.
 - Проверки: регрессия — провалов 0; FPS волна 10: 1059 (медиана 0.80 мс, p95 1.17 мс); run_all полный — ИТОГ PASS,
   провалов 0, 344 с.
+- Коммит этапа 3: c2f0441.
+
+## Этап 4. Локализация ru/en — СДЕЛАН
+
+- Встроенная система Godot: data/translations.csv (keys, ru, en; 160 ключей) импортируется в
+  data/translations.ru.translation и data/translations.en.translation (импорт: `godot --headless --path . --import`;
+  .csv.import и оба .translation в git), project.godot [internationalization] locale/translations. Язык —
+  TranslationServer.set_locale. При правке CSV нужен переимпорт (открыть редактор или `--import`), иначе
+  check_translations скажет «переимпортируй».
+- Ключи ГРУППА_ПОДГРУППА_ИМЯ: UI_* (меню, пауза, настройки), HUD_* (бой), MSG_* (сообщения), HUB_*, GIFT_*, SHOP_*,
+  UNIT_*, ORDER_*, SIDE_*, SPLIT_MODE_*, END_*, STORY_*, SIEGE_NAME, ACTION_* (названия действий), DEBUG_FPS_*.
+  Числа и клавиши — подстановкой (`tr("HUD_STATUS") % [...]`), куски не склеиваются (кроме перечислений через запятую:
+  «Всплеск: сверху, слева», «убито: крестьяне 90, бегуны 20» — элементы списка отдельными ключами).
+- Постоянные Label/Button получают ключ в text и переводятся сами (автоперевод по умолчанию включён: auto_translate_mode
+  INHERIT от корня ALWAYS). Собранные в коде строки — через tr() и пересобираются по NOTIFICATION_TRANSLATION_CHANGED:
+  хаб (осада, итог, рекорды, магазин, открытый дневник), экран настроек, бой (HUD, панели отрядов и деления, магазин и
+  баннер — баннер хранит функцию-сборщик _set_banner, при смене языка вызывает её снова; скрытый по H остаётся скрытым).
+- Данные: gifts.json — name/desc заменены на name_key/desc_key (desc — формат эффекта с %s, effect_text подставляет
+  число; таблицы STAT_TEXT/TARGET_TEXT в hub.gd удалены); story.json — intro_key/text_key (тексты дневника в таблице,
+  {wave} в концовках подставляется как раньше). unit_types.json и shop.json: РЕШЕНИЕ — поле осталось называться label,
+  но в нём теперь ключ (UNIT_INFANTRY, SHOP_INF_PACK). Причина: старые копии main в bench (эталон регрессии
+  bench/ref/main_ref.gd, main_v39_before*, main_v40_before) читают эти же файлы и требуют строковое поле label;
+  переименование сломало бы регрессию. Числа в названиях товаров подставляются из параметров (amount, dmg_mult,
+  gate_max_gain), а не зашиты в текст.
+- Game: WARN_*/BLOCK_* — ключи; buy_block отдаёт ключ (для «Откроется после осады %s» — уже переведённую строку с номером);
+  siege_name через tr. Логи (push_error/push_warning) остались на русском — это не текст игрока.
+- Не переводятся (помечены `# tr-skip` или это логи): подсказка режима подгонки замка (F3, только debug-сборка),
+  названия фаз профиля (PROFILE), контекст сообщений об ошибках данных.
+- Язык: вкладка «Язык» (Русский / English), переключение сразу, general/language в settings.cfg; по умолчанию ru, если
+  язык системы русский, иначе en. Под тестовым SceneTree язык всегда ru (тесты сверяют русские строки).
+- Шрифт по умолчанию (встроенный) показывает кириллицу и латиницу; на английском тексты помещаются (smoke_v51 проверяет,
+  что все видимые Label/Button меню, хаба, паузы, настроек и боя целиком на экране и текст кнопок не шире кнопки).
+- Тесты: bench/check_translations.gd (оба языка заполнены, нет повторов, вид ключей, импорт совпадает с таблицей, все
+  ключи из scripts/*.gd и data/*.json есть в таблице, в коде нет русских строк мимо tr, в сценах нет русских текстов);
+  bench/smoke_v51.gd (скриншоты и смена языка, в том числе прямо в бою, сохранение языка). В старых тестах сравнения
+  `.text == "…"` обёрнуты в tr() (метки теперь хранят ключ), фикстуры даров и дневника переведены на *_key,
+  bench/ref/story_ref.json — поля переименованы (make_ref.py делает это сам).
+- Скриншоты (C:\Users\danil\AppData\Local\Temp\claude\C--Projects-plague-rage\aeb230fc-738f-43f6-8119-7a258801738c\scratchpad\s4\):
+  v51_menu_ru.png, v51_menu_en.png, v51_hub_ru.png, v51_hub_en.png, v51_hub_gifts_ru.png, v51_hub_gifts_en.png,
+  v51_pause_ru.png, v51_pause_en.png, v51_battle_ru.png, v51_battle_en.png, v51_settings_0_ru.png … v51_settings_2_en.png
+  (0 — Видео, 1 — Управление, 2 — Язык).
+
+### 20 строк перевода на проверку
+
+| ключ | ru | en |
+|---|---|---|
+| STORY_INTRO | Король говорил со мной сегодня… Он верит, что снизу идёт тот, кто всё закончит… | The King spoke to me today… He believes someone is coming from below who will put an end to all of this… («снизу» понял буквально — проверь смысл) |
+| STORY_S1W5 | …в глубине убили одного из шестерых, тех, что стояли рядом с королём… | …deep in the land, one of the Six who stood beside the King has been killed… |
+| STORY_S1W6 | Чума стала злее. Совпадение. | The plague has grown fiercer. A coincidence. |
+| STORY_S3W6 | Она не злая. Это самое страшное… | She isn't cruel. That is the most frightening part… |
+| STORY_END_0 | День {wave}. Ворота пали раньше, чем я дописал вчерашнее. Мира, если ты это чита... | Day {wave}. The gate fell before I finished yesterday's entry. Mira, if you're reading th... |
+| STORY_VICTORY_1 | …Это не конец: Благодать умеет возвращаться. | …This isn't the end: Grace knows how to return. («Благодать» → Grace) |
+| STORY_VICTORY_3 | Ворота стоят, но я больше не держу их. Благодать вошла не как захватчик… | The gate still stands, but I no longer hold it. Grace came in not as a conqueror… |
+| GIFT_MINE_DESC | +%s% от дохода прошлой волны в начале каждой волны | Each wave starts with +%s% of the last wave's income |
+| GIFT_SPOILS_NAME / GIFT_RESERVE_NAME | Трофеи / Резерв | Spoils of War / Reserves |
+| MSG_WAVE_CLEARED | Волна %d пройдена: убито %d, +%d золота. %s — волна %d | Wave %d cleared: %d killed, +%d gold. %s: wave %d |
+| END_DEFEAT_HINT | Лучшая волна осады %s: %d. %s — в хаб | Best wave in Siege %s: %d. %s: back to hub |
+| HUD_SPLIT_SIDE + SPLIT_MODE_* | Уходят: правые / левые / задние / передние (K) | Leaving: right flank / left flank / rear ranks / front ranks (K) |
+| SIDE_TOP/LEFT/RIGHT (в «Всплеск: %s») | сверху / слева / справа | north / west / east («Surge: west, north») |
+| HUD_MOUSE_HINT | ЛКМ выбор · ПКМ приказ · Shift добавить | LMB select · RMB order · Shift add |
+| ORDER_* | атака / держать / отход | attack / hold / fall back |
+| UNIT_PEASANT vs MSG_KILLS_PEASANTS | Зомби / крестьяне %d | Zombies / peasants %d |
+| MSG_SQUAD_TOO_SMALL | В отряде меньше 2 юнитов: делить нечего | Fewer than 2 units: nothing to split |
+| MSG_KEY_SWAPPED | %s была у «%s»: клавиши поменялись местами | %s was bound to "%s": keys swapped |
+| MSG_SAVE_CORRUPT | Сохранение повреждено, начато заново | Your save was damaged, so a new one was started |
+| HUB_LAST_WIN | Последний забег: победа на %d-й волне | Last run: victory on wave %d |
+
+- Проверки: регрессия — провалов 0; FPS волна 10: 1128 (медиана 0.75 мс, p95 1.10 мс); run_all полный — ИТОГ PASS,
+  провалов 0, 337 с (26 шагов, добавлены check_translations и smoke_v51).
+- Найдено и исправлено по ходу: баннер боя после первой смены языка терял свой сборщик и на второй смене не
+  обновлялся (smoke_v51 поймал).

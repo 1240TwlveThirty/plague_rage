@@ -1,8 +1,8 @@
 [
-	{"id": "tempered_steel", "name": "Закалённая сталь", "stat": "damage", "target": "all_units", "op": "add_pct", "levels": [8, 16, 24], "req_sieges": [0, 1, 2]},
-	{"id": "sturdy_shields", "name": "Крепкие щиты", "stat": "hp", "target": "all_units", "op": "add_pct", "levels": [8, 16, 24], "req_sieges": [0, 1, 2]},
-	{"id": "spoils", "name": "Трофеи", "stat": "bounty", "target": "player", "op": "add_pct", "levels": [10, 20, 30], "req_sieges": [0, 1, 2]},
-	{"id": "mine", "name": "Рудник", "stat": "income", "target": "player", "op": "add_pct", "levels": [5, 10, 15], "req_sieges": [0, 1, 2]},
-	{"id": "fortress_walls", "name": "Стены крепости", "stat": "gate_hp", "target": "gate", "op": "add_pct", "levels": [15, 30, 45], "req_sieges": [0, 1, 2]},
-	{"id": "reserve", "name": "Резерв", "stat": "start_units", "target": "player", "op": "add_flat", "levels": [40, 70, 100], "req_sieges": [0, 1, 2]}
+	{"id": "tempered_steel", "name_key": "GIFT_TEMPERED_STEEL_NAME", "desc_key": "GIFT_TEMPERED_STEEL_DESC", "stat": "damage", "target": "all_units", "op": "add_pct", "levels": [8, 16, 24], "req_sieges": [0, 1, 2]},
+	{"id": "sturdy_shields", "name_key": "GIFT_STURDY_SHIELDS_NAME", "desc_key": "GIFT_STURDY_SHIELDS_DESC", "stat": "hp", "target": "all_units", "op": "add_pct", "levels": [8, 16, 24], "req_sieges": [0, 1, 2]},
+	{"id": "spoils", "name_key": "GIFT_SPOILS_NAME", "desc_key": "GIFT_SPOILS_DESC", "stat": "bounty", "target": "player", "op": "add_pct", "levels": [10, 20, 30], "req_sieges": [0, 1, 2]},
+	{"id": "mine", "name_key": "GIFT_MINE_NAME", "desc_key": "GIFT_MINE_DESC", "stat": "income", "target": "player", "op": "add_pct", "levels": [5, 10, 15], "req_sieges": [0, 1, 2]},
+	{"id": "fortress_walls", "name_key": "GIFT_FORTRESS_WALLS_NAME", "desc_key": "GIFT_FORTRESS_WALLS_DESC", "stat": "gate_hp", "target": "gate", "op": "add_pct", "levels": [15, 30, 45], "req_sieges": [0, 1, 2]},
+	{"id": "reserve", "name_key": "GIFT_RESERVE_NAME", "desc_key": "GIFT_RESERVE_DESC", "stat": "start_units", "target": "player", "op": "add_flat", "levels": [40, 70, 100], "req_sieges": [0, 1, 2]}
 ]

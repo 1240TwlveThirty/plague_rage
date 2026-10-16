@@ -8,10 +8,12 @@ signal changed(key: String)   # «display/fullscreen», «input» и т. п.: э
 const PATH := "user://settings.cfg"
 const WINDOW_SIZE := Vector2i(1920, 1080)       # окно по умолчанию
 const WINDOW_SIZE_SMALL := Vector2i(1280, 720)  # если экран меньше WINDOW_SIZE
+const LANGUAGES := ["ru", "en"]
 
 var path := PATH
 var persist := true            # false — не писать файл (тестовый запуск)
 var fullscreen := false        # display/fullscreen: безрамочный полноэкранный режим
+var language := "ru"           # general/language: "ru" или "en"
 
 
 func _ready() -> void:
@@ -20,6 +22,9 @@ func _ready() -> void:
 	if persist:
 		load_settings()
 		_apply_window(true)   # тестовое окно не трогать: размер задают тесты и проект
+	else:
+		language = "ru"       # тесты сверяют русские строки
+	TranslationServer.set_locale(language)
 
 
 # Прочитать файл и применить; нет файла или он битый — значения по умолчанию.
@@ -29,6 +34,10 @@ func load_settings() -> void:
 		push_warning("%s не читается: настройки по умолчанию" % path)
 		cfg = ConfigFile.new()
 	fullscreen = bool(cfg.get_value("display", "fullscreen", false))
+	language = str(cfg.get_value("general", "language", default_language()))
+	if not language in LANGUAGES:
+		language = default_language()
+	TranslationServer.set_locale(language)
 	_load_keys(cfg)
 
 
@@ -37,6 +46,7 @@ func save_settings() -> void:
 		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("display", "fullscreen", fullscreen)
+	cfg.set_value("general", "language", language)
 	_save_keys(cfg)
 	if cfg.save(path) != OK:
 		push_warning("Не удалось сохранить настройки в %s" % path)
@@ -49,6 +59,21 @@ func set_fullscreen(on: bool) -> void:
 	_apply_window(false)
 	save_settings()
 	changed.emit("display/fullscreen")
+
+
+# Язык по умолчанию: русский, если язык системы русский, иначе английский.
+static func default_language() -> String:
+	return "ru" if OS.get_locale_language() == "ru" else "en"
+
+
+# Сменить язык сразу: TranslationServer.set_locale, метки интерфейса переводятся сами (NOTIFICATION_TRANSLATION_CHANGED).
+func set_language(l: String) -> void:
+	if not l in LANGUAGES or l == language:
+		return
+	language = l
+	TranslationServer.set_locale(l)
+	save_settings()
+	changed.emit("general/language")
 
 
 func toggle_fullscreen() -> void:
@@ -82,13 +107,10 @@ func _input(event: InputEvent) -> void:
 
 # --- Клавиши: действия InputMap (по умолчанию — секция [input] project.godot), переназначаемые хранятся в [input] файла ---
 
-# Переназначаемые действия в порядке списка на вкладке «Управление»: [действие, подпись].
-const REBINDABLE := [
-	["squad_select_1", "Отряд 1"], ["squad_select_2", "Отряд 2"], ["squad_select_3", "Отряд 3"], ["squad_select_4", "Отряд 4"],
-	["squad_select_5", "Отряд 5"], ["squad_select_6", "Отряд 6"], ["squad_select_7", "Отряд 7"], ["squad_select_8", "Отряд 8"],
-	["squad_new", "Новый отряд"], ["squad_split", "Разделить"], ["squad_merge", "Слить"], ["split_side", "Сторона ухода"],
-	["wave_start", "Начать волну / пауза"], ["buy_1", "Купить: пехота"], ["buy_2", "Купить: лучники"], ["buy_3", "Купить: оружие"],
-	["buy_4", "Купить: ремонт ворот"]]
+# Переназначаемые действия в порядке списка на вкладке «Управление» (подпись — action_title).
+const REBINDABLE := ["squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4", "squad_select_5", "squad_select_6",
+	"squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side", "wave_start", "buy_1", "buy_2",
+	"buy_3", "buy_4"]
 # Остальные действия игры: клавиши фиксированы (их нельзя занять переназначением).
 const FIXED_ACTIONS := ["order_attack", "order_hold", "order_retreat", "about_face", "banner_toggle", "auto_width", "pause",
 	"post_left", "post_top", "post_right", "post_back", "select_all", "to_hub", "debug_restart"]
@@ -118,12 +140,11 @@ static func action_key(action: String) -> Key:
 	return KEY_NONE if k == null else k.keycode
 
 
-# Подпись переназначаемого действия или само имя.
+# Подпись действия на текущем языке: ACTION_<ИМЯ>, у squad_select_N — ACTION_SQUAD_SELECT с номером.
 static func action_title(action: String) -> String:
-	for r in REBINDABLE:
-		if r[0] == action:
-			return r[1]
-	return action
+	if action.begins_with("squad_select_"):
+		return String(TranslationServer.translate("ACTION_SQUAD_SELECT")) % int(action.trim_prefix("squad_select_"))
+	return String(TranslationServer.translate("ACTION_" + action.to_upper()))
 
 
 static func _set_key(action: String, code: Key) -> void:
@@ -147,21 +168,21 @@ static func _fixed_owner(code: Key) -> String:
 # Назначить клавишу переназначаемому действию. Занята другим переназначаемым — клавиши меняются местами.
 # Результат: {ok, msg} — msg для показа игроку (пусто, если сказать нечего).
 func rebind(action: String, code: Key) -> Dictionary:
-	if REBINDABLE.all(func(r): return r[0] != action):
-		return {"ok": false, "msg": "Действие %s не переназначается" % action}
+	if not action in REBINDABLE:
+		return {"ok": false, "msg": tr("MSG_KEY_NOT_REBINDABLE") % action}
 	if code in RESERVED_KEYS or code == KEY_NONE:
-		return {"ok": false, "msg": "Клавишу %s назначить нельзя" % OS.get_keycode_string(code)}
+		return {"ok": false, "msg": tr("MSG_KEY_RESERVED") % OS.get_keycode_string(code)}
 	var fixed := _fixed_owner(code)
 	if fixed != "":
-		return {"ok": false, "msg": "Клавиша %s занята постоянной командой" % OS.get_keycode_string(code)}
+		return {"ok": false, "msg": tr("MSG_KEY_FIXED") % OS.get_keycode_string(code)}
 	var old := action_key(action)
 	if old == code:
 		return {"ok": true, "msg": ""}
 	var msg := ""
 	for r in REBINDABLE:
-		if r[0] != action and action_key(r[0]) == code:
-			_set_key(r[0], old)
-			msg = "%s была у «%s»: клавиши поменялись местами" % [OS.get_keycode_string(code), r[1]]
+		if r != action and action_key(r) == code:
+			_set_key(r, old)
+			msg = tr("MSG_KEY_SWAPPED") % [OS.get_keycode_string(code), action_title(r)]
 	_set_key(action, code)
 	save_settings()
 	changed.emit("input")
@@ -178,16 +199,16 @@ func reset_keys() -> void:
 func _load_keys(cfg: ConfigFile) -> void:
 	InputMap.load_from_project_settings()
 	for r in REBINDABLE:
-		var v = cfg.get_value("input", r[0], "")
+		var v = cfg.get_value("input", r, "")
 		if not v is String or v == "":
 			continue
 		var code := OS.find_keycode_from_string(v)
 		if code == KEY_NONE or code in RESERVED_KEYS or _fixed_owner(code) != "":
-			push_warning("%s: клавиша «%s» для %s не подходит, оставлена по умолчанию" % [path, v, r[0]])
+			push_warning("%s: клавиша «%s» для %s не подходит, оставлена по умолчанию" % [path, v, r])
 			continue
-		_set_key(r[0], code)
+		_set_key(r, code)
 
 
 func _save_keys(cfg: ConfigFile) -> void:
 	for r in REBINDABLE:
-		cfg.set_value("input", r[0], OS.get_keycode_string(action_key(r[0])))
+		cfg.set_value("input", r, OS.get_keycode_string(action_key(r)))

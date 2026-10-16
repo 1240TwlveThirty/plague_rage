@@ -50,7 +50,7 @@ func _run() -> void:
 		if ST.key_label(a) != defaults[a]:
 			bad.append("%s=%s" % [a, ST.key_label(a)])
 	check("клавиши по умолчанию прежние (InputMap из project.godot)", bad.is_empty(), ", ".join(bad))
-	check("переназначаемых действий 17, у всех есть клавиша", ST.REBINDABLE.size() == 17 and ST.REBINDABLE.all(func(r): return ST.action_key(r[0]) != KEY_NONE))
+	check("переназначаемых действий 17, у всех есть клавиша", ST.REBINDABLE.size() == 17 and ST.REBINDABLE.all(func(r): return ST.action_key(r) != KEY_NONE))
 
 	print("игра по действиям")
 	var m: Node2D = load("res://scenes/main.tscn").instantiate()
@@ -77,7 +77,7 @@ func _run() -> void:
 	check("N -> J: назначено без сообщения", r.ok and r.msg == "" and ST.key_label("squad_new") == "J")
 	await step(1)
 	m._update_squad_panel()
-	check("кнопка «+ Отряд (J)» показывает новую клавишу", m.action_buttons[0].text == "+ Отряд (J)", m.action_buttons[0].text)
+	check("кнопка «+ Отряд (J)» показывает новую клавишу", tr(m.action_buttons[0].text) == "+ Отряд (J)", m.action_buttons[0].text)
 	n0 = used_squads(m)
 	m._unhandled_input(ev(KEY_N))
 	check("N больше не создаёт отряд", used_squads(m) == n0)
@@ -125,19 +125,19 @@ func _run() -> void:
 	sm.open()
 	var titles := []
 	for t in sm.tabs.get_tab_count():
-		titles.append(sm.tabs.get_tab_title(t))
-	check("вкладки «Видео», «Управление»; строк 17, кнопка «Сбросить»", titles == ["Видео", "Управление"] and sm.key_buttons.size() == 17 and sm.reset_keys_button != null, str(titles))
+		titles.append(tr(sm.tabs.get_tab_title(t)))
+	check("вкладки «Видео», «Управление», «Язык»; строк 17, кнопка «Сбросить»", titles == ["Видео", "Управление", "Язык"] and sm.key_buttons.size() == 17 and sm.reset_keys_button != null, str(titles))
 	sm.key_buttons["buy_2"].pressed.emit()
 	check("клик по строке: ждёт клавишу", sm.waiting_action == "buy_2" and sm.key_buttons["buy_2"].text.begins_with("Нажмите"))
 	root.push_input(ev(KEY_ESCAPE))
 	await step(1)
-	check("Esc отменяет ожидание, экран не закрывается, клавиша прежняя", sm.visible and sm.waiting_action == "" and sm.key_buttons["buy_2"].text == "X")
+	check("Esc отменяет ожидание, экран не закрывается, клавиша прежняя", sm.visible and sm.waiting_action == "" and tr(sm.key_buttons["buy_2"].text) == "X")
 	sm.key_buttons["buy_2"].pressed.emit()
 	root.push_input(ev(KEY_C))
 	await step(1)
-	check("C (занята «Купить: оружие»): обмен и сообщение", ST.key_label("buy_2") == "C" and ST.key_label("buy_3") == "X" and sm.key_buttons["buy_3"].text == "X" and sm.key_msg.text != "", sm.key_msg.text)
+	check("C (занята «Купить: оружие»): обмен и сообщение", ST.key_label("buy_2") == "C" and ST.key_label("buy_3") == "X" and tr(sm.key_buttons["buy_3"].text) == "X" and sm.key_msg.text != "", sm.key_msg.text)
 	sm.reset_keys_button.pressed.emit()
-	check("«Сбросить по умолчанию»", ST.key_label("buy_2") == "X" and sm.key_buttons["buy_2"].text == "X")
+	check("«Сбросить по умолчанию»", ST.key_label("buy_2") == "X" and tr(sm.key_buttons["buy_2"].text) == "X")
 	sm.queue_free()
 	await step(1)
 	st.persist = false

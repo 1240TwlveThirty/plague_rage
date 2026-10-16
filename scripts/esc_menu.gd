@@ -13,7 +13,7 @@ var settings_button: Button
 var settings_menu: CanvasLayer  # экран «Настройки» поверх меню паузы
 var menu_button: Button
 var quit_button: Button
-var note_label: Label           # предупреждение хозяина под заголовком (в бою — о поражении) или скрыта
+var note_label: Label           # предупреждение хозяина под заголовком (ключ перевода; в бою — о поражении) или скрыта
 var before_menu := Callable()   # хозяин задаёт: что сделать перед уходом в меню
 
 
@@ -32,7 +32,7 @@ func _ready() -> void:
 	box.add_theme_constant_override("separation", 24)
 	center.add_child(box)
 	var title := Label.new()
-	title.text = "Пауза"
+	title.text = "UI_PAUSE_TITLE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 64)
 	box.add_child(title)
@@ -41,13 +41,13 @@ func _ready() -> void:
 	note_label.add_theme_font_size_override("font_size", 26)
 	note_label.visible = false
 	box.add_child(note_label)
-	continue_button = _button(box, "Продолжить")
+	continue_button = _button(box, "UI_PAUSE_RESUME")
 	continue_button.pressed.connect(close)
-	settings_button = _button(box, "Настройки")
+	settings_button = _button(box, "UI_PAUSE_SETTINGS")
 	settings_button.pressed.connect(_open_settings)
-	menu_button = _button(box, "Выйти в меню")
+	menu_button = _button(box, "UI_PAUSE_TO_MENU")
 	menu_button.pressed.connect(_on_menu)
-	quit_button = _button(box, "Выход из игры")
+	quit_button = _button(box, "UI_PAUSE_QUIT")
 	quit_button.pressed.connect(_on_quit)
 	settings_menu = SETTINGS_MENU.new()
 	settings_menu.closed.connect(func(): settings_button.grab_focus())

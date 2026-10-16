@@ -1,3 +1,3 @@
 [
-	{"id": "x", "name": "X", "stat": "start_units", "target": "all_units", "op": "add_flat", "levels": [40]}
+	{"id": "x", "name_key": "X", "desc_key": "GIFT_TEST_DESC", "stat": "start_units", "target": "all_units", "op": "add_flat", "levels": [40]}
 ]

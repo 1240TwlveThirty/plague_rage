@@ -144,7 +144,7 @@ func _run() -> void:
 	for c in [KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_ENTER]:
 		await key(c)
 	check("(г) клик по ползунку меняет долю (%d%%, «%s»); стрелки и Enter его не двигают и кнопок не нажимают" % [roundi(frac * 100.0), m.split_label.text],
-		val != 50.0 and is_equal_approx(frac, val / 100.0) and m.split_slider.value == val and slides == sl0 and presses == p1 and m.split_label.text == "Доля ухода: %d%%" % roundi(val))
+		val != 50.0 and is_equal_approx(frac, val / 100.0) and m.split_slider.value == val and slides == sl0 and presses == p1 and tr(m.split_label.text) == "Доля ухода: %d%%" % roundi(val))
 	# (и) кнопка режима, K, G, P
 	var mode0: int = m.split_mode
 	await click(m.split_mode_button.get_global_rect().get_center())

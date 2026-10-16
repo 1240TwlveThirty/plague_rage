@@ -104,9 +104,9 @@ func _run() -> void:
 	check("главная сцена проекта — menu.tscn, автозагрузка Game есть", ProjectSettings.get_setting("application/run/main_scene") == "res://scenes/menu.tscn")
 	g.go_menu()
 	await step(40)   # окно только что открылось: первый клик сразу после старта иногда теряется
-	check("меню: заголовок «Plague Wrath», «Играть» в фокусе, «Выход»", is_scene("Menu") and current_scene.play_button.has_focus() and current_scene.quit_button.text == "Выход")
+	check("меню: заголовок «Plague Wrath», «Играть» в фокусе, «Выход»", is_scene("Menu") and current_scene.play_button.has_focus() and tr(current_scene.quit_button.text) == "Выход")
 	await click(current_scene.play_button)
-	check("клик «Играть» -> хаб: итог пуст, выбор осады скрыт, «Начать забег» в фокусе", is_scene("Hub") and current_scene.last_label.text == ""
+	check("клик «Играть» -> хаб: итог пуст, выбор осады скрыт, «Начать забег» в фокусе", is_scene("Hub") and tr(current_scene.last_label.text) == ""
 		and not current_scene.siege_option.visible and current_scene.start_button.has_focus())
 	await click(current_scene.start_button)
 	var m := current_scene as Node2D
@@ -121,13 +121,13 @@ func _run() -> void:
 	check("пауза на экране поражения недоступна", not m.paused and not m.pause_label.visible)
 	check("баннер: «Лучшая волна осады I: 1. Enter — в хаб»", m.banner_parts[3] == "Лучшая волна осады I: 1. Enter — в хаб", m.banner_parts[3])
 	await key(KEY_ENTER)
-	check("Enter -> хаб: «Последний забег: поражение на волне 1», забегов 1", is_scene("Hub") and current_scene.last_label.text == "Последний забег: поражение на волне 1"
-		and current_scene.record_labels[0].text == "Осада I: лучшая волна 1, побед 0, забегов 1")
+	check("Enter -> хаб: «Последний забег: поражение на волне 1», забегов 1", is_scene("Hub") and tr(current_scene.last_label.text) == "Последний забег: поражение на волне 1"
+		and tr(current_scene.record_labels[0].text) == "Осада I: лучшая волна 1, побед 0, забегов 1")
 	await key(KEY_ENTER)
 	check("Enter в хабе нажимает «Начать забег»: новый бой с волны 0", is_scene("Main") and current_scene != m and current_scene.wave_number == 0 and g.run_index == 2)
 	m = await lose()
 	await click(m.hub_button)
-	check("клик «В хаб» -> хаб, забегов 2", is_scene("Hub") and g.records[1].runs == 2 and current_scene.record_labels[0].text == "Осада I: лучшая волна 1, побед 0, забегов 2")
+	check("клик «В хаб» -> хаб, забегов 2", is_scene("Hub") and g.records[1].runs == 2 and tr(current_scene.record_labels[0].text) == "Осада I: лучшая волна 1, побед 0, забегов 2")
 	await click(current_scene.start_button)
 	m = current_scene as Node2D
 	await key(KEY_R, true)
@@ -142,7 +142,7 @@ func _run() -> void:
 	await click(current_scene.menu_button)
 	check("клик «В меню» -> меню, «Выход» на месте и не нажат, Game цел (забегов 4)", is_scene("Menu") and current_scene.quit_button.is_visible_in_tree() and g.records[1].runs == 4)
 	await key(KEY_ENTER)
-	check("Enter в меню нажимает «Играть» -> хаб с итогом", is_scene("Hub") and current_scene.last_label.text == "Последний забег: поражение на волне 1")
+	check("Enter в меню нажимает «Играть» -> хаб с итогом", is_scene("Hub") and tr(current_scene.last_label.text) == "Последний забег: поражение на волне 1")
 	DirAccess.remove_absolute(g.save_path)
 	DirAccess.remove_absolute("user://bench_v41s")
 	print("SMOKE: провалов %d" % fails)

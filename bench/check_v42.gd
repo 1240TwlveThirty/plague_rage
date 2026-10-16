@@ -169,8 +169,8 @@ func t_save() -> void:
 		g.records[1] == {"best_wave": 10, "wins": 1, "runs": 2} and g.records[3] == {"best_wave": 10, "wins": 1, "runs": 1} and g.unlocked_siege == 3
 		and g.completed and g.runs_total == 3 and g.diary_seen == ["intro", "s1w3", "s1w1"] and g.last_siege == 2 and g.siege == 2)
 	var h := await hub()
-	check("хаб из загруженных данных: рекорды, выбрана последняя осада II, предупреждения нет", h.record_labels[0].text == "Осада I: лучшая волна 10, побед 1, забегов 2"
-		and h.record_labels[2].text == "Осада III: лучшая волна 10, побед 1, забегов 1" and h.chosen == 2 and h.siege_option.item_count == 3 and not h.warning_label.visible)
+	check("хаб из загруженных данных: рекорды, выбрана последняя осада II, предупреждения нет", tr(h.record_labels[0].text) == "Осада I: лучшая волна 10, побед 1, забегов 2"
+		and tr(h.record_labels[2].text) == "Осада III: лучшая волна 10, побед 1, забегов 1" and h.chosen == 2 and h.siege_option.item_count == 3 and not h.warning_label.visible)
 	# запись при выходе
 	g.diary_seen.append("s1w5")   # в памяти, без сохранения
 	var before := read()
@@ -196,9 +196,9 @@ func t_save() -> void:
 		var moved: bool = fs.size() == 1 and fs[0].begins_with("save_corrupt_") and fs[0].ends_with(".json") and fs[0].trim_prefix("save_corrupt_").trim_suffix(".json").is_valid_int()
 		var kept: bool = moved and FileAccess.get_file_as_string(DIR + "/" + fs[0]) == cases[name]
 		check("повреждённый (%s): переименован в save_corrupt_<unix>.json с тем же содержимым, состояние чистое, предупреждение" % name,
-			moved and kept and clean() and g.save_warning == "Сохранение повреждено, начато заново" and not g.save_locked, str(fs))
+			moved and kept and clean() and tr(g.save_warning) == "Сохранение повреждено, начато заново" and not g.save_locked, str(fs))
 	h = await hub()
-	check("хаб: строка «Сохранение повреждено, начато заново» видна", h.warning_label.visible and h.warning_label.text == "Сохранение повреждено, начато заново")
+	check("хаб: строка «Сохранение повреждено, начато заново» видна", h.warning_label.visible and tr(h.warning_label.text) == "Сохранение повреждено, начато заново")
 	g.siege = 1
 	g.end_run("loss", 2, 1)
 	check("после повреждённого игра сохраняется заново: save.json парсится, забегов 1", on_disk().get("runs_total") == 1.0 and files().size() == 2, str(files()))
@@ -209,7 +209,7 @@ func t_save() -> void:
 	var newer := JSON.stringify({"version": 2, "unlocked_siege": 3, "extra": "поле из будущего"})
 	put(newer)
 	await new_game()
-	check("version 2: игра в памяти с чистым состоянием, предупреждение, файл не переименован", clean() and g.save_locked and g.save_warning == "Сохранение от более новой версии"
+	check("version 2: игра в памяти с чистым состоянием, предупреждение, файл не переименован", clean() and g.save_locked and tr(g.save_warning) == "Сохранение от более новой версии"
 		and files() == PackedStringArray(["save.json"]))
 	g.siege = 1
 	g.end_run("win", 10, 7)
@@ -217,7 +217,7 @@ func t_save() -> void:
 	g.notification(Node.NOTIFICATION_WM_CLOSE_REQUEST)
 	check("version 2: после end_run, отметки дневника и выхода файл не изменён; в памяти итог есть", read() == newer and files().size() == 1 and g.records[1].wins == 1 and g.unlocked_siege == 2)
 	h = await hub()
-	check("хаб: строка «Сохранение от более новой версии» видна", h.warning_label.visible and h.warning_label.text == "Сохранение от более новой версии")
+	check("хаб: строка «Сохранение от более новой версии» видна", h.warning_label.visible and tr(h.warning_label.text) == "Сохранение от более новой версии")
 	# время игры: поле play_time, version прежняя
 	wipe()
 	await new_game()
@@ -259,7 +259,7 @@ func t_story() -> void:
 	var raw: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(STORY))   # файл как есть: тексты сверяются с ним байт в байт
 	check("story.json грузится; записей %d" % ENTRY_COUNT, not s.is_empty() and s.entries.size() == ENTRY_COUNT and raw.entries.size() == ENTRY_COUNT,
 		"" if s.is_empty() else "записей %d" % s.entries.size())
-	check("вступление непустое, дословно как в файле", s.intro != "" and s.intro.to_utf8_buffer() == String(raw.intro).to_utf8_buffer())
+	check("вступление непустое, дословно как в файле", s.intro != "" and s.intro.to_utf8_buffer() == String(raw.intro_key).to_utf8_buffer())
 	var by_place := {}
 	for e in s.entries:
 		by_place[Vector2i(e.siege, e.wave)] = e
@@ -267,7 +267,7 @@ func t_story() -> void:
 	for e in raw.entries:
 		var place := Vector2i(int(e.siege), int(e.wave))
 		var n = by_place.get(place)
-		if n != null and n.text != "" and n.text.to_utf8_buffer() == String(e.text).to_utf8_buffer() and n.id == "s%dw%d" % [place.x, place.y] and e.id == n.id 				and place.x >= 1 and place.x <= 3 and place.y >= 1 and place.y <= 10:
+		if n != null and n.text != "" and n.text.to_utf8_buffer() == String(e.text_key).to_utf8_buffer() and n.id == "s%dw%d" % [place.x, place.y] and e.id == n.id 				and place.x >= 1 and place.x <= 3 and place.y >= 1 and place.y <= 10:
 			good += 1
 		else:
 			print("    запись %s не на месте" % str(e.get("id")))
@@ -282,9 +282,9 @@ func t_story() -> void:
 	raw_ends.sort_custom(func(a, b): return a.min_wave < b.min_wave)
 	var ends_ok: bool = Array(s.end_wave) == [0, 4, 7, 10] and raw_ends.size() == 4
 	for k in 4:
-		ends_ok = ends_ok and s.end_text[k] == raw_ends[k].text and "{wave}" in s.end_text[k]
+		ends_ok = ends_ok and s.end_text[k] == raw_ends[k].text_key and "{wave}" in tr(s.end_text[k])
 	check("4 концовки с порогами 0, 4, 7, 10; тексты дословно как в файле, в каждом есть {wave}", ends_ok, str(s.end_wave))
-	check("3 победы (осады 1-3), тексты по осадам как в задании", s.victories.size() == 3 and s.victories[1] == VICTORIES[0] and s.victories[2] == VICTORIES[1] and s.victories[3] == VICTORIES[2])
+	check("3 победы (осады 1-3), тексты по осадам как в задании", s.victories.size() == 3 and tr(s.victories[1]) == VICTORIES[0] and tr(s.victories[2]) == VICTORIES[1] and tr(s.victories[3]) == VICTORIES[2])
 	for name in ["no_field", "bad_type", "dup_id", "no_victory", "no_siege", "missing_file"]:
 		check("повреждённый %s.json не грузится" % name, gs.load_story(FIX + name + ".json", 3).is_empty())
 	check("прежняя структура (без id, siege, victories) не грузится", gs.load_story(STORY_OLD, 3).is_empty())
@@ -308,15 +308,15 @@ func t_diary() -> void:
 	var st: Dictionary = g.story
 	var texts := {}
 	for e in st.entries:
-		texts[e.id] = e.text
+		texts[e.id] = tr(e.text)   # в story — ключи, в баннере и дневнике — перевод
 	var h := await hub()
 	h.diary_button.pressed.emit()
 	check("хаб без прочитанного: «Дневник» открывается, в нём только «Записей пока нет.»", h.diary_panel.visible and h._diary_lines().is_empty()
-		and h.diary_box.get_child_count() == 1 and h.diary_box.get_child(0).text == "Записей пока нет." and h.diary_close.has_focus())
+		and h.diary_box.get_child_count() == 1 and tr(h.diary_box.get_child(0).text) == "Записей пока нет." and h.diary_close.has_focus())
 	h.diary_close.pressed.emit()
 	check("кнопка «Закрыть» закрывает дневник, фокус на «Начать забег»", not h.diary_panel.visible and h.start_button.has_focus())
 	var m := await run(1)
-	check("первый забег: стартовый баннер с заголовком и вступлением", m.banner_parts[0] == "Дневник военачальника" and m.banner_parts[2] == st.intro and m.banner_parts[3] == START_HINT, str(m.banner_parts))
+	check("первый забег: стартовый баннер с заголовком и вступлением", m.banner_parts[0] == "Дневник военачальника" and m.banner_parts[2] == tr(st.intro) and m.banner_parts[3] == START_HINT, str(m.banner_parts))
 	check("intro отмечено и сохранено", g.diary_seen == ["intro"] and on_disk().get("diary_seen") == ["intro"])
 	boost(m)
 	await wave(m)
@@ -359,14 +359,14 @@ func t_diary() -> void:
 	g.mark_diary("s1w5")
 	h.diary_button.pressed.emit()
 	var lines: Array = h._diary_lines()
-	check("«Дневник»: вступление, затем прочитанные записи в порядке (осада, волна)", h.diary_panel.visible and lines == [["", st.intro], ["Осада I, волна 1", texts["s1w1"]],
+	check("«Дневник»: вступление, затем прочитанные записи в порядке (осада, волна)", h.diary_panel.visible and lines == [["", tr(st.intro)], ["Осада I, волна 1", texts["s1w1"]],
 		["Осада I, волна 2", texts["s1w2"]], ["Осада I, волна 3", texts["s1w3"]], ["Осада I, волна 5", texts["s1w5"]], ["Осада II, волна 5", texts["s2w5"]]], str(lines.map(func(l): return l[0])))
 	var shown := PackedStringArray()
 	for c in h.diary_box.get_children():
 		shown.append(c.text)
 	var leaked := 0
 	for e in st.entries:
-		if not g.diary_seen.has(e.id) and (e.text in shown or ("%s, волна %d" % [g.siege_name(e.siege), e.wave]) in shown):
+		if not g.diary_seen.has(e.id) and (tr(e.text) in shown or ("%s, волна %d" % [g.siege_name(e.siege), e.wave]) in shown):
 			leaked += 1
 	check("непрочитанных записей в панели нет (ни текста, ни заголовка); строк 11 = вступление + 5 заголовков + 5 текстов", leaked == 0 and shown.size() == 11
 		and st.entries.size() > 5, "строк %d" % shown.size())
@@ -383,7 +383,7 @@ func t_endings() -> void:
 	for w in want:
 		var m := await run(1)
 		finish(m, w)
-		var text: String = st.end_text[Array(st.end_wave).find(want[w])].replace("{wave}", str(w))
+		var text: String = tr(st.end_text[Array(st.end_wave).find(want[w])]).replace("{wave}", str(w))
 		check("поражение на волне %d: концовка порога %d, {wave} подставлен" % [w, want[w]], m.banner_parts[2] == text and ("День %d." % w) in text and not "{wave}" in text
 			and m.banner_parts[2] == m._ending_text(w), m.banner_parts[2].left(40))
 	check("после поражений completed false", not g.completed and g.unlocked_siege == 1)
@@ -418,12 +418,12 @@ func t_records() -> void:
 	var r: Dictionary = d.get("records", {}).get("1", {})
 	check("после победы файл: осада 1 {10, 1, 3}, открыто 2, забегов всего 3, last_siege 1", r == {"best_wave": 10.0, "wins": 1.0, "runs": 3.0} and d.get("unlocked_siege") == 2.0
 		and d.get("runs_total") == 3.0 and d.get("last_siege") == 1.0, str(r))
-	check("хаб показывает те же числа, что в файле", h.record_labels[0].text == "Осада I: лучшая волна %d, побед %d, забегов %d" % [int(r.best_wave), int(r.wins), int(r.runs)]
-		and h.record_labels[0].text == "Осада I: лучшая волна 10, побед 1, забегов 3" and h.record_labels[1].text == "Осада II: лучшая волна 0, побед 0, забегов 0", h.record_labels[0].text)
+	check("хаб показывает те же числа, что в файле", tr(h.record_labels[0].text) == "Осада I: лучшая волна %d, побед %d, забегов %d" % [int(r.best_wave), int(r.wins), int(r.runs)]
+		and tr(h.record_labels[0].text) == "Осада I: лучшая волна 10, побед 1, забегов 3" and tr(h.record_labels[1].text) == "Осада II: лучшая волна 0, побед 0, забегов 0", h.record_labels[0].text)
 	m = await run(1)
 	finish(m, 2)
 	check("поражение на волне 2 после победы: best_wave не уменьшается (10), забегов 4", g.records[1] == {"best_wave": 10, "wins": 1, "runs": 4} and on_disk().records["1"].best_wave == 10.0)
 	await new_game()
 	h = await hub()
-	check("новый узел Game: хаб из файла — «Осада I: лучшая волна 10, побед 1, забегов 4», выбор осады виден", h.record_labels[0].text == "Осада I: лучшая волна 10, побед 1, забегов 4"
-		and h.siege_option.visible and h.siege_option.item_count == 2 and h.chosen == 1 and h.last_label.text == "")
+	check("новый узел Game: хаб из файла — «Осада I: лучшая волна 10, побед 1, забегов 4», выбор осады виден", tr(h.record_labels[0].text) == "Осада I: лучшая волна 10, побед 1, забегов 4"
+		and h.siege_option.visible and h.siege_option.item_count == 2 and h.chosen == 1 and tr(h.last_label.text) == "")

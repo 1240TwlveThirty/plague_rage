@@ -12,12 +12,13 @@ const MAIN_SCENE := "res://scenes/main.tscn"
 const HUB_SCENE := "res://scenes/hub.tscn"
 const MENU_SCENE := "res://scenes/menu.tscn"
 const INTRO_ID := "intro"      # id вступления в diary_seen
-const WARN_CORRUPT := "Сохранение повреждено, начато заново"
-const WARN_NEWER := "Сохранение от более новой версии"
-const BLOCK_MAX := "Максимальный уровень"
-const BLOCK_SIEGE := "Откроется после осады %s"
-const BLOCK_RADIANCE := "Не хватает Сияния"
-const BLOCK_DATA := "Нет данных о цене"
+# Тексты для игрока — ключи перевода (data/translations.csv)
+const WARN_CORRUPT := "MSG_SAVE_CORRUPT"
+const WARN_NEWER := "MSG_SAVE_NEWER"
+const BLOCK_MAX := "GIFT_BLOCK_MAX"
+const BLOCK_SIEGE := "GIFT_BLOCK_SIEGE"
+const BLOCK_RADIANCE := "GIFT_BLOCK_RADIANCE"
+const BLOCK_DATA := "GIFT_BLOCK_DATA"
 
 var run_path := RUN_PATH       # тесты подменяют и вызывают _setup
 var story_path := STORY_PATH   # тесты подменяют
@@ -38,7 +39,7 @@ var play_time := 0.0           # секунд игры за всё время: �
 var last_run := {}             # {siege, result "win" / "loss" / "", wave, kills, radiance}; result "" — забега ещё не было
 var run_index := 0             # сколько забегов начато за этот запуск
 var save_locked := false       # сохранение от более новой версии: файл не перезаписывается, игра идёт в памяти
-var save_warning := ""         # строка-предупреждение для хаба или ""
+var save_warning := ""         # ключ предупреждения для хаба (WARN_*) или ""
 var story := {}                # дневник для хаба (load_story) или {} при ошибке
 var active_gifts := {}         # дары забега, id -> уровень: start_run собирает из gift_levels (или из --gifts), сцена боя читает при старте; в сохранение не пишется
 var radiance := 0              # Сияние: валюта меты, начисляется в конце забега, тратится в магазине даров
@@ -129,7 +130,8 @@ static func _whole(v: Variant) -> bool:
 	return (v is float or v is int) and v == floorf(v)
 
 
-# story.json: intro (строка), entries [{id, siege, wave, text}], endings [{min_wave, text}], victories [{siege, text}].
+# story.json: intro_key, entries [{id, siege, wave, text_key}], endings [{min_wave, text_key}], victories [{siege, text_key}];
+# *_key — ключи перевода (тексты в data/translations.csv), в результат идут ключи, показ — через tr().
 # Значений по умолчанию нет. sieges > 0 — текст победы нужен для каждой осады 1..sieges.
 # Результат: {intro, entries [{id, siege, wave, text}] в порядке (осада, волна), end_wave, end_text, victories {осада: текст}};
 # при ошибке push_error и пустой словарь.
@@ -144,8 +146,8 @@ static func load_story(path: String, sieges := 0) -> Dictionary:
 	if not d is Dictionary:
 		push_error("%s: ожидается JSON-объект" % path)
 		return {}
-	if not d.get("intro") is String:
-		push_error("%s: нет строкового поля intro" % path)
+	if not d.get("intro_key") is String:
+		push_error("%s: нет строкового поля intro_key" % path)
 		return {}
 	for key in ["entries", "endings", "victories"]:
 		if not d.get(key) is Array:
@@ -156,8 +158,8 @@ static func load_story(path: String, sieges := 0) -> Dictionary:
 	var places := {}
 	for e in d.entries:
 		if not e is Dictionary or not e.get("id") is String or e.id == "" or not _whole(e.get("siege")) or not _whole(e.get("wave")) \
-				or e.siege < 1 or e.wave < 1 or not e.get("text") is String:
-			push_error("%s: запись entries без строки id, целых siege и wave (не меньше 1) или строки text" % path)
+				or e.siege < 1 or e.wave < 1 or not e.get("text_key") is String:
+			push_error("%s: запись entries без строки id, целых siege и wave (не меньше 1) или строки text_key" % path)
 			return {}
 		var place := Vector2i(int(e.siege), int(e.wave))
 		if ids.has(e.id) or e.id == INTRO_ID or places.has(place):
@@ -165,19 +167,19 @@ static func load_story(path: String, sieges := 0) -> Dictionary:
 			return {}
 		ids[e.id] = true
 		places[place] = true
-		entries.append({"id": e.id, "siege": place.x, "wave": place.y, "text": e.text})
+		entries.append({"id": e.id, "siege": place.x, "wave": place.y, "text": e.text_key})
 	entries.sort_custom(func(a, b): return a.siege < b.siege or (a.siege == b.siege and a.wave < b.wave))
 	var end_wave := PackedInt32Array()
 	var end_text := PackedStringArray()
 	for e in d.endings:
-		if not e is Dictionary or not _whole(e.get("min_wave")) or not e.get("text") is String:
-			push_error("%s: запись endings без целого min_wave или строки text" % path)
+		if not e is Dictionary or not _whole(e.get("min_wave")) or not e.get("text_key") is String:
+			push_error("%s: запись endings без целого min_wave или строки text_key" % path)
 			return {}
 		if end_wave.has(int(e.min_wave)):
 			push_error("%s: в endings min_wave %d повторяется" % [path, int(e.min_wave)])
 			return {}
 		end_wave.append(int(e.min_wave))
-		end_text.append(e.text)
+		end_text.append(e.text_key)
 	var has_zero := false
 	for w in end_wave:
 		has_zero = has_zero or w <= 0
@@ -186,18 +188,18 @@ static func load_story(path: String, sieges := 0) -> Dictionary:
 		return {}
 	var victories := {}
 	for e in d.victories:
-		if not e is Dictionary or not _whole(e.get("siege")) or e.siege < 1 or not e.get("text") is String:
-			push_error("%s: запись victories без целого siege (не меньше 1) или строки text" % path)
+		if not e is Dictionary or not _whole(e.get("siege")) or e.siege < 1 or not e.get("text_key") is String:
+			push_error("%s: запись victories без целого siege (не меньше 1) или строки text_key" % path)
 			return {}
 		if victories.has(int(e.siege)):
 			push_error("%s: в victories осада %d повторяется" % [path, int(e.siege)])
 			return {}
-		victories[int(e.siege)] = e.text
+		victories[int(e.siege)] = e.text_key
 	for s in range(1, sieges + 1):
 		if not victories.has(s):
 			push_error("%s: в victories нет текста победы для осады %d" % [path, s])
 			return {}
-	return {"intro": d.intro, "entries": entries, "end_wave": end_wave, "end_text": end_text, "victories": victories}
+	return {"intro": d.intro_key, "entries": entries, "end_wave": end_wave, "end_text": end_text, "victories": victories}
 
 
 # Состояние с нуля, затем конфиг, дневник и сохранение. Конфиг не загрузился — cfg_ok false, забег не начинается.
@@ -298,7 +300,7 @@ func _load_save() -> void:
 	if d.has("newer"):
 		save_locked = true
 		save_warning = WARN_NEWER
-		push_warning("%s: %s, файл не перезаписывается" % [save_path, WARN_NEWER.to_lower()])
+		push_warning("%s: сохранение от более новой версии, файл не перезаписывается" % save_path)
 		return
 	if d.is_empty():
 		var moved := save_path.get_base_dir().path_join("save_corrupt_%d.json" % int(Time.get_unix_time_from_system()))
@@ -359,7 +361,7 @@ static func roman(n: int) -> String:
 
 
 func siege_name(s: int) -> String:
-	return "Осада %s" % roman(s)
+	return tr("SIEGE_NAME") % roman(s)
 
 
 func diary_read(id: String) -> bool:
@@ -406,7 +408,7 @@ func gift_price(id: String, level: int) -> int:
 	return radiance_cfg.gift_prices[level - 1]
 
 
-# Почему следующий уровень дара купить нельзя; пустая строка — можно.
+# Почему следующий уровень дара купить нельзя: ключ BLOCK_* (осада — уже переведённая строка с номером); пустая строка — можно.
 func buy_block(id: String) -> String:
 	if not gift_defs.has(id):
 		return BLOCK_DATA
@@ -418,7 +420,7 @@ func buy_block(id: String) -> String:
 		return BLOCK_DATA
 	var req: int = gift_defs[id].req_sieges[next - 1]
 	if sieges_cleared() < req:
-		return BLOCK_SIEGE % roman(req)
+		return tr(BLOCK_SIEGE) % roman(req)
 	if radiance < price:
 		return BLOCK_RADIANCE
 	return ""

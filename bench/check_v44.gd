@@ -171,7 +171,7 @@ func t_validation() -> void:
 		for target in MODS.TARGETS:
 			var path := "%s/pair_%s_%s.json" % [DIR, stat, target]
 			var f := FileAccess.open(path, FileAccess.WRITE)
-			f.store_string(JSON.stringify([{"id": "x", "name": "X", "stat": stat, "target": target, "op": "add_pct", "levels": [5]}]))
+			f.store_string(JSON.stringify([{"id": "x", "name_key": "X", "desc_key": "X", "stat": stat, "target": target, "op": "add_pct", "levels": [5]}]))
 			f.close()
 			var ok: bool = not MODS.load_gifts(path).is_empty()
 			allowed += int(ok)
@@ -190,7 +190,7 @@ func t_validation() -> void:
 	var ok_data := defs.size() == 6
 	for id in IDS:
 		ok_data = ok_data and defs.has(id) and Array(defs[id].req_sieges) == [0, 1, 2] and defs[id].prices.is_empty() and defs[id].target in want[defs[id].stat]
-	check("data/gifts.json: 6 даров, пары допустимые, req_sieges [0, 1, 2], «Стены крепости»", ok_data and defs["fortress_walls"].name == "Стены крепости")
+	check("data/gifts.json: 6 даров, пары допустимые, req_sieges [0, 1, 2], «Стены крепости»", ok_data and tr(defs["fortress_walls"].name_key) == "Стены крепости")
 	check("req_sieges и prices не той длины или с числом меньше допустимого не грузятся", MODS.load_gifts(FIX_G + "bad_req.json").is_empty() and MODS.load_gifts(FIX_G + "bad_gift_prices.json").is_empty())
 	var shop: Dictionary = MODS.load_gifts(FIX_G + "shop.json")
 	check("shop.json: свои prices и req_sieges читаются; без полей — req_sieges 0, 1, 2 и пустой prices", shop.size() == 2 and Array(shop["cheap"].prices) == [10, 20, 30]
@@ -239,7 +239,7 @@ func t_buy() -> void:
 		and g.gift_price("mine", 0) == -1 and g.gift_price("mine", 4) == -1 and g.gift_price("нет такого", 1) == -1)
 	g.radiance = 59
 	var before := state()
-	check("59 Сияния, цена 60: отказ «Не хватает Сияния», ничего не меняется, файл не пишется", g.buy_block("mine") == "Не хватает Сияния" and not g.buy_gift("mine") and state() == before
+	check("59 Сияния, цена 60: отказ «Не хватает Сияния», ничего не меняется, файл не пишется", tr(g.buy_block("mine")) == "Не хватает Сияния" and not g.buy_gift("mine") and state() == before
 		and not FileAccess.file_exists(SAVE))
 	g.radiance = 500
 	check("500 Сияния: уровень 1 куплен, списано 60, сохранено сразу", g.buy_block("mine") == "" and g.buy_gift("mine") and g.radiance == 440 and g.gift_levels["mine"] == 1
@@ -258,7 +258,7 @@ func t_buy() -> void:
 	check("осада II пройдена: уровень 3 куплен за 240", g.sieges_cleared() == 2 and g.buy_gift("mine") and g.radiance == 80 and g.gift_levels["mine"] == 3)
 	g.radiance = 9999
 	before = state()
-	check("уровень 3 — последний: отказ «Максимальный уровень», ничего не меняется", g.buy_block("mine") == "Максимальный уровень" and not g.buy_gift("mine") and state() == before)
+	check("уровень 3 — последний: отказ «Максимальный уровень», ничего не меняется", tr(g.buy_block("mine")) == "Максимальный уровень" and not g.buy_gift("mine") and state() == before)
 	check("неизвестный дар: отказ, ничего не меняется", not g.buy_gift("нет такого") and state() == before)
 	check("остальные дары не задеты", g.owned_gifts() == {"mine": 3})
 	wipe()
@@ -344,8 +344,8 @@ func t_hub() -> void:
 	g.go_hub()
 	await step(3)
 	var h := current_scene
-	check("в хабе две вкладки: «Осада» (открыта, фокус на «Начать забег») и «Дары»", h != null and h.name == "Hub" and h.tabs.get_tab_count() == 2 and h.tabs.get_tab_title(0) == "Осада"
-		and h.tabs.get_tab_title(1) == "Дары" and h.tabs.current_tab == 0 and h.start_button.has_focus())
+	check("в хабе две вкладки: «Осада» (открыта, фокус на «Начать забег») и «Дары»", h != null and h.name == "Hub" and h.tabs.get_tab_count() == 2 and tr(h.tabs.get_tab_title(0)) == "Осада"
+		and tr(h.tabs.get_tab_title(1)) == "Дары" and h.tabs.current_tab == 0 and h.start_button.has_focus())
 	h.tabs.current_tab = 1
 	await step(1)
 	var names := PackedStringArray()
@@ -355,12 +355,12 @@ func t_hub() -> void:
 		if c is TextureRect:
 			icons = icons and c.texture != null
 	for id in h.gift_rows:
-		names.append(g.gift_defs[id].name)
-	check("6 строк даров в порядке файла, у каждой иконка; баланс «Сияние: 200»", Array(h.gift_rows.keys()) == IDS and icons and grid.get_child_count() == 7 * 7 and h.radiance_label.text == "Сияние: 200"
+		names.append(tr(g.gift_defs[id].name_key))
+	check("6 строк даров в порядке файла, у каждой иконка; баланс «Сияние: 200»", Array(h.gift_rows.keys()) == IDS and icons and grid.get_child_count() == 7 * 7 and tr(h.radiance_label.text) == "Сияние: 200"
 		and h.radiance_label.is_visible_in_tree() and "Стены крепости" in names and not "Крепостные стены" in names, ", ".join(names))
 	var row: Dictionary = h.gift_rows["tempered_steel"]
 	check("строка дара: уровень «0 / 3», эффект следующего уровня «+8% к урону всех воинов», цена 60, «Купить» активна, причины нет",
-		row.level.text == "0 / 3" and row.effect.text == "+8% к урону всех воинов" and row.price.text == "60" and row.button.text == "Купить" and not row.button.disabled and row.reason.text == "",
+		tr(row.level.text) == "0 / 3" and tr(row.effect.text) == "+8% к урону всех воинов" and tr(row.price.text) == "60" and tr(row.button.text) == "Купить" and not row.button.disabled and tr(row.reason.text) == "",
 		"%s | %s | %s" % [row.level.text, row.effect.text, row.price.text])
 	var texts := PackedStringArray()
 	for id in IDS:
@@ -369,13 +369,13 @@ func t_hub() -> void:
 		"+15% к прочности ворот", "+40 воинов в каждом стартовом отряде"], " | ".join(texts))
 	row.button.pressed.emit()
 	check("«Купить»: уровень «1 / 3», баланс 140, сохранено; следующий уровень +16% за 120 закрыт: «Откроется после осады I»", g.gift_levels["tempered_steel"] == 1 and g.radiance == 140
-		and h.radiance_label.text == "Сияние: 140" and row.level.text == "1 / 3" and row.effect.text == "+16% к урону всех воинов" and row.price.text == "120" and row.button.disabled
-		and row.reason.text == "Откроется после осады I" and on_disk().get("radiance") == 140, row.reason.text)
+		and tr(h.radiance_label.text) == "Сияние: 140" and tr(row.level.text) == "1 / 3" and tr(row.effect.text) == "+16% к урону всех воинов" and tr(row.price.text) == "120" and row.button.disabled
+		and tr(row.reason.text) == "Откроется после осады I" and on_disk().get("radiance") == 140, row.reason.text)
 	h.gift_rows["mine"].button.pressed.emit()
 	h.gift_rows["spoils"].button.pressed.emit()
 	var poor: Dictionary = h.gift_rows["reserve"]
-	check("после ещё двух покупок Сияния 20: у некупленных кнопка неактивна, «Не хватает Сияния»", g.radiance == 20 and poor.button.disabled and poor.reason.text == "Не хватает Сияния"
-		and poor.level.text == "0 / 3" and h.gift_rows["fortress_walls"].reason.text == "Не хватает Сияния")
+	check("после ещё двух покупок Сияния 20: у некупленных кнопка неактивна, «Не хватает Сияния»", g.radiance == 20 and poor.button.disabled and tr(poor.reason.text) == "Не хватает Сияния"
+		and tr(poor.level.text) == "0 / 3" and tr(h.gift_rows["fortress_walls"].reason.text) == "Не хватает Сияния")
 	poor.button.pressed.emit()
 	check("нажатие неактивной покупки ничего не меняет", g.radiance == 20 and g.gift_levels["reserve"] == 0)
 	g.records[1].wins = 1
@@ -385,7 +385,7 @@ func t_hub() -> void:
 	row.button.pressed.emit()
 	row.button.pressed.emit()
 	check("после осад I и II: уровни 2 и 3 куплены (120 + 240), строка «3 / 3», эффект и цена «—», причина «Максимальный уровень»", g.gift_levels["tempered_steel"] == 3 and g.radiance == 640
-		and row.level.text == "3 / 3" and row.effect.text == "—" and row.price.text == "—" and row.button.disabled and row.reason.text == "Максимальный уровень")
+		and tr(row.level.text) == "3 / 3" and tr(row.effect.text) == "—" and tr(row.price.text) == "—" and row.button.disabled and tr(row.reason.text) == "Максимальный уровень")
 	h.tabs.current_tab = 0
 	await step(1)
 	check("назад на «Осада»: фокус на «Начать забег»", h.start_button.has_focus() and h.start_button.is_visible_in_tree())

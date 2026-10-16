@@ -69,6 +69,7 @@ Godot "меню, хаб, пауза по Esc (v45)" "res://bench/check_v45.gd" "
 Godot "подгонка слоя замка (v48)" "res://bench/check_v48.gd" "CHECK: провалов 0"
 Godot "настройки, полный экран (v49)" "res://bench/check_v49.gd" "CHECK: провалов 0"
 Godot "клавиши, переназначение (v50)" "res://bench/check_v50.gd" "CHECK: провалов 0"
+Godot "переводы ru/en (таблица, ключи)" "res://bench/check_translations.gd" "CHECK: провалов 0"
 Godot "геометрия расстановки (v27)" "res://bench/check_v27.gd" "раздача слотов"
 Godot "отряды: создание, слияние (v28)" "res://bench/check_v28.gd" "да"
 Godot "управление строем (v29)" "res://bench/check_v29.gd" "да"
@@ -77,6 +78,7 @@ Godot "смоук с окном: мышь (v40)" "res://bench/smoke_v40.gd" "SMO
 Godot "смоук с окном: меню, хаб (v41)" "res://bench/smoke_v41.gd" "SMOKE: провалов 0" @() -Window
 Godot "смоук с окном: дневник (v42)" "res://bench/smoke_v42.gd" "SMOKE: провалов 0" @() -Window
 Godot "смоук с окном: F11 (v49)" "res://bench/smoke_v49.gd" "SMOKE: провалов 0" @("$tmp") -Window
+Godot "смоук с окном: языки (v51)" "res://bench/smoke_v51.gd" "SMOKE: провалов 0" @("$tmp") -Window
 if (-not $Quick) {
 	Godot "серия 50 боёв" "res://bench/series.gd" "SERIES\|"
 	Godot "тик: волна 20 слоя 1" "res://bench/time_v35.gd" "TIME\|" @("1", "20", "0", "caps", "1", "res://scripts/main.gd")

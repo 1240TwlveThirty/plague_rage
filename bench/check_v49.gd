@@ -60,7 +60,7 @@ func _run() -> void:
 	check("кнопки «Играть», «Настройки», «Выход»; настройки скрыты", mn.settings_button != null and mn.settings_button.is_visible_in_tree() and not sm.visible)
 	mn.settings_button.pressed.emit()
 	await step(1)
-	check("«Настройки» открывают экран, вкладка «Видео», фокус на «Назад»", sm.visible and sm.tabs.get_tab_title(0) == "Видео" and sm.back_button.has_focus())
+	check("«Настройки» открывают экран, вкладка «Видео», фокус на «Назад»", sm.visible and tr(sm.tabs.get_tab_title(0)) == "Видео" and sm.back_button.has_focus())
 	sm.fullscreen_check.button_pressed = true
 	check("переключатель включает полный экран", st.fullscreen)
 	st.set_fullscreen(false)

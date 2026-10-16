@@ -89,7 +89,7 @@ func _run() -> void:
 	h._unhandled_input(esc())
 	await step(2)
 	check("Esc: меню паузы открыто, дерево на паузе, фокус на «Продолжить»; кнопки «Продолжить», «Выйти в меню», «Выход из игры» золотые и по центру, предупреждения нет", em.visible and paused and em.continue_button.has_focus()
-		and em.continue_button.text == "Продолжить" and em.menu_button.text == "Выйти в меню" and em.quit_button.text == "Выход из игры" and not em.note_label.visible and gold(em.continue_button) and gold(em.quit_button)
+		and tr(em.continue_button.text) == "Продолжить" and tr(em.menu_button.text) == "Выйти в меню" and tr(em.quit_button.text) == "Выход из игры" and not em.note_label.visible and gold(em.continue_button) and gold(em.quit_button)
 		and centered(em.continue_button) and centered(em.menu_button) and centered(em.quit_button))
 	check("«Выход из игры» ведёт в Game.quit_game (сохранить и закрыть игру); не нажимается", em.quit_button.pressed.is_connected(em._on_quit) and g.has_method("quit_game"))
 	em._input(esc())
@@ -128,7 +128,7 @@ func _run() -> void:
 	var play0: float = g.play_time
 	await step(30)
 	check("Esc в бою: меню паузы открыто, дерево на паузе, предупреждение «%s»; пауза боя (P) не включена" % m.ESC_NOTE, em.visible and paused and not m.paused and m.wave_state == m.WS_BATTLE
-		and em.continue_button.has_focus() and em.note_label.visible and em.note_label.text == "Выход в меню засчитает поражение")
+		and em.continue_button.has_focus() and em.note_label.visible and tr(em.note_label.text) == "Выход в меню засчитает поражение")
 	check("30 кадров паузы: симуляция стоит (тик %d), окно сигнала стоит (время волны и число сигналов прежние), play_time стоит" % tick0,
 		m.tick_counter == tick0 and m.wave_t == wave_t0 and m.burst_signal_n == signals0 and g.play_time == play0, "тик %d, play_time %.3f -> %.3f" % [m.tick_counter, play0, g.play_time])
 	em._input(esc())
@@ -159,7 +159,7 @@ func _run() -> void:
 		and g.records[1].best_wave == 4 and saved is Dictionary and saved.get("radiance") == 115, str(g.last_run))
 	current_scene.play_button.pressed.emit()
 	await step(3)
-	check("хаб после брошенного забега: «Последний забег: поражение на волне 4»", current_scene.name == "Hub" and current_scene.last_label.text == "Последний забег: поражение на волне 4", current_scene.last_label.text)
+	check("хаб после брошенного забега: «Последний забег: поражение на волне 4»", current_scene.name == "Hub" and tr(current_scene.last_label.text) == "Последний забег: поражение на волне 4", current_scene.last_label.text)
 	g.start_run(1)
 	await step(3)
 	m = current_scene as Node2D
