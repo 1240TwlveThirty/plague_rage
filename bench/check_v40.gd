@@ -47,6 +47,12 @@ func motion(m: Node2D, w: Vector2) -> void:
 	e.position = m.get_global_transform_with_canvas() * w
 	m._unhandled_input(e)
 
+# Точка мира после пути «мир -> экран -> мир», как её видит игра в _unhandled_input (make_input_local).
+func through_screen(m: Node2D, w: Vector2) -> Vector2:
+	var e := InputEventMouseButton.new()
+	e.position = m.get_global_transform_with_canvas() * w
+	return (m.make_input_local(e) as InputEventMouseButton).position
+
 func lclick(m: Node2D, w: Vector2, shift := false, dbl := false) -> void:
 	mouse(m, MOUSE_BUTTON_LEFT, w, true, shift, dbl)
 	mouse(m, MOUSE_BUTTON_LEFT, w, false, shift)
@@ -352,7 +358,7 @@ func test_rmb() -> void:
 		m.hud_msg = ""
 		old.hud_msg = ""
 		rclick(m, p)
-		old._cmd_move(s, p)
+		old._cmd_move(s, through_screen(m, p))   # клик идёт через экран: с зумом камеры точка мира чуть сдвигается округлением
 		if m.hud_msg != "":
 			refused += 1
 		if m.squad_target != old.squad_target or m.hud_msg != old.hud_msg or m.squad_pos != old.squad_pos:

@@ -111,8 +111,18 @@ const BG_OFFSET := Vector2(-21, 0)
 # масштаба и сдвига по цвету фона, где лес и прежний замок уже нарисованы (bench/align_layers.py).
 const TREES_TX_OFFSET := Vector2(-2, 5)
 const TREES_TX_SCALE := 1.004
+# Замок — значения по умолчанию: при старте их заменяет data/layer_tuning.json (castle_offset, castle_scale_x, castle_scale_y),
+# если файл есть; подгонка вручную — F3 в debug-сборке (_tune_key), F4 сохраняет файл.
 const CASTLE_TX_OFFSET := Vector2(455, 519)
 const CASTLE_TX_SCALE := 0.448
+const LAYER_TUNING_PATH := "res://data/layer_tuning.json"
+const TUNE_STEP := 1.0             # сдвиг замка за нажатие стрелки, текселей фона (с Shift — TUNE_STEP_FINE)
+const TUNE_STEP_FINE := 0.25
+const TUNE_SCALE_STEP := 0.005     # масштаб замка за нажатие Q/E, Z/X, C/V: x (1 ± шаг) (с Shift — TUNE_SCALE_STEP_FINE)
+const TUNE_SCALE_STEP_FINE := 0.001
+# Фильтр слоя замка: "nearest" или "linear_mipmap" (mipmaps включены в импорте castle_lay_two.png; с эффектами на экран
+# идёт текстура вьюпорта без mip-уровней — тогда фактически linear)
+const CASTLE_FILTER := "nearest"
 const TREES_ALPHA := 1.0           # прозрачность слоя леса
 const CASTLE_ALPHA := 1.0          # прозрачность слоя замка
 const FG_Z := 1                    # слои леса и замка (замок поверх леса) выше юнитов, снарядов и полос HP ворот (всё на z 0), ниже интерфейса (CanvasLayer)
@@ -367,7 +377,7 @@ const VOLLEY_JITTER := 0.15            # залп: индивидуальная 
 const ARROW_SPEED := roundf(266.67 * SPEED_REL * 100.0) / 100.0   # px/с, задаёт задержку падения стрелы
 const ARROW_HIT_R := roundf(10.67 * SCALE_REL * 100.0) / 100.0   # стрела попадает в ближайшего зомби в этом радиусе от точки падения
 const ARROW_CAP := 2048                # ёмкость очереди стрел (с запасом)
-const DEBUG_COLORS := true            # F2–F4: отладочная раскраска; false в релизе (остаётся только F1)
+const DEBUG_COLORS := true            # F2, Shift+F3 (F3 в release-сборке), F4: отладочная раскраска; false в релизе (остаётся только F1)
 # Состояние юнита для раскраски F3 (пишется там, где принимается решение)
 const ST_IDLE := 0     # стоит в слоте / идёт с ордой
 const ST_CHASE := 1    # идёт на врага
@@ -433,7 +443,7 @@ var cell_white := 0                           # ячейка атласа пос
 var atlas_cells := 1                          # всего ячеек в атласе
 var windup_cd := 0.0                          # порог cooldown для кадра «замах», см. _unit_frame
 var unit_slot_changed_t := PackedFloat32Array()   # время (с) последней смены slot_idx (для F4)
-var color_mode := 0                           # 0 = F1 по типу, 1 = F2 по ряду, 2 = F3 по состоянию, 3 = F4 смена слота
+var color_mode := 0                           # 0 = F1 по типу, 1 = F2 по ряду, 2 = Shift+F3 по состоянию, 3 = F4 смена слота
 var squad_front_row := PackedInt32Array()     # scratch для F2: передний занятый ряд отряда
 
 # --- Типы юнитов (data/unit_types.json): плоские массивы по номеру типа ---
@@ -567,7 +577,7 @@ const SIDE_RIGHT := 2
 const SIDE_ARROWS := ["↑", "←", "→"]
 const VIEW_HALF_H := 540.0   # и половина высоты
 const SIDE_WORDS := ["сверху", "слева", "справа"]
-const VIEW_HALF_W := 960.0   # половина ширины экрана в px мира (камера по центру поля): для маркеров разведки у края экрана
+const VIEW_HALF_W := 960.0   # половина ширины экрана в px мира без камеры (бенчи без дерева); с камерой край вида — view_rect()
 var wave_plan: Array = []              # состав следующей (в бою — текущей) волны: записи {type, side, count}
 var wave_plan_for := 0                 # для какой волны построен wave_plan
 var wave_left := PackedInt32Array()    # сколько ещё не появилось по каждой записи плана
@@ -630,6 +640,15 @@ var fx_bg_mat: ShaderMaterial = null          # материалы эффект�
 var fx_trees_mat: ShaderMaterial = null
 var fx_castle_mat: ShaderMaterial = null
 var fx_vps: Array[SubViewport] = []          # вьюпорты слоёв леса и замка с эффектами
+var camera: Camera2D = null                   # камера поля (_setup_camera); null в бенчах без дерева
+var castle_filter := CASTLE_FILTER            # бенчи переопределяют до _ready
+var layer_tuning_path := LAYER_TUNING_PATH    # и путь подгонки замка тоже
+var castle_sprite: Sprite2D = null            # спрайт слоя замка на экране (с эффектами — спрайт текстуры вьюпорта)
+var castle_offset := CASTLE_TX_OFFSET         # положение и масштаб замка в текселях фона (data/layer_tuning.json)
+var castle_scale := Vector2(CASTLE_TX_SCALE, CASTLE_TX_SCALE)
+var tune_on := false                          # режим подгонки замка (F3, debug-сборка)
+var tune_label: Label = null
+var tune_msg := ""                            # итог последнего сохранения
 var fx_bake_t := 0.0                          # с до следующей перерисовки вьюпорта
 static var fx_fire_map: ImageTexture = null   # карта факелов, строится один раз за запуск
 static var fx_torches := 0                    # найдено факелов
@@ -700,7 +719,7 @@ func _setup_background() -> void:
 		bg.material = fx_bg_mat
 	add_child(bg)
 	# Слои леса и замка поверх юнитов; замок добавлен позже — поверх леса
-	var trees := _layer_sprite(TREES_LAYER_PATH, TREES_TX_OFFSET, TREES_TX_SCALE, TREES_ALPHA)
+	var trees := _layer_sprite(TREES_LAYER_PATH, TREES_TX_OFFSET, Vector2.ONE * TREES_TX_SCALE, TREES_ALPHA)
 	if trees != null:
 		if fx_enabled:
 			fx_trees_mat = _fx_material(TREES_SHADER, {"tree_noise_scale": TREE_NOISE_SCALE,
@@ -709,8 +728,13 @@ func _setup_background() -> void:
 			trees = _fx_bake(trees)
 			fx_gust_wait = lerpf(GUST_EVERY_MIN, GUST_EVERY_MAX, _fx_hash(0))
 		add_child(trees)
-	var castle := _layer_sprite(CASTLE_LAYER_PATH, CASTLE_TX_OFFSET, CASTLE_TX_SCALE, CASTLE_ALPHA)
+	_load_layer_tuning()
+	var castle := _layer_sprite(CASTLE_LAYER_PATH, castle_offset, castle_scale, CASTLE_ALPHA)
 	if castle != null:
+		if castle_filter == "linear_mipmap":
+			castle.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		elif castle_filter != "nearest":
+			push_warning("CASTLE_FILTER: неизвестный фильтр %s, оставлен nearest" % castle_filter)
 		if fx_enabled:
 			if fx_fire_map == null:
 				fx_fire_map = _build_fire_map(castle.texture.get_image())
@@ -722,6 +746,7 @@ func _setup_background() -> void:
 			castle.material = fx_castle_mat
 			castle = _fx_bake(castle)
 		add_child(castle)
+		castle_sprite = castle
 	if fx_enabled:
 		_setup_leaves()
 		_sync_fx_debug()
@@ -748,6 +773,7 @@ func _fx_bake(inner: Sprite2D) -> Sprite2D:
 	out.z_index = inner.z_index
 	var a := inner.modulate.a
 	out.modulate = Color(a, a, a, a)
+	out.texture_filter = inner.texture_filter
 	var vp := SubViewport.new()
 	vp.size = Vector2i(inner.texture.get_size())
 	vp.transparent_bg = true
@@ -757,11 +783,11 @@ func _fx_bake(inner: Sprite2D) -> Sprite2D:
 	inner.scale = Vector2.ONE
 	inner.z_index = 0
 	inner.modulate = Color.WHITE
+	inner.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST   # во вьюпорт — тексель в тексель
 	vp.add_child(inner)
 	add_child(vp)
 	fx_vps.append(vp)
 	out.texture = vp.get_texture()
-	out.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var cm := CanvasItemMaterial.new()
 	cm.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
 	out.material = cm
@@ -908,18 +934,112 @@ func _setup_leaves() -> void:
 
 
 # Спрайт карты: тексель (u, v) — тексель фона tx_offset + tx_scale * (u, v); фон — с нулевым сдвигом и масштабом 1.
-func _map_sprite(path: String, tx_offset := Vector2.ZERO, tx_scale := 1.0) -> Sprite2D:
+func _map_sprite(path: String, tx_offset := Vector2.ZERO, tx_scale := Vector2.ONE) -> Sprite2D:
 	var sp := Sprite2D.new()
 	sp.texture = load(path)
 	sp.centered = false
-	sp.scale = Vector2(BG_SCALE, BG_SCALE) * tx_scale
-	sp.position = BG_OFFSET + tx_offset * BG_SCALE
+	_place_map_sprite(sp, tx_offset, tx_scale)
 	sp.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	return sp
 
 
+func _place_map_sprite(sp: Sprite2D, tx_offset: Vector2, tx_scale: Vector2) -> void:
+	sp.scale = Vector2(BG_SCALE, BG_SCALE) * tx_scale
+	sp.position = BG_OFFSET + tx_offset * BG_SCALE
+
+
+# Положение и масштаб замка из data/layer_tuning.json; нет файла — значения по умолчанию, битый — они же с предупреждением.
+func _load_layer_tuning() -> void:
+	if not FileAccess.file_exists(layer_tuning_path):
+		return
+	var d = JSON.parse_string(FileAccess.get_file_as_string(layer_tuning_path))
+	var off = d.get("castle_offset") if d is Dictionary else null
+	if not (off is Array and off.size() == 2 and (off[0] is float or off[0] is int) and (off[1] is float or off[1] is int)
+			and _require_numbers(d, ["castle_scale_x", "castle_scale_y"], layer_tuning_path)):
+		push_warning("%s: нужны castle_offset [x, y], castle_scale_x, castle_scale_y — взяты значения по умолчанию" % layer_tuning_path)
+		return
+	castle_offset = Vector2(off[0], off[1])
+	castle_scale = Vector2(d["castle_scale_x"], d["castle_scale_y"])
+
+
+func _save_layer_tuning() -> void:
+	var f := FileAccess.open(layer_tuning_path, FileAccess.WRITE)
+	if f == null:
+		tune_msg = "не сохранено: %s (%s)" % [layer_tuning_path, error_string(FileAccess.get_open_error())]
+		return
+	f.store_string(JSON.stringify({"castle_offset": [castle_offset.x, castle_offset.y],
+		"castle_scale_x": castle_scale.x, "castle_scale_y": castle_scale.y}, "\t", false) + "\n")
+	f.close()
+	tune_msg = "сохранено в %s" % layer_tuning_path
+
+
+# Подгонка замка (только debug-сборка): F3 включает и выключает; во включённом режиме стрелки — сдвиг на TUNE_STEP
+# текселя фона, Q/E — масштаб по обеим осям, Z/X — по x, C/V — по y (меньше/больше в 1 ± TUNE_SCALE_STEP раз), с Shift
+# мельче; масштаб — от левого верхнего угла слоя; F4 — сохранить. Съеденная клавиша в игру не идёт; выключенный режим
+# не забирает ничего, кроме F3 без Shift (раскраска по состоянию — Shift+F3). Симуляцию не трогает: только спрайт.
+func _tune_key(event: InputEvent) -> bool:
+	if not (event is InputEventKey and event.pressed and OS.is_debug_build() and castle_sprite != null):
+		return false
+	var k: Key = event.keycode
+	if k == KEY_F3 and not event.shift_pressed:
+		if not event.echo:
+			tune_on = not tune_on
+			tune_msg = ""
+			_tune_show()
+		return true
+	if not tune_on:
+		return false
+	var step := TUNE_STEP_FINE if event.shift_pressed else TUNE_STEP
+	var ds := TUNE_SCALE_STEP_FINE if event.shift_pressed else TUNE_SCALE_STEP
+	match k:
+		KEY_LEFT:
+			castle_offset.x -= step
+		KEY_RIGHT:
+			castle_offset.x += step
+		KEY_UP:
+			castle_offset.y -= step
+		KEY_DOWN:
+			castle_offset.y += step
+		KEY_Q:
+			castle_scale *= 1.0 - ds
+		KEY_E:
+			castle_scale *= 1.0 + ds
+		KEY_Z:
+			castle_scale.x *= 1.0 - ds
+		KEY_X:
+			castle_scale.x *= 1.0 + ds
+		KEY_C:
+			castle_scale.y *= 1.0 - ds
+		KEY_V:
+			castle_scale.y *= 1.0 + ds
+		KEY_F4:
+			if not event.echo:
+				_save_layer_tuning()
+		_:
+			return false
+	_place_map_sprite(castle_sprite, castle_offset, castle_scale)
+	_tune_show()
+	return true
+
+
+func _tune_show() -> void:
+	if tune_label == null:
+		var layer := CanvasLayer.new()
+		tune_label = Label.new()
+		tune_label.position = Vector2(16, 40)
+		tune_label.add_theme_constant_override("outline_size", 6)
+		tune_label.add_theme_color_override("font_outline_color", Color.BLACK)
+		tune_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layer.add_child(tune_label)
+		add_child(layer)
+	tune_label.visible = tune_on
+	tune_label.text = ("Подгонка замка (F3): смещение (%.2f, %.2f) текселей фона, масштаб x %.4f, y %.4f\n"
+		+ "стрелки — сдвиг 1 (Shift 0.25) · Q/E — масштаб -/+0.5%% (Shift 0.1%%) · Z/X — по x · C/V — по y · F4 — сохранить%s") % [
+		castle_offset.x, castle_offset.y, castle_scale.x, castle_scale.y, ("\n" + tune_msg) if tune_msg != "" else ""]
+
+
 # Слой поверх юнитов (z FG_Z) с прозрачностью alpha; нет файла — null с предупреждением.
-func _layer_sprite(path: String, tx_offset: Vector2, tx_scale: float, alpha: float) -> Sprite2D:
+func _layer_sprite(path: String, tx_offset: Vector2, tx_scale: Vector2, alpha: float) -> Sprite2D:
 	if not ResourceLoader.exists(path):
 		push_warning("Нет слоя %s: рисуется без него" % path)
 		return null
@@ -929,13 +1049,45 @@ func _layer_sprite(path: String, tx_offset: Vector2, tx_scale: float, alpha: flo
 	return sp
 
 
-# Фиксированная камера на центре поля, без отдаления.
+# Камера на центре поля, без отдаления при росте армии. Зум не меньше camera_min_zoom(): поле закрывает весь экран
+# (при 1920x1080 и поле 2208x1056 — по высоте, 1080/1056), центр зажат так, чтобы края вида не выходили за поле.
 func _setup_camera() -> void:
-	var cam := Camera2D.new()
-	cam.position = FIELD * 0.5
-	cam.zoom = Vector2.ONE
-	add_child(cam)
-	cam.make_current()
+	camera = Camera2D.new()
+	camera.zoom = Vector2.ONE * camera_min_zoom()
+	camera.position = _camera_clamp(FIELD * 0.5, camera.zoom.x)
+	add_child(camera)
+	camera.make_current()
+
+
+# Наименьший зум, при котором поле перекрывает экран целиком по обеим осям.
+func camera_min_zoom() -> float:
+	var vs := _screen_size()
+	return maxf(vs.y / FIELD.y, vs.x / FIELD.x)
+
+
+# Размер экрана в px интерфейса (база окна при stretch canvas_items); вне дерева — размер окна из настроек проекта.
+func _screen_size() -> Vector2:
+	if is_inside_tree():
+		return get_viewport_rect().size
+	return Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
+
+
+# Центр камеры при зуме z: половина вида в мире не выходит за край поля (вид больше поля по оси — центр поля).
+func _camera_clamp(c: Vector2, z: float) -> Vector2:
+	var half := _screen_size() * 0.5 / z
+	var out := c
+	for a in 2:
+		out[a] = FIELD[a] * 0.5 if half[a] * 2.0 >= FIELD[a] else clampf(c[a], half[a], FIELD[a] - half[a])
+	return out
+
+
+# Видимая часть поля в мировых координатах (для полос сигнала и маркеров у края экрана). Без камеры (бенчи без дерева) —
+# экран VIEW_HALF_W x VIEW_HALF_H вокруг центра поля, как раньше.
+func view_rect() -> Rect2:
+	if camera == null:
+		return Rect2(FIELD * 0.5 - Vector2(VIEW_HALF_W, VIEW_HALF_H), Vector2(VIEW_HALF_W, VIEW_HALF_H) * 2.0)
+	var half := _screen_size() * 0.5 / camera.zoom
+	return Rect2(camera.position - half, half * 2.0)
 
 
 # Полоса HP ворот (всегда) и отладочные маркеры ворот и дороги (только при DEBUG_COLORS).
@@ -1003,8 +1155,9 @@ func _draw() -> void:
 			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), "%d отр. · %d px" % [list.size(), roundi(mg.length)],
 				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
 	# Сигнал всплеска: пульсирующая золотая полоса вдоль края экрана и мигающий (2 Гц) треугольник 48 px у своей стороны
-	var view_lo := FIELD * 0.5 - Vector2(VIEW_HALF_W, VIEW_HALF_H)
-	var view_size := Vector2(VIEW_HALF_W, VIEW_HALF_H) * 2.0
+	var vr := view_rect()
+	var view_lo := vr.position
+	var view_size := vr.size
 	# Слои: мягкая красная полоса у края экрана своей стороны — 0.30 у края, плавно до 0 на 100 px вглубь (10 ступеней)
 	for side in 3:
 		var sa := _signal_alpha(side)
@@ -1370,8 +1523,9 @@ func _recon_markers() -> Array:
 	var out := []
 	if not scout_shown or not waves_enabled or wave_state != WS_RESPITE:
 		return out
-	var at := [Vector2(wave_cfg.spawn_center_x, 150.0), Vector2(FIELD.x * 0.5 - VIEW_HALF_W + 120.0, wave_cfg.spawn_left_y),
-		Vector2(FIELD.x * 0.5 + VIEW_HALF_W - 120.0, wave_cfg.spawn_right_y)]
+	var vr := view_rect()
+	var at := [Vector2(wave_cfg.spawn_center_x, 150.0), Vector2(vr.position.x + 120.0, wave_cfg.spawn_left_y),
+		Vector2(vr.end.x - 120.0, wave_cfg.spawn_right_y)]
 	var dirs := [Vector2.DOWN, Vector2.RIGHT, Vector2.LEFT]
 	for side in 3:
 		var items := []
@@ -4582,6 +4736,8 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _tune_key(event):
+		return   # подгонка замка (F3, debug-сборка)
 	# Сюда приходят только события, не съеденные интерфейсом: клик по панели карту не трогает.
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		# ЛКМ выбирает: клик — отряд под курсором, протяжка — рамка
@@ -4706,7 +4862,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F1:
 				color_mode = 0
 				_sync_fx_debug()
-			KEY_F2, KEY_F3, KEY_F4:
+			KEY_F2, KEY_F3, KEY_F4:   # в debug-сборке F3 без Shift — подгонка замка (_tune_key), раскраска по состоянию — Shift+F3
 				if DEBUG_COLORS:
 					color_mode = event.keycode - KEY_F1
 					_sync_fx_debug()

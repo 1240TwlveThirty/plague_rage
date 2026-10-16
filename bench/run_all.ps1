@@ -66,6 +66,7 @@ Godot "сохранение, дневник, концовки (v42)" "res://benc
 Godot "модификаторы: дары (v43)" "res://bench/check_v43.gd" "CHECK: провалов 0"
 Godot "Сияние, магазин даров (v44)" "res://bench/check_v44.gd" "CHECK: провалов 0"
 Godot "меню, хаб, пауза по Esc (v45)" "res://bench/check_v45.gd" "CHECK: провалов 0"
+Godot "подгонка слоя замка (v48)" "res://bench/check_v48.gd" "CHECK: провалов 0"
 Godot "геометрия расстановки (v27)" "res://bench/check_v27.gd" "раздача слотов"
 Godot "отряды: создание, слияние (v28)" "res://bench/check_v28.gd" "да"
 Godot "управление строем (v29)" "res://bench/check_v29.gd" "да"
