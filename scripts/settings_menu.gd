@@ -18,6 +18,8 @@ var key_msg: Label              # итог последнего назначен
 var reset_keys_button: Button
 var waiting_action := ""        # ждём клавишу для этого действия; "" — не ждём
 var lang_buttons := {}          # "ru" / "en" -> кнопка выбора языка
+var music_slider: HSlider
+var sfx_slider: HSlider
 
 
 func _ready() -> void:
@@ -46,6 +48,7 @@ func _ready() -> void:
 	tabs.add_theme_font_size_override("font_size", FONT)
 	box.add_child(tabs)
 	_setup_video()
+	_setup_audio()
 	_setup_controls()
 	_setup_language()
 	back_button = Button.new()
@@ -85,6 +88,34 @@ func _setup_video() -> void:
 	fullscreen_check.button_pressed = settings.fullscreen
 	fullscreen_check.toggled.connect(settings.set_fullscreen)
 	col.add_child(fullscreen_check)
+
+
+# Вкладка «Звук»: ползунки «Музыка» и «Эффекты» (линейная громкость 0..1, Settings переводит в dB).
+func _setup_audio() -> void:
+	var col := _tab("UI_SETTINGS_TAB_AUDIO")
+	music_slider = _volume_row(col, "UI_SETTINGS_MUSIC", settings.music_volume, settings.set_music_volume)
+	sfx_slider = _volume_row(col, "UI_SETTINGS_SFX", settings.sfx_volume, settings.set_sfx_volume)
+
+
+func _volume_row(col: Container, title: String, value: float, on_change: Callable) -> HSlider:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 24)
+	col.add_child(row)
+	var l := Label.new()
+	l.text = title
+	l.custom_minimum_size.x = 300.0
+	l.add_theme_font_size_override("font_size", FONT)
+	row.add_child(l)
+	var sl := HSlider.new()
+	sl.min_value = 0.0
+	sl.max_value = 1.0
+	sl.step = 0.05
+	sl.value = value
+	sl.custom_minimum_size = Vector2(480, 32)
+	sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sl.value_changed.connect(on_change)
+	row.add_child(sl)
+	return sl
 
 
 # Вкладка «Управление»: «действие — клавиша»; клик по клавише и нажатие новой назначает её (Esc — отмена).
@@ -174,6 +205,8 @@ func assign_key(event: InputEventKey) -> void:
 
 func _on_changed(_key: String) -> void:
 	fullscreen_check.set_pressed_no_signal(settings.fullscreen)
+	music_slider.set_value_no_signal(settings.music_volume)
+	sfx_slider.set_value_no_signal(settings.sfx_volume)
 	for l in lang_buttons:
 		lang_buttons[l].set_pressed_no_signal(settings.language == l)
 	_refresh_keys()

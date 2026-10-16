@@ -78,6 +78,7 @@ func _ready() -> void:
 	box.add_child(siege_option)
 	start_button = _button(box, "HUB_START_RUN")
 	start_button.pressed.connect(_on_start)
+	start_button.set_meta("sfx", "click_play")   # начало забега звучит как «Играть» (Audio)
 	diary_button = _button(box, "HUB_DIARY")
 	diary_button.pressed.connect(_open_diary)
 	diary_button.disabled = game.story.is_empty()   # story.json не загрузился: ошибка уже выведена

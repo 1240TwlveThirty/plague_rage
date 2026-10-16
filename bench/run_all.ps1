@@ -79,6 +79,7 @@ Godot "смоук с окном: меню, хаб (v41)" "res://bench/smoke_v41.
 Godot "смоук с окном: дневник (v42)" "res://bench/smoke_v42.gd" "SMOKE: провалов 0" @() -Window
 Godot "смоук с окном: F11 (v49)" "res://bench/smoke_v49.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: языки (v51)" "res://bench/smoke_v51.gd" "SMOKE: провалов 0" @("$tmp") -Window
+Godot "смоук с окном: звук (v52)" "res://bench/smoke_v52.gd" "SMOKE: провалов 0" @() -Window
 if (-not $Quick) {
 	Godot "серия 50 боёв" "res://bench/series.gd" "SERIES\|"
 	Godot "тик: волна 20 слоя 1" "res://bench/time_v35.gd" "TIME\|" @("1", "20", "0", "caps", "1", "res://scripts/main.gd")

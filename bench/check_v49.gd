@@ -52,6 +52,24 @@ func _run() -> void:
 	check("битый файл: значения по умолчанию", not st.fullscreen)
 	st.set_fullscreen(false)
 
+	print("громкость")
+	st.set_music_volume(0.3)
+	st.set_sfx_volume(0.0)
+	var mi := AudioServer.get_bus_index("Music")
+	var si := AudioServer.get_bus_index("SFX")
+	check("музыка 0.3: шина Music %.1f dB, не выключена" % AudioServer.get_bus_volume_db(mi), is_equal_approx(AudioServer.get_bus_volume_db(mi), linear_to_db(0.3))
+		and not AudioServer.is_bus_mute(mi))
+	check("эффекты 0: шина SFX выключена", AudioServer.is_bus_mute(si))
+	cfg = ConfigFile.new()
+	check("audio/music и audio/sfx в файле", cfg.load(path) == OK and is_equal_approx(cfg.get_value("audio", "music", -1.0), 0.3) and cfg.get_value("audio", "sfx", -1.0) == 0.0)
+	st.music_volume = 1.0
+	st.sfx_volume = 1.0
+	st.load_settings()
+	check("«перезапуск»: громкость из файла", is_equal_approx(st.music_volume, 0.3) and st.sfx_volume == 0.0 and AudioServer.is_bus_mute(si))
+	st.set_music_volume(st.VOLUME_DEFAULT)
+	st.set_sfx_volume(st.VOLUME_DEFAULT)
+	check("по умолчанию 0.8: SFX снова включена", not AudioServer.is_bus_mute(si) and is_equal_approx(AudioServer.get_bus_volume_db(si), linear_to_db(0.8)))
+
 	print("главное меню")
 	var mn: Control = load("res://scenes/menu.tscn").instantiate()
 	root.add_child(mn)
@@ -61,6 +79,13 @@ func _run() -> void:
 	mn.settings_button.pressed.emit()
 	await step(1)
 	check("«Настройки» открывают экран, вкладка «Видео», фокус на «Назад»", sm.visible and tr(sm.tabs.get_tab_title(0)) == "Видео" and sm.back_button.has_focus())
+	sm.tabs.current_tab = 1
+	check("вкладка «Звук»: ползунки «Музыка» и «Эффекты» со значениями Settings", tr(sm.tabs.get_tab_title(1)) == "Звук"
+		and is_equal_approx(sm.music_slider.value, st.music_volume) and is_equal_approx(sm.sfx_slider.value, st.sfx_volume))
+	sm.music_slider.value = 0.5
+	check("ползунок «Музыка» меняет громкость", is_equal_approx(st.music_volume, 0.5))
+	st.set_music_volume(st.VOLUME_DEFAULT)
+	sm.tabs.current_tab = 0
 	sm.fullscreen_check.button_pressed = true
 	check("переключатель включает полный экран", st.fullscreen)
 	st.set_fullscreen(false)

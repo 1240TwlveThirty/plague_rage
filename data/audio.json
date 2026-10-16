@@ -1,0 +1,18 @@
+{
+	"crossfade_sec": 1.75,
+	"hover_min_interval_ms": 40,
+	"pitch_jitter": 0.03,
+	"battle_queue": ["battle_theme", "battle_theme_2"],
+	"sounds": {
+		"main_menu": {"path": "res://music_sounds/main_menu.wav", "bus": "Music", "volume_db": -6.0, "loop": true},
+		"hub": {"path": "res://music_sounds/hub.wav", "bus": "Music", "volume_db": -6.0, "loop": true},
+		"respite": {"path": "res://music_sounds/respite.wav", "bus": "Music", "volume_db": -6.0, "loop": true},
+		"battle_theme": {"path": "res://music_sounds/battle_theme.wav", "bus": "Music", "volume_db": -6.0, "loop": false},
+		"battle_theme_2": {"path": "res://music_sounds/battle_theme_2.wav", "bus": "Music", "volume_db": -6.0, "loop": false},
+		"click_play": {"path": "res://music_sounds/click_play.wav", "bus": "SFX", "volume_db": -4.0, "loop": false},
+		"click_exit": {"path": "res://music_sounds/click_exit.wav", "bus": "SFX", "volume_db": -4.0, "loop": false},
+		"click_settings": {"path": "res://music_sounds/click_settings.wav", "bus": "SFX", "volume_db": -4.0, "loop": false},
+		"clicks_in_hub": {"path": "res://music_sounds/clicks_in_hub.wav", "bus": "SFX", "volume_db": -6.0, "loop": false},
+		"hover": {"path": "res://music_sounds/hover.wav", "bus": "SFX", "volume_db": -12.0, "loop": false}
+	}
+}

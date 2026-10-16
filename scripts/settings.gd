@@ -9,11 +9,15 @@ const PATH := "user://settings.cfg"
 const WINDOW_SIZE := Vector2i(1920, 1080)       # окно по умолчанию
 const WINDOW_SIZE_SMALL := Vector2i(1280, 720)  # если экран меньше WINDOW_SIZE
 const LANGUAGES := ["ru", "en"]
+const AUDIO := preload("res://scripts/audio.gd")   # шины Music и SFX
+const VOLUME_DEFAULT := 0.8
 
 var path := PATH
 var persist := true            # false — не писать файл (тестовый запуск)
 var fullscreen := false        # display/fullscreen: безрамочный полноэкранный режим
 var language := "ru"           # general/language: "ru" или "en"
+var music_volume := VOLUME_DEFAULT   # audio/music: линейная громкость шины Music, 0..1
+var sfx_volume := VOLUME_DEFAULT     # audio/sfx: шины SFX
 
 
 func _ready() -> void:
@@ -24,7 +28,9 @@ func _ready() -> void:
 		_apply_window(true)   # тестовое окно не трогать: размер задают тесты и проект
 	else:
 		language = "ru"       # тесты сверяют русские строки
+		AudioServer.set_bus_mute(0, true)   # тесты без звука в колонках (плееры при этом играют)
 	TranslationServer.set_locale(language)
+	_apply_audio()
 
 
 # Прочитать файл и применить; нет файла или он битый — значения по умолчанию.
@@ -38,6 +44,9 @@ func load_settings() -> void:
 	if not language in LANGUAGES:
 		language = default_language()
 	TranslationServer.set_locale(language)
+	music_volume = clampf(float(cfg.get_value("audio", "music", VOLUME_DEFAULT)), 0.0, 1.0)
+	sfx_volume = clampf(float(cfg.get_value("audio", "sfx", VOLUME_DEFAULT)), 0.0, 1.0)
+	_apply_audio()
 	_load_keys(cfg)
 
 
@@ -47,6 +56,8 @@ func save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("display", "fullscreen", fullscreen)
 	cfg.set_value("general", "language", language)
+	cfg.set_value("audio", "music", music_volume)
+	cfg.set_value("audio", "sfx", sfx_volume)
 	_save_keys(cfg)
 	if cfg.save(path) != OK:
 		push_warning("Не удалось сохранить настройки в %s" % path)
@@ -74,6 +85,29 @@ func set_language(l: String) -> void:
 	TranslationServer.set_locale(l)
 	save_settings()
 	changed.emit("general/language")
+
+
+func set_music_volume(v: float) -> void:
+	music_volume = clampf(v, 0.0, 1.0)
+	_apply_audio()
+	save_settings()
+	changed.emit("audio/music")
+
+
+func set_sfx_volume(v: float) -> void:
+	sfx_volume = clampf(v, 0.0, 1.0)
+	_apply_audio()
+	save_settings()
+	changed.emit("audio/sfx")
+
+
+# Линейная громкость 0..1 -> dB шины; 0 — шина выключена.
+func _apply_audio() -> void:
+	AUDIO.ensure_buses()
+	for pair in [["Music", music_volume], ["SFX", sfx_volume]]:
+		var idx := AudioServer.get_bus_index(pair[0])
+		AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(pair[1], 0.0001)))
+		AudioServer.set_bus_mute(idx, pair[1] <= 0.0)
 
 
 func toggle_fullscreen() -> void:
