@@ -16,7 +16,10 @@ UI_SETTINGS_TAB_AUDIO,Звук,Audio
 UI_SETTINGS_TAB_CONTROLS,Управление,Controls
 UI_SETTINGS_TAB_LANGUAGE,Язык,Language
 UI_SETTINGS_FULLSCREEN,Полный экран (F11),Fullscreen (F11)
-UI_SETTINGS_KEY_WAIT,Нажмите клавишу… (Esc — отмена),Press a key… (Esc to cancel)
+UI_SETTINGS_KEY_WAIT,Нажмите клавишу или кнопку мыши… (Esc — отмена),Press a key or mouse button… (Esc to cancel)
+UI_MOUSE_MIDDLE,Средняя кнопка мыши,Middle mouse button
+UI_MOUSE_X1,Мышь 4,Mouse 4
+UI_MOUSE_X2,Мышь 5,Mouse 5
 UI_SETTINGS_KEYS_RESET,Сбросить по умолчанию,Reset to defaults
 UI_SETTINGS_LANG_RU,Русский,Русский
 UI_SETTINGS_LANG_EN,English,English

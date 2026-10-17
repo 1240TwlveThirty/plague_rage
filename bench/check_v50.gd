@@ -22,6 +22,12 @@ func ev(code: Key, shift := false, ctrl := false) -> InputEventKey:
 	e.ctrl_pressed = ctrl
 	return e
 
+func mb(button: MouseButton, pressed := false) -> InputEventMouseButton:
+	var e := InputEventMouseButton.new()
+	e.button_index = button
+	e.pressed = pressed
+	return e
+
 func used_squads(m: Node2D) -> int:
 	var n := 0
 	for s in m.SQUAD_MAX:
@@ -110,6 +116,29 @@ func _run() -> void:
 	InputMap.load_from_project_settings()
 	st.load_settings()
 	check("«перезапуск»: клавиши из файла", ST.key_label("squad_new") == "G" and ST.key_label("squad_split") == "J" and ST.key_label("buy_1") == "B" and ST.key_label("wave_start") == "L")
+	print("кнопки мыши")
+	r = st.rebind_event("squad_new", mb(MOUSE_BUTTON_XBUTTON1))
+	check("«Новый отряд» -> Мышь 4", r.ok and ST.key_label("squad_new") == "Мышь 4", ST.key_label("squad_new"))
+	m._unhandled_input(ev(KEY_1))
+	n0 = used_squads(m)
+	m._unhandled_input(mb(MOUSE_BUTTON_XBUTTON1, true))
+	check("Мышь 4 создаёт отряд", used_squads(m) == n0 + 1, "%d -> %d" % [n0, used_squads(m)])
+	m._unhandled_input(ev(KEY_1))
+	m._unhandled_input(mb(MOUSE_BUTTON_XBUTTON2, true))
+	check("Мышь 5 без привязки: ничего", used_squads(m) == n0 + 1)
+	r = st.rebind_event("squad_split", mb(MOUSE_BUTTON_XBUTTON1))
+	check("Мышь 4 у «Разделить»: обмен с «Новый отряд» (получает J)", r.ok and r.msg != "" and ST.key_label("squad_split") == "Мышь 4" and ST.key_label("squad_new") == "J", r.msg)
+	r = st.rebind_event("buy_1", mb(MOUSE_BUTTON_LEFT))
+	r2 = st.rebind_event("buy_1", mb(MOUSE_BUTTON_RIGHT))
+	check("ЛКМ и ПКМ: отказ", not r.ok and not r2.ok and ST.key_label("buy_1") == "B")
+	st.rebind_event("buy_1", mb(MOUSE_BUTTON_MIDDLE))
+	cfg = ConfigFile.new()
+	check("файл: кнопки мыши как Mouse8 / Mouse3", cfg.load(st.path) == OK and cfg.get_value("input", "squad_split", "") == "Mouse8" and cfg.get_value("input", "buy_1", "") == "Mouse3")
+	InputMap.load_from_project_settings()
+	st.load_settings()
+	TranslationServer.set_locale("en")
+	check("«перезапуск»: мышь из файла, подпись по-английски", ST.key_label("squad_split") == "Mouse 4" and ST.key_label("buy_1") == "Middle mouse button", ST.key_label("buy_1"))
+	TranslationServer.set_locale("ru")
 	st.reset_keys()
 	cfg = ConfigFile.new()
 	cfg.load(st.path)
@@ -136,6 +165,13 @@ func _run() -> void:
 	root.push_input(ev(KEY_C))
 	await step(1)
 	check("C (занята «Купить: оружие»): обмен и сообщение", ST.key_label("buy_2") == "C" and ST.key_label("buy_3") == "X" and tr(sm.key_buttons["buy_3"].text) == "X" and sm.key_msg.text != "", sm.key_msg.text)
+	sm.key_buttons["buy_2"].pressed.emit()
+	root.push_input(mb(MOUSE_BUTTON_LEFT, true))
+	await step(1)
+	check("ЛКМ во время ожидания не назначается", sm.waiting_action == "buy_2" and ST.key_label("buy_2") == "C")
+	root.push_input(mb(MOUSE_BUTTON_XBUTTON2, true))
+	await step(1)
+	check("Мышь 5 назначена из «Управления»", sm.waiting_action == "" and ST.key_label("buy_2") == "Мышь 5" and sm.key_buttons["buy_2"].text == "Мышь 5", sm.key_buttons["buy_2"].text)
 	sm.reset_keys_button.pressed.emit()
 	check("«Сбросить по умолчанию»", ST.key_label("buy_2") == "X" and tr(sm.key_buttons["buy_2"].text) == "X")
 	sm.queue_free()

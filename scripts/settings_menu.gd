@@ -118,7 +118,8 @@ func _volume_row(col: Container, title: String, value: float, on_change: Callabl
 	return sl
 
 
-# Вкладка «Управление»: «действие — клавиша»; клик по клавише и нажатие новой назначает её (Esc — отмена).
+# Вкладка «Управление»: «действие — клавиша»; клик по клавише и нажатие новой клавиши или средней/боковой кнопки мыши
+# назначает её (Esc — отмена).
 func _setup_controls() -> void:
 	var col := _tab("UI_SETTINGS_TAB_CONTROLS")
 	var scroll := ScrollContainer.new()
@@ -192,14 +193,15 @@ func _reset_keys() -> void:
 	_refresh_keys()
 
 
-# Нажатая клавиша для ждущего действия: Esc — отмена, иначе Settings.rebind (обмен или отказ — сообщение).
-func assign_key(event: InputEventKey) -> void:
+# Нажатая клавиша или кнопка мыши для ждущего действия: Esc — отмена, иначе Settings.rebind_event (обмен или отказ —
+# сообщение).
+func assign_key(event: InputEvent) -> void:
 	var action := waiting_action
 	waiting_action = ""
-	if event.keycode == KEY_ESCAPE:
+	if event is InputEventKey and event.keycode == KEY_ESCAPE:
 		key_msg.text = ""
 	else:
-		key_msg.text = settings.rebind(action, event.keycode).msg
+		key_msg.text = settings.rebind_event(action, event).msg
 	_refresh_keys()
 
 
@@ -243,6 +245,10 @@ func close() -> void:
 func _input(event: InputEvent) -> void:
 	if visible and waiting_action != "" and event is InputEventKey and event.pressed and not event.echo:
 		assign_key(event)   # клавиша уходит в назначение, Esc экран не закрывает
+		get_viewport().set_input_as_handled()
+		return
+	if visible and waiting_action != "" and event is InputEventMouseButton and event.pressed and settings.MOUSE_BINDABLE.has(event.button_index):
+		assign_key(event)   # средняя и боковые кнопки мыши; ЛКМ и ПКМ работают с интерфейсом как обычно
 		get_viewport().set_input_as_handled()
 		return
 	if visible and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:

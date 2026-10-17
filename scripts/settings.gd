@@ -153,11 +153,43 @@ const RESERVED_KEYS := [KEY_ESCAPE, KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_
 	KEY_SHIFT, KEY_CTRL, KEY_ALT, KEY_META, KEY_CAPSLOCK]
 
 
-# Клавиша действия для подсказок: «Z», «Space», «Ctrl+A»; нет действия или клавиши — «—». Работает и без автозагрузки
-# (бенчи без дерева): читает InputMap.
+# Кнопки мыши, которые можно назначить переназначаемому действию: средняя и боковые (4, 5). ЛКМ (выбор), ПКМ (приказ)
+# и колесо (Shift — поворот) заняты. Подписи — ключи перевода.
+const MOUSE_BINDABLE := {MOUSE_BUTTON_MIDDLE: "UI_MOUSE_MIDDLE", MOUSE_BUTTON_XBUTTON1: "UI_MOUSE_X1", MOUSE_BUTTON_XBUTTON2: "UI_MOUSE_X2"}
+const MOUSE_TOKEN := "Mouse"   # в файле настроек кнопка мыши — «Mouse8» (номер кнопки Godot)
+
+
+# Клавиша или кнопка мыши действия для подсказок: «Z», «Space», «Ctrl+A», «Мышь 4»; нет действия или привязки — «—».
+# Работает и без автозагрузки (бенчи без дерева): читает InputMap.
 static func key_label(action: String) -> String:
-	var k := action_key_event(action)
-	return "—" if k == null else OS.get_keycode_string(k.get_keycode_with_modifiers())
+	return event_label(action_event(action))
+
+
+static func event_label(e: InputEvent) -> String:
+	if e is InputEventKey:
+		return OS.get_keycode_string((e as InputEventKey).get_keycode_with_modifiers())
+	if e is InputEventMouseButton:
+		var b: int = (e as InputEventMouseButton).button_index
+		return String(TranslationServer.translate(MOUSE_BINDABLE[b])) if MOUSE_BINDABLE.has(b) else "%s %d" % [MOUSE_TOKEN, b]
+	return "—"
+
+
+# Привязка действия: первая клавиша или кнопка мыши; нет — null.
+static func action_event(action: String) -> InputEvent:
+	if not InputMap.has_action(action):
+		return null
+	for e in InputMap.action_get_events(action):
+		if (e is InputEventKey and (e as InputEventKey).keycode != KEY_NONE) or e is InputEventMouseButton:
+			return e
+	return null
+
+
+static func _same(a: InputEvent, b: InputEvent) -> bool:
+	if a is InputEventKey and b is InputEventKey:
+		return a.keycode == b.keycode
+	if a is InputEventMouseButton and b is InputEventMouseButton:
+		return a.button_index == b.button_index
+	return false
 
 
 static func action_key_event(action: String) -> InputEventKey:
@@ -182,11 +214,28 @@ static func action_title(action: String) -> String:
 
 
 static func _set_key(action: String, code: Key) -> void:
+	_set_event(action, _key_event(code) if code != KEY_NONE else null)
+
+
+static func _key_event(code: Key) -> InputEventKey:
+	var e := InputEventKey.new()
+	e.keycode = code
+	return e
+
+
+static func _mouse_event(button: MouseButton) -> InputEventMouseButton:
+	var e := InputEventMouseButton.new()
+	e.button_index = button
+	return e
+
+
+# Единственная привязка действия: копия e без модификаторов и состояния нажатия; null — без привязки.
+static func _set_event(action: String, e: InputEvent) -> void:
 	InputMap.action_erase_events(action)
-	if code != KEY_NONE:
-		var e := InputEventKey.new()
-		e.keycode = code
-		InputMap.action_add_event(action, e)
+	if e is InputEventKey:
+		InputMap.action_add_event(action, _key_event(e.keycode))
+	elif e is InputEventMouseButton:
+		InputMap.action_add_event(action, _mouse_event(e.button_index))
 
 
 # Занята ли клавиша фиксированным действием (без модификаторов: Ctrl+A не занимает A).
@@ -202,22 +251,30 @@ static func _fixed_owner(code: Key) -> String:
 # Назначить клавишу переназначаемому действию. Занята другим переназначаемым — клавиши меняются местами.
 # Результат: {ok, msg} — msg для показа игроку (пусто, если сказать нечего).
 func rebind(action: String, code: Key) -> Dictionary:
+	return rebind_event(action, _key_event(code))
+
+
+# То же для клавиши (InputEventKey) или кнопки мыши (InputEventMouseButton, только MOUSE_BINDABLE).
+func rebind_event(action: String, e: InputEvent) -> Dictionary:
 	if not action in REBINDABLE:
 		return {"ok": false, "msg": tr("MSG_KEY_NOT_REBINDABLE") % action}
-	if code in RESERVED_KEYS or code == KEY_NONE:
-		return {"ok": false, "msg": tr("MSG_KEY_RESERVED") % OS.get_keycode_string(code)}
-	var fixed := _fixed_owner(code)
-	if fixed != "":
-		return {"ok": false, "msg": tr("MSG_KEY_FIXED") % OS.get_keycode_string(code)}
-	var old := action_key(action)
-	if old == code:
+	if e is InputEventKey:
+		var code: Key = e.keycode
+		if code in RESERVED_KEYS or code == KEY_NONE:
+			return {"ok": false, "msg": tr("MSG_KEY_RESERVED") % OS.get_keycode_string(code)}
+		if _fixed_owner(code) != "":
+			return {"ok": false, "msg": tr("MSG_KEY_FIXED") % OS.get_keycode_string(code)}
+	elif not (e is InputEventMouseButton and MOUSE_BINDABLE.has(e.button_index)):
+		return {"ok": false, "msg": tr("MSG_KEY_RESERVED") % event_label(e)}
+	var old := action_event(action)
+	if _same(old, e):
 		return {"ok": true, "msg": ""}
 	var msg := ""
 	for r in REBINDABLE:
-		if r != action and action_key(r) == code:
-			_set_key(r, old)
-			msg = tr("MSG_KEY_SWAPPED") % [OS.get_keycode_string(code), action_title(r)]
-	_set_key(action, code)
+		if r != action and _same(action_event(r), e):
+			_set_event(r, old)
+			msg = tr("MSG_KEY_SWAPPED") % [event_label(e), action_title(r)]
+	_set_event(action, e)
 	save_settings()
 	changed.emit("input")
 	return {"ok": true, "msg": msg}
@@ -236,6 +293,13 @@ func _load_keys(cfg: ConfigFile) -> void:
 		var v = cfg.get_value("input", r, "")
 		if not v is String or v == "":
 			continue
+		if v.begins_with(MOUSE_TOKEN):
+			var b: int = v.trim_prefix(MOUSE_TOKEN).to_int()
+			if not MOUSE_BINDABLE.has(b):
+				push_warning("%s: кнопка мыши «%s» для %s не подходит, оставлена по умолчанию" % [path, v, r])
+				continue
+			_set_event(r, _mouse_event(b))
+			continue
 		var code := OS.find_keycode_from_string(v)
 		if code == KEY_NONE or code in RESERVED_KEYS or _fixed_owner(code) != "":
 			push_warning("%s: клавиша «%s» для %s не подходит, оставлена по умолчанию" % [path, v, r])
@@ -243,6 +307,8 @@ func _load_keys(cfg: ConfigFile) -> void:
 		_set_key(r, code)
 
 
+# Клавиша — её имя («N», «Space»), кнопка мыши — «Mouse8».
 func _save_keys(cfg: ConfigFile) -> void:
 	for r in REBINDABLE:
-		cfg.set_value("input", r, OS.get_keycode_string(action_key(r)))
+		var e := action_event(r)
+		cfg.set_value("input", r, "%s%d" % [MOUSE_TOKEN, e.button_index] if e is InputEventMouseButton else OS.get_keycode_string(action_key(r)))
