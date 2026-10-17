@@ -4791,7 +4791,7 @@ func _process_arrows() -> void:
 
 # Shift на момент последнего события мыши или клавиатуры: клик по строке панели сюда приходит раньше, чем кнопке.
 # Действие игры для нажатой клавиши или "". Сначала действия с модификаторами (Ctrl+A, Ctrl+R), затем остальные.
-func _key_action(event: InputEventKey) -> String:
+func _key_action(event: InputEvent) -> String:
 	for a in KEY_ACTIONS:
 		if InputMap.has_action(a) and event.is_action(a):
 			return a
@@ -4859,13 +4859,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_LEFT, MOUSE_BUTTON_WHEEL_RIGHT]:
 		# Shift + колесо: поворот на месте (с Shift система может прислать горизонтальное колесо); без Shift колесо не занято
 		_cmd_rotate(-1 if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_LEFT] else 1)
-	elif event is InputEventKey and event.pressed and not event.echo:
-		# Команды игры — действия InputMap (клавиши по умолчанию в [input] project.godot, переназначение — Settings);
-		# Esc и F1–F5 постоянные и идут по keycode.
+	elif (event is InputEventKey and event.pressed and not event.echo) or (event is InputEventMouseButton and event.pressed
+			and SETTINGS.MOUSE_BINDABLE.has(event.button_index)):
+		# Команды игры — действия InputMap (клавиши по умолчанию в [input] project.godot, переназначение — Settings, можно
+		# и на среднюю/боковые кнопки мыши); Esc и F1–F5 постоянные и идут по keycode.
+		var key := event as InputEventKey   # null — кнопка мыши
 		if _run_over():
 			if event.is_action("to_hub") or event.is_action("wave_start"):
 				_to_hub()
-			elif event.keycode == KEY_ESCAPE:
+			elif key != null and key.keycode == KEY_ESCAPE:
 				_open_esc_menu()
 			return   # экран конца забега: остальные клавиши не действуют
 		var act := _key_action(event)
@@ -4923,7 +4925,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				_set_order(ORDER_HOLD)
 			"order_retreat":
 				_set_order(ORDER_RETREAT)
-		match event.keycode:
+		if key == null:
+			return
+		match key.keycode:
 			KEY_ESCAPE:
 				if drag_active or box_active:
 					drag_active = false   # Esc отменяет протяжку и рамку
