@@ -133,7 +133,7 @@ func t_formula() -> void:
 func t_loader() -> void:
 	print("загрузчик gifts.json — ниже ожидаются строки ERROR от повреждённых файлов")
 	var defs: Dictionary = MODS.load_gifts(GIFTS)
-	var want := {"tempered_steel": ["damage", "infantry", "add_pct"], "sturdy_shields": ["hp", "all_units", "add_pct"], "marksmen": ["damage", "archer", "add_pct"],
+	var want := {"tempered_steel": ["attack_rate", "infantry", "add_pct"], "sturdy_shields": ["hp", "all_units", "add_pct"], "marksmen": ["damage", "archer", "add_pct"],
 		"spoils": ["bounty", "player", "add_pct"], "mine": ["income", "player", "add_pct"], "fortress_walls": ["gate_hp", "gate", "add_pct"], "reserve": ["start_units", "player", "add_pct"],
 		"armory": ["unit_cost", "player", "add_pct"], "smith_thomas": ["weapon_cost", "player", "add_pct"], "repairers": ["repair_cost", "player", "add_pct"],
 		"watch": ["signal_window", "player", "add_flat"], "discipline": ["spread", "archer", "add_pct"], "radiance_reserve": ["radiance_pct", "player", "add_pct"],
@@ -162,6 +162,10 @@ func t_each_gift() -> void:
 	var base := snap(b)
 	var units := {"all_units": [b.infantry_type, b.archer_type, b.spearman_type], "infantry": [b.infantry_type], "archer": [b.archer_type], "spearman": [b.spearman_type]}
 	var all_types := range(b.type_hp.size())
+	var cda := []   # фактический интервал удара без модификаторов (attack_rate: интервал = он / множитель)
+	for t in all_types:
+		cda.append(b._cd_actual(b.base_type_cooldown[t]))
+	var rate_units := {"all_units": [b.infantry_type, b.archer_type, b.spearman_type], "infantry": [b.infantry_type, b.spearman_type], "archer": [b.archer_type]}
 	b.free()
 	var none := make({})
 	check("пустой набор дважды: снимки равны", diff(snap(none), base).is_empty())
@@ -180,6 +184,11 @@ func t_each_gift() -> void:
 					want.wave_spread = scaled(base.wave_spread, units[g.target], k)
 				"signal_window":
 					want.wave_signal_lead = base.wave_signal_lead + v
+				"attack_rate":   # задача 6d: скорость боя — интервал удара (infantry: пехота и копейщики) короче в k раз
+					var cd: Array = base.type_cooldown.duplicate()
+					for t in rate_units[g.target]:
+						cd[t] = cda[t] / k
+					want.type_cooldown = cd
 				"damage":
 					want.type_damage = scaled(base.type_damage, units[g.target], k)
 					want.type_arrow_dmg = scaled(base.type_arrow_dmg, units[g.target], k)
@@ -261,8 +270,11 @@ func t_battle() -> void:
 	var e := make({"tempered_steel": 1})
 	var dmg0: float = e.type_damage[e.infantry_type]
 	e.gold = 1000.0
-	check("tempered_steel 1 и покупка оружия перемножаются: урон пехоты x1.06 x1.1, стрелы лучников только x1.1", e._buy(2) and is_equal_approx(dmg0, plain.type_damage[plain.infantry_type] * 1.06)
-		and is_equal_approx(e.type_damage[e.infantry_type], dmg0 * e.shop_param[2]) and is_equal_approx(e.type_arrow_dmg[e.archer_type], plain.type_arrow_dmg[plain.archer_type] * e.shop_param[2]))
+	var cdi: float = e._cd_actual(e.base_type_cooldown[e.infantry_type])
+	var cdr: float = e._cd_actual(e.base_type_cooldown[e.archer_type])
+	check("tempered_steel 1 и покупка оружия (задача 6d: обе — скорость атаки) перемножаются: удары пехоты x1.06 x1.1, стрельба лучников только x1.1, урон прежний",
+		e._buy(2) and dmg0 == plain.type_damage[plain.infantry_type] and absf(cdi / e.type_cooldown[e.infantry_type] - 1.06 * e.shop_param[2]) < 1e-4
+		and absf(cdr / e.type_cooldown[e.archer_type] - e.shop_param[2]) < 1e-4 and e.type_damage[e.infantry_type] == dmg0 and e.type_arrow_dmg[e.archer_type] == plain.type_arrow_dmg[plain.archer_type])
 	var f := make({"fortress_walls": 3})
 	f.gold = 1000.0
 	check("fortress_walls 3 скрыт: ворота как без даров, ремонт — 1500 + прибавка магазина", f.gate_hp_max == plain.gate_hp_max and f._buy(3)

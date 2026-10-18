@@ -96,7 +96,7 @@ func snap(m: Node2D) -> Dictionary:
 	for k in m.SHOP_ITEMS.size():
 		prices.append(m._price(k))
 	return {"tick": m.tick_counter, "count": m.count, "gold": m.gold, "pos": m.pos.slice(0, m.count), "hp": m.hp.slice(0, m.count),
-		"prices": prices, "bought": m.shop_bought.duplicate(), "dmg": m.type_damage[m.infantry_type], "arrow": m.type_arrow_dmg[m.archer_type],
+		"prices": prices, "bought": m.shop_bought.duplicate(), "dmg": m.type_damage[m.infantry_type], "cd": m.type_cooldown[m.infantry_type], "arrow": m.type_arrow_dmg[m.archer_type],
 		"wave": m.wave_number, "gate": m.gate_hp, "gate_max": m.gate_hp_max, "kills": m.run_kills}
 
 func same(a: Dictionary, b: Dictionary) -> String:
@@ -276,7 +276,7 @@ func t_rerun() -> void:
 	check("оба забега кончились поражением и хабом", a[2] and b[2])
 	check("тик 0: tick_counter 0, покупок нет, золото стартовое", a[0].tick == 0 and b[0].tick == 0 and a[0].wave == 0 and Array(a[0].bought) == [0, 0, 0, 0, 0] and a[0].kills == 0)
 	check("тик 0 второго забега как у первого (pos, hp, count, gold, цены, множитель оружия)", same(a[0], b[0]) == "", "расходится: " + same(a[0], b[0]))
-	check("тик 600: покупки сделаны, бой шёл (есть убитые)", a[1].tick == 600 and a[1].bought[2] == 1 and a[1].bought[0] == 1 and a[1].dmg > a[0].dmg and a[1].prices[2] > a[0].prices[2] and a[1].kills > 0,
+	check("тик 600: покупки сделаны (оружие — скорость атаки, задача 6d: интервал удара пехоты короче), бой шёл (есть убитые)", a[1].tick == 600 and a[1].bought[2] == 1 and a[1].bought[0] == 1 and a[1].cd < a[0].cd and a[1].prices[2] > a[0].prices[2] and a[1].kills > 0,
 		"убито %d, куплено %s" % [a[1].kills, str(a[1].bought)])
 	check("тик 600 второго забега как у первого", same(a[1], b[1]) == "", "расходится: " + same(a[1], b[1]))
 	check("Game: runs 2, run_index 2", g.records[1].runs == 2 and g.run_index == 2)

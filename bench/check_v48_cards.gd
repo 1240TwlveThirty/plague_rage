@@ -106,8 +106,8 @@ func t_source() -> void:
 	var src := CARDS.source(defs, recs)
 	var mods = MODS.new({})
 	mods.build_sources([src])
-	check("M — все модификаторы; C — только издержка (Железная стена: урон пехоты -10%, без +30% HP); disabled — ничего; K30 — mult по записи",
-		is_equal_approx(mods.get_mult("damage", "infantry"), (1.0 + 0.12 - 0.10) * 1.5) and is_equal_approx(mods.get_mult("damage", "archer"), 0.85)
+	check("M — все модификаторы; C — только издержка (Железная стена: скорость атаки пехоты -10%, без +30% HP; задача 6d — Клинки и издержка на скорости); disabled — ничего; K30 — mult по записи",
+		is_equal_approx(mods.get_mult("attack_rate", "infantry"), 1.0 + 0.12 - 0.10) and is_equal_approx(mods.get_mult("damage", "infantry"), 1.5) and is_equal_approx(mods.get_mult("damage", "archer"), 0.85)
 		and mods.get_mult("hp", "infantry") == 1.0 and src.mods.size() == 4, str(src.mods))
 	var both = MODS.new({})
 	both.build_sources([MODS.gifts_source(MODS.load_gifts("res://data/gifts.json"), {"armory": 1}), CARDS.source(defs, [{"id": "armorer_discount"}])])
@@ -128,13 +128,15 @@ func t_battle() -> void:
 	print("сцена боя с карточками (active_cards)")
 	var p := make([])
 	var c := make([{"id": "meteor_blades"}, {"id": "heavy_shields"}, {"id": "dark_vow"}])
-	check("Клинки (урон пехоты +12%), Тяжёлые щиты (HP +20%, скорость -10%), Тёмный обет (награда +40%, HP зомби +15%) — в данных волны",
-		is_equal_approx(c.type_damage[c.infantry_type], p.type_damage[p.infantry_type] * 1.12) and is_equal_approx(c.type_hp[c.archer_type], p.type_hp[p.archer_type] * 1.2)
+	var cdi: float = c._cd_actual(c.base_type_cooldown[c.infantry_type])
+	check("Клинки (скорость атаки пехоты +12%), Тяжёлые щиты (HP +20%, скорость -10%), Тёмный обет (награда +40%, HP зомби +15%) — в данных волны",
+		absf(cdi / c.type_cooldown[c.infantry_type] - 1.12) < 1e-4 and c.type_damage[c.infantry_type] == p.type_damage[p.infantry_type] and is_equal_approx(c.type_hp[c.archer_type], p.type_hp[p.archer_type] * 1.2)
 		and is_equal_approx(c.type_speed[c.infantry_type], p.type_speed[p.infantry_type] * 0.9) and is_equal_approx(c.type_bounty_mult[c.zombie_type], p.type_bounty_mult[p.zombie_type] * 1.4)
 		and is_equal_approx(c.type_hp[c.knight_type], p.type_hp[p.knight_type] * 1.15))
 	c.active_cards.append({"id": "silver_vs_dead"})
 	c._start_wave()
-	check("карточка, выбранная в передышке, действует со следующей волны: урон пехоты x1.12 (своя цель) x1.10 (все)", is_equal_approx(c.type_damage[c.infantry_type], p.type_damage[p.infantry_type] * 1.12 * 1.1))
+	check("карточка, выбранная в передышке, действует со следующей волны: скорость атаки пехоты +12% (своя цель) +10% (все) — проценты складываются, x1.22",
+		absf(cdi / c.type_cooldown[c.infantry_type] - 1.22) < 1e-4)
 	p.free()
 	c.free()
 

@@ -169,6 +169,7 @@ func test_ident() -> void:
 	b.free()
 	a = new_main(OLD, 7)
 	b = new_main(NOPAUSE, 7)
+	b.weapon_stat = "damage"   # копия до правок знает только «Оружие» на уроне (задача 6d перевела его на скорость атаки); сравнивается пауза
 	first = -1
 	var ticks := 0
 	var buys := [0, 1, 2, 0, 1, 3]

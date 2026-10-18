@@ -87,6 +87,8 @@ func _initialize() -> void:
 			v8(secs)
 		"v9":
 			v9(secs)
+		"v10":
+			v10(secs)
 	quit()
 
 # Этап A: «Лазарет» 1-3 (recover +10/20/30%) и карточка №40 «Полевой госпиталь» (recover +20%).
@@ -173,3 +175,61 @@ func v9(secs: int) -> void:
 	for bot in BOTS:
 		G.append(line("«Оружие» attack_rate, 0 даром", "w_rate_0", bot))
 	write("res://bench/gift_ablation_v9.txt", G)
+
+# Пометка строки v10: «мёртвая» — сдвиг < +0.2 у всех ботов, «слишком сильная» — > +2 хоть у одного.
+func verdict(cfg: String) -> String:
+	var dead := true
+	var strong := false
+	for bot in BOTS:
+		var sh := shift(cfg, bot)
+		dead = dead and not is_nan(sh) and sh < 0.2
+		strong = strong or (not is_nan(sh) and sh > 2.0)
+	return "МЁРТВАЯ (< +0.2 у всех ботов)" if dead else ("СЛИШКОМ СИЛЬНАЯ (> +2)" if strong else "")
+
+func v10_block(L: Array[String], label: String, cfg: String) -> void:
+	var cells := []
+	for bot in BOTS:
+		cells.append("%s %s" % [bot, fmt(shift(cfg, bot))])
+	var v := verdict(cfg)
+	L.append("  %-46s | %s%s" % [label, " | ".join(cells), "" if v == "" else " | " + v])
+
+# Этап D: повтор после замены. Первая строка — крупно, если база сдвинулась больше 0.7 волны у любого бота (от v8 «none»).
+func v10(secs: int) -> void:
+	var before := {}
+	var moved := []
+	dir = "res://bench/balance/ablation_v8_runs/"
+	for bot in BOTS:
+		before[bot] = median("none", bot)[0]
+	dir = "res://bench/balance/ablation_v10_runs/"
+	var base_lines: Array[String] = []
+	for bot in BOTS:
+		var after: float = median("none", bot)[0]
+		base_lines.append("  база %s: до (v8) %.2f, после %.2f, сдвиг %+.2f" % [bot, before[bot], after, after - before[bot]])
+		if absf(after - before[bot]) > 0.7:
+			moved.append(bot)
+	var top: Array[String] = []
+	if not moved.is_empty():
+		top.append("!!! БАЗА СДВИНУЛАСЬ БОЛЬШЕ 0.7 ВОЛНЫ (%s): НУЖНА ПЕРЕКАЛИБРОВКА ЦЕН И ЗОЛОТА !!!" % ", ".join(moved))
+	var H := head("ablation_v10_run.sh", 420, secs)
+	var C: Array[String] = top.duplicate()
+	C.append("card_ablation_v6: карточки после замены damage -> attack_rate (задача 6d, этап D). Сдвиг медианы от того же бота без карточек.")
+	C.append_array(H)
+	C.append_array(base_lines)
+	C.append("")
+	var cards := [[1, "meteor_blades"], [2, "silver_vs_dead"], [3, "serrated_arrows"], [7, "long_shot"], [17, "last_stand"], [25, "desperate_charge"],
+		[27, "long_spears"], [31, "iron_wall"], [33, "shield_cover"], [36, "reserve_fund"], [37, "blood_for_blood"]]
+	for c in cards:
+		v10_block(C, "№%d %s" % [c[0], tr("CARD_%s_NAME" % c[1].to_upper())], "card_" + c[1])
+	write("res://bench/card_ablation_v6.txt", C)
+	var G: Array[String] = top.duplicate()
+	G.append("gift_ablation_v10: дары и «Оружие» после замены damage -> attack_rate (задача 6d, этап D). Сдвиг медианы от того же бота без даров.")
+	G.append_array(H)
+	G.append_array(base_lines)
+	G.append("")
+	for lvl in [1, 2, 3]:
+		v10_block(G, "«Закалённая сталь» %d" % lvl, "ts_%d" % lvl)
+	for lvl in [1, 2, 3]:
+		v10_block(G, "«Меткие стрелки» %d" % lvl, "mk_%d" % lvl)
+	for n in [1, 2, 3]:
+		v10_block(G, "«Оружие»: %d покупк%s даром" % [n, "а" if n == 1 else "и"], "w_%d" % n)
+	write("res://bench/gift_ablation_v10.txt", G)

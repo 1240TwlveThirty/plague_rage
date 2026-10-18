@@ -357,8 +357,8 @@ func t_active() -> void:
 	m = await run(1)
 	check("куплены fortress_walls 2 (скрыт), reserve 1, tempered_steel 3: active_gifts — reserve и tempered_steel (дары уровня 0 и скрытые не входят)",
 		g.active_gifts == {"reserve": 1, "tempered_steel": 3} and m.active_gifts == g.active_gifts, str(g.active_gifts))
-	check("в бою: ворота прежние, урон пехоты x1.18, урон лучников прежний, +10% в стартовых отрядах (+30 и +10), HP прежние", m.gate_hp_max == base[5]
-		and is_equal_approx(m.type_damage[m.infantry_type], base[1][m.infantry_type] * 1.18) and m.type_damage[m.archer_type] == base[1][m.archer_type] and m.count == base[8] + 40
+	check("в бою: ворота прежние, удары пехоты x1.18 (задача 6d: скорость атаки), урон прежний, +10% в стартовых отрядах (+30 и +10), HP прежние", m.gate_hp_max == base[5]
+		and absf(m._cd_actual(m.base_type_cooldown[m.infantry_type]) / m.type_cooldown[m.infantry_type] - 1.18) < 1e-4 and Array(m.type_damage) == base[1] and m.count == base[8] + 40
 		and Array(m.type_hp) == base[0],
 		"ворота %.0f, юнитов %d" % [m.gate_hp_max, m.count])
 	g.gifts_override = gs.parse_gifts_arg(PackedStringArray(["B5", "1", "--gifts", "mine:2"]))
@@ -402,20 +402,20 @@ func t_hub() -> void:
 	check("15 строк даров в порядке файла (скрытых «Стен крепости» нет), у каждой иконка; баланс «Сияние: 200»", Array(h.gift_rows.keys()) == SHOWN and icons and grid.get_child_count() == 16 * 7
 		and tr(h.radiance_label.text) == "Сияние: 200" and h.radiance_label.is_visible_in_tree() and not "Стены крепости" in names and "Меткие стрелки" in names, ", ".join(names))
 	var row: Dictionary = h.gift_rows["tempered_steel"]
-	check("строка дара: уровень «0 / 3», эффект следующего уровня «+6% к урону пехоты», цена 60, «Купить» активна, причины нет",
-		tr(row.level.text) == "0 / 3" and tr(row.effect.text) == "+6% к урону пехоты" and tr(row.price.text) == "60" and tr(row.button.text) == "Купить" and not row.button.disabled and tr(row.reason.text) == "",
+	check("строка дара: уровень «0 / 3», эффект следующего уровня «+6% к скорости атаки пехоты», цена 60, «Купить» активна, причины нет",
+		tr(row.level.text) == "0 / 3" and tr(row.effect.text) == "+6% к скорости атаки пехоты" and tr(row.price.text) == "60" and tr(row.button.text) == "Купить" and not row.button.disabled and tr(row.reason.text) == "",
 		"%s | %s | %s" % [row.level.text, row.effect.text, row.price.text])
 	var texts := PackedStringArray()
 	for id in SHOWN:
 		texts.append(h.gift_rows[id].effect.text)
-	check("эффекты одной строкой у всех даров", Array(texts) == ["+6% к урону пехоты", "+6% к здоровью всех воинов", "+8% к урону лучников", "+10% золота за убитых",
+	check("эффекты одной строкой у всех даров", Array(texts) == ["+6% к скорости атаки пехоты", "+6% к здоровью всех воинов", "+8% к урону лучников", "+10% золота за убитых",
 		"+5% к доходу волны в конце каждой волны", "+10% воинов в каждом стартовом отряде (не меньше +1)", "-5% к цене наборов пехоты и лучников",
 		"-5% к цене улучшения оружия", "-15% к цене ремонта ворот", "+0.25 с к окну сигнала всплеска", "-10% к разбросу стрел", "+5% Сияния за забег", "После волны возвращает 10% павших",
 		"Кнопка в бою: всем +30% скорости ударов на 8 с, перезарядка 60 с", "+5 п. п. к шансу блока у копейщиков"], " | ".join(texts))
 	check("цена «Резерва» в строке — общая: 60", tr(h.gift_rows["reserve"].price.text) == "60")
 	row.button.pressed.emit()
 	check("«Купить»: уровень «1 / 3», баланс 140, сохранено; следующий уровень +12% за 120 закрыт: «Откроется после осады I»", g.gift_levels["tempered_steel"] == 1 and g.radiance == 140
-		and tr(h.radiance_label.text) == "Сияние: 140" and tr(row.level.text) == "1 / 3" and tr(row.effect.text) == "+12% к урону пехоты" and tr(row.price.text) == "120" and row.button.disabled
+		and tr(h.radiance_label.text) == "Сияние: 140" and tr(row.level.text) == "1 / 3" and tr(row.effect.text) == "+12% к скорости атаки пехоты" and tr(row.price.text) == "120" and row.button.disabled
 		and tr(row.reason.text) == "Откроется после осады I" and on_disk().get("radiance") == 140, row.reason.text)
 	h.gift_rows["mine"].button.pressed.emit()
 	h.gift_rows["spoils"].button.pressed.emit()

@@ -1,5 +1,5 @@
 [
-	{"id": "tempered_steel", "name_key": "GIFT_TEMPERED_STEEL_NAME", "desc_key": "GIFT_TEMPERED_STEEL_DESC", "stat": "damage", "target": "infantry", "op": "add_pct", "levels": [6, 12, 18], "req_sieges": [0, 1, 2]},
+	{"id": "tempered_steel", "name_key": "GIFT_TEMPERED_STEEL_NAME", "desc_key": "GIFT_TEMPERED_STEEL_DESC", "stat": "attack_rate", "target": "infantry", "op": "add_pct", "levels": [6, 12, 18], "req_sieges": [0, 1, 2]},
 	{"id": "sturdy_shields", "name_key": "GIFT_STURDY_SHIELDS_NAME", "desc_key": "GIFT_STURDY_SHIELDS_DESC", "stat": "hp", "target": "all_units", "op": "add_pct", "levels": [6, 12, 18], "req_sieges": [0, 1, 2]},
 	{"id": "marksmen", "name_key": "GIFT_MARKSMEN_NAME", "desc_key": "GIFT_MARKSMEN_DESC", "stat": "damage", "target": "archer", "op": "add_pct", "levels": [8, 16, 24], "req_sieges": [0, 1, 2]},
 	{"id": "spoils", "name_key": "GIFT_SPOILS_NAME", "desc_key": "GIFT_SPOILS_DESC", "stat": "bounty", "target": "player", "op": "add_pct", "levels": [10, 20, 30], "req_sieges": [0, 1, 2]},

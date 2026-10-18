@@ -878,6 +878,7 @@ func test_regress() -> void:
 	b.free()
 	a = plain(OLD, 7, true)
 	b = plain(NEW, 7, true)
+	b.weapon_stat = "damage"   # копия до правок знает только «Оружие» на уроне (задача 6d перевела его на скорость атаки); сравнивается выбор и мышь
 	first = -1
 	var ticks := 0
 	var buys := [0, 1, 2, 0, 1, 3]

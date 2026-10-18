@@ -197,7 +197,8 @@ func t_rebuild() -> void:
 	w.gold = 1000.0
 	w._buy(2)
 	w._buy(2)
-	var d: float = w.type_damage[w.infantry_type]
+	var d: float = w.type_cooldown[w.infantry_type]
 	w._start_wave()
-	check("две покупки оружия переживают пересчёт волны: урон пехоты тот же (%.4f)" % d, w.type_damage[w.infantry_type] == d and is_equal_approx(d, w.base_type_damage[w.infantry_type] * 1.21))
+	check("две покупки оружия (задача 6d: скорость атаки) переживают пересчёт волны: интервал удара пехоты тот же (%.4f), x1.21 к скорости" % d, w.type_cooldown[w.infantry_type] == d
+		and absf(w._cd_actual(w.base_type_cooldown[w.infantry_type]) / d - 1.21) < 1e-4 and w.type_damage[w.infantry_type] == w.base_type_damage[w.infantry_type])
 	w.free()

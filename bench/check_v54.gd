@@ -74,9 +74,8 @@ func t_buy() -> void:
 	check("вторая — в тот же отряд (60), цена выросла до 108", m._buy(k) and m.squad_n[2] == 60 and m.gold == 802.0 and count_type(m, m.spearman_type) == 60)
 	m._select_only(0)
 	check("выбрана пехота — копейщики всё равно идут в отряд копейщиков", m._buy(k) and m.squad_n[2] == 90 and m.squad_n[0] == 300)
-	var d0: float = m.type_damage[m.spearman_type]
 	m._buy(m.SHOP_ITEMS.find("weapons"))
-	check("оружие действует и на копейщиков (x1.1)", is_equal_approx(m.type_damage[m.spearman_type], d0 * 1.1))
+	check("оружие действует и на копейщиков (задача 6d: скорость атаки x1.1)", absf(m._cd_actual(m.base_type_cooldown[m.spearman_type]) / m.type_cooldown[m.spearman_type] - 1.1) < 1e-4)
 	m.free()
 
 func t_squads() -> void:
