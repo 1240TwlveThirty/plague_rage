@@ -18,6 +18,7 @@ const COND_KEYS := {"hold": "COND_HOLD", "retreat": "COND_RETREAT", "gate_low": 
 	"wave_time": "COND_WAVE_TIME", "gold_high": "COND_GOLD_HIGH", "lost_steps": "COND_LOST_STEPS"}
 const CARD_ON := Color(1.0, 0.82, 0.3)          # строка карточки: условие выполнено
 const CARD_IDLE := Color(1.0, 1.0, 1.0, 0.55)   # условная карточка, условие не выполнено
+const BLOCK_CAP := 0.95   # общий шанс блока не выше
 const COND_EVERY := 15   # условия карточек пересчитываются раз в столько тиков симуляции
 const CD_CARRY := 2.0 / 30.0   # перенос остатка перезарядки: не больше одного шага решения юнита (2 тика при 30 Гц)
 const SETTINGS := preload("res://scripts/settings.gd")   # key_label(действие): клавиша для подсказок
@@ -478,7 +479,10 @@ var type_damage := PackedFloat32Array()
 var type_range_sq := PackedFloat32Array()   # квадрат дальности атаки
 var type_cooldown := PackedFloat32Array()
 var type_speed := PackedFloat32Array()
-var type_block_mult := PackedFloat32Array()   # множитель урона при блоке щитом; 1.0 = без щита
+var type_block_mult := PackedFloat32Array()
+var type_block_chance := PackedFloat32Array()   # доля ударов, которые щит отражает по своему правилу (данные: block_chance; пехота ~0.6)
+var type_hold_block := PackedFloat32Array()     # навык «Стена щитов»: прибавка к шансу блока отряда на приказе «держать» (данные: hold_block_bonus)
+var type_block_bonus := PackedFloat32Array()    # стат block (дары, карточки M) на тип, долей; пересчёт в _apply_wave_data   # множитель урона при блоке щитом; 1.0 = без щита
 # Мягкая привязь к слоту: до leash_start юнит гонится за врагом, к leash_end — только к слоту.
 var type_leash_start := PackedFloat32Array()
 var type_leash_start_sq := PackedFloat32Array()
@@ -584,6 +588,8 @@ var squad_start_n := PackedInt32Array()        # численность отря
 var wave_fallen := 0                           # своих юнитов пало за волну (карточка 24, vengeance)
 var cond_cards: Array = []                     # условные карточки забега на эту волну: [{cond, when, mods [{stat, target, value}]}]
 var vengeance := {}                            # карточка 24: {per_unit_pct, max_pct} или {}
+var squad_block_bonus := PackedFloat32Array()   # бонус шанса блока отряда по условиям (карточка №9, навык «Стена щитов»); без них 0.0
+var squad_skill_on := PackedByteArray()          # 1 — навык «Стена щитов» отряда сейчас действует (для HUD)
 var squad_atk_speed_mult := PackedFloat32Array()   # множитель скорости ударов и стрельбы отряда (Клич Благодати); без него ровно 1.0
 # Клич Благодати (дар war_cry, способность): состояние в тиках симуляции — пауза и ускорение работают сами.
 # Активация — команда с меткой тика: request_war_cry ставит запрос, он исполняется в начале следующего тика (_tick_war_cry);
@@ -1671,6 +1677,10 @@ func _apply_wave_data() -> void:
 	type_volley_period = volley_new
 	type_range_far = range_new
 	type_bounty_mult = bounty_new
+	type_block_bonus.resize(type_hp.size())
+	type_block_bonus.fill(0.0)
+	for t in names:   # стат block: «все» и своя цель (пехота, копейщики)
+		type_block_bonus[t] = mods.get_flat("block", "all_units") + mods.get_flat("block", names[t])
 	var gm: float = mods.get_mult("gate_hp", "gate")
 	if gm != gate_mult:   # ворота — только при смене множителя: от базы с прибавками ремонта, текущее HP сохраняет долю
 		var gk := SHOP_ITEMS.find("gate")
@@ -1755,17 +1765,22 @@ func _cards_off() -> void:
 # Проценты условий складываются; урон — 1 + сумма / 100 (и vengeance: +per_unit_pct за павшего, не больше max_pct), скорость — так же.
 # Бонус к HP по условию — снижение получаемого урона 1 / (1 + x): HP юнитов на лету не переписывается.
 func _update_card_conditions() -> void:
-	if cond_cards.is_empty() and vengeance.is_empty():
+	if cond_cards.is_empty() and vengeance.is_empty() and not _any_hold_skill():
 		return
 	_cards_off()
 	for sq in SQUAD_MAX:
 		var d := 0.0
 		var h := 0.0
 		var sp := 0.0
+		var bl := 0.0
+		var skill := 0
 		if squad_used[sq] == 1 and squad_n[sq] > 0 and squad_team[sq] == 0:
 			if squad_start_n[sq] == 0:
 				squad_start_n[sq] = squad_n[sq]
-			var tname := "infantry" if squad_type[sq] == infantry_type else ("archer" if squad_type[sq] == archer_type else "")
+			var tname: String = {infantry_type: "infantry", archer_type: "archer", spearman_type: "spearman"}.get(squad_type[sq], "")
+			if squad_order[sq] == ORDER_HOLD and type_hold_block[squad_type[sq]] > 0.0:   # навык «Стена щитов»
+				bl += type_hold_block[squad_type[sq]]
+				skill = 1
 			for c in cond_cards:
 				var k := cond_factor(c.cond, c.when, sq)
 				if k == 0.0:
@@ -1784,6 +1799,8 @@ func _update_card_conditions() -> void:
 								h += e.value * k
 							"speed":
 								sp += e.value * k
+							"block":
+								bl += e.value * k
 			if not vengeance.is_empty():
 				var vp := minf(vengeance.per_unit_pct * wave_fallen, vengeance.max_pct)
 				d += vp
@@ -1791,6 +1808,26 @@ func _update_card_conditions() -> void:
 		squad_dmg_mult[sq] = 1.0 + d / 100.0
 		squad_taken_mult[sq] = 1.0 / (1.0 + h / 100.0)
 		squad_speed_mult[sq] = 1.0 + sp / 100.0
+		squad_block_bonus[sq] = bl
+		squad_skill_on[sq] = skill
+
+
+# Есть ли отряд, у типа которого навык на «держать» (копейщики, «Стена щитов»): тогда условия считаются и без карточек.
+func _any_hold_skill() -> bool:
+	for sq in SQUAD_MAX:
+		if squad_used[sq] == 1 and squad_n[sq] > 0 and type_hold_block[squad_type[sq]] > 0.0:
+			return true
+	return false
+
+
+# Детерминированное «выпадение» дополнительного блока в [0, 1): хэш (тик, атакующий, цель), без ГСЧ симуляции.
+static func block_roll(tick: int, i: int, j: int) -> float:
+	var h := (tick * 73856093) ^ (i * 19349663) ^ (j * 83492791)
+	for k in 3:
+		h = (h ^ (h >> 16)) & 0xFFFFFFFF
+		h = (h * 0x45D9F3B) & 0xFFFFFFFF
+	h = (h ^ (h >> 16)) & 0xFFFFFFFF
+	return float(h & 0xFFFFFF) / 16777216.0
 
 
 # Условие карточки для отряда sq: 0 — не выполнено, 1 — выполнено; lost_steps — число ступеней (0..max_steps).
@@ -3153,6 +3190,8 @@ func _load_types() -> bool:
 	type_cooldown.resize(n)
 	type_speed.resize(n)
 	type_block_mult.resize(n)
+	type_block_chance.resize(n)
+	type_hold_block.resize(n)
 	type_leash_start.resize(n)
 	type_leash_start_sq.resize(n)
 	type_leash_end.resize(n)
@@ -3203,6 +3242,8 @@ func _load_types() -> bool:
 		type_cooldown[t] = e.cooldown
 		type_speed[t] = _scaled(e.speed, SPEED_REL)
 		type_block_mult[t] = e.block_mult
+		type_block_chance[t] = clampf(float(e.get("block_chance", 0.0)), 0.0, BLOCK_CAP)
+		type_hold_block[t] = maxf(float(e.get("hold_block_bonus", 0.0)), 0.0)
 		type_leash_start[t] = e.leash_start
 		type_leash_start_sq[t] = e.leash_start * e.leash_start
 		type_leash_end[t] = e.leash_end
@@ -3324,6 +3365,10 @@ func _setup_data() -> void:
 		arr.fill(1.0)
 	squad_atk_speed_mult.resize(SQUAD_MAX)
 	squad_atk_speed_mult.fill(1.0)
+	squad_block_bonus.resize(SQUAD_MAX)
+	squad_block_bonus.fill(0.0)
+	squad_skill_on.resize(SQUAD_MAX)
+	squad_skill_on.fill(0)
 	squad_start_n.resize(SQUAD_MAX)
 	squad_start_n.fill(0)
 	squad_center_off.resize(SQUAD_MAX)
@@ -3955,6 +4000,9 @@ func _update_squad_panel() -> void:
 		sig |= 2 << s
 		squad_swatches[s].color = type_color[squad_type[s]]
 		squad_buttons[s].text = "%s  %s — %d — %s" % [SETTINGS.key_label("squad_select_%d" % (s + 1)), _squad_label(s), squad_n[s], tr(ORDER_NAMES[squad_order[s]])]
+		if squad_skill_on[s] == 1:   # навык «Стена щитов» действует — отметка и золотой цвет, как у горящих карточек
+			squad_buttons[s].text += "  ● " + tr("UI_SKILL_SHIELD_WALL")
+		squad_buttons[s].add_theme_color_override("font_color", CARD_ON if squad_skill_on[s] == 1 else Color.WHITE)
 		squad_buttons[s].set_pressed_no_signal(_is_sel(s))
 	squad_actions.visible = acts
 	for k in action_buttons.size():   # подписи с актуальной клавишей (её могли переназначить)
@@ -4470,11 +4518,23 @@ func _update_unit(i: int, delta: float) -> void:
 				# Блок щитом: жертва в отряде, щит поднят (с её удара прошло >= SHIELD_DOWN_TIME;
 				# cooldown = сколько осталось до её следующего удара), удар из переднего сектора.
 				var sj := unit_squad[best]
+				var blocked := false
 				if sj >= 0 and type_cooldown[unit_type[best]] - cooldown[best] >= SHIELD_DOWN_TIME:
 					var a := p - pos[best]
 					if a.dot(Vector2.from_angle(squad_angle[sj])) > BLOCK_COS * a.length():
 						dmg *= m
 						blocked_hits += 1
+						blocked = true
+				# Бонус блока (стат block, карточка №9, «Стена щитов»): часть не отражённых по правилу ударов тоже отражается,
+				# чтобы общий шанс стал block_chance + бонус (не выше BLOCK_CAP); выпадение — хэш, не ГСЧ. Без бонуса ветки нет.
+				if not blocked and sj >= 0:
+					var bt := unit_type[best]
+					var extra := type_block_bonus[bt] + squad_block_bonus[sj]
+					if extra > 0.0:
+						var base := type_block_chance[bt]
+						if base < 1.0 and block_roll(tick_counter, i, best) < (minf(base + extra, BLOCK_CAP) - base) / (1.0 - base):
+							dmg *= m
+							blocked_hits += 1
 			if unit_squad[best] >= 0:
 				dmg *= squad_taken_mult[unit_squad[best]]   # бонус к HP по условию — меньше получаемого урона
 			hp[best] -= dmg

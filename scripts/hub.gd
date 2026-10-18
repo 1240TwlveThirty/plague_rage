@@ -130,7 +130,7 @@ func _setup_gifts() -> void:
 	var grid := GridContainer.new()
 	grid.columns = 7
 	grid.add_theme_constant_override("h_separation", 24)
-	grid.add_theme_constant_override("v_separation", 6)
+	grid.add_theme_constant_override("v_separation", 2)   # 15 строк даров на экран 1080
 	col.add_child(grid)
 	for head in ["", "HUB_GIFTS_HEAD_GIFT", "HUB_GIFTS_HEAD_LEVEL", "HUB_GIFTS_HEAD_NEXT", "HUB_GIFTS_HEAD_PRICE", "", ""]:
 		_cell(grid, head, Color(1.0, 1.0, 1.0, 0.6))
@@ -187,7 +187,10 @@ static func effect_text(def: Dictionary, level: int) -> String:
 	if def.get("type", "mods") == "ability":   # способность: бонус, длительность и перезарядка уровня
 		var lv: Dictionary = def.levels[level - 1]
 		return String(TranslationServer.translate(def.desc_key)) % [_num(lv.bonus_pct), _num(lv.duration_s), _num(lv.cooldown_s)]
-	return String(TranslationServer.translate(def.desc_key)) % _num(def.levels[level - 1])
+	var v: float = def.levels[level - 1]
+	if def.get("stat", "") == "block":   # шанс блока хранится долей (0.05), в тексте — процентные пункты (5)
+		v *= 100.0
+	return String(TranslationServer.translate(def.desc_key)) % _num(snappedf(v, 0.01))
 
 
 static func _num(v: float) -> String:

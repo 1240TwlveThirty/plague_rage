@@ -137,11 +137,11 @@ func t_loader() -> void:
 		"spoils": ["bounty", "player", "add_pct"], "mine": ["income", "player", "add_pct"], "fortress_walls": ["gate_hp", "gate", "add_pct"], "reserve": ["start_units", "player", "add_pct"],
 		"armory": ["unit_cost", "player", "add_pct"], "smith_thomas": ["weapon_cost", "player", "add_pct"], "repairers": ["repair_cost", "player", "add_pct"],
 		"watch": ["signal_window", "player", "add_flat"], "discipline": ["spread", "archer", "add_pct"], "radiance_reserve": ["radiance_pct", "player", "add_pct"],
-		"infirmary": ["heal", "player", "add_pct"], "war_cry": ["", "", ""]}
+		"infirmary": ["heal", "player", "add_pct"], "war_cry": ["", "", ""], "spear_wall": ["block", "spearman", "add_flat"]}
 	var ok := defs.size() == want.size()
 	for id in want:
 		ok = ok and defs.has(id) and [defs[id].stat, defs[id].target, defs[id].op] == want[id] and defs[id].levels.size() == 3 and defs[id].name_key != "" and defs[id].desc_key != ""
-	check("data/gifts.json грузится: 15 даров (с Кличем Благодати — способность без stat), stat / target / op как в задании, по 3 уровня", ok, str(defs.keys()))
+	check("data/gifts.json грузится: 16 даров (с Кличем Благодати — способность без stat), stat / target / op как в задании, по 3 уровня", ok, str(defs.keys()))
 	var hidden := defs.keys().filter(func(id): return defs[id].hidden)
 	check("скрыт ровно fortress_walls", hidden == ["fortress_walls"], str(hidden))
 	for name in ["bad_stat", "bad_target", "bad_op", "bad_stat_op", "bad_hidden", "no_field", "bad_levels", "dup_id", "not_array", "missing_file"]:
@@ -174,7 +174,7 @@ func t_each_gift() -> void:
 			var k := 1.0 + v / 100.0
 			var want := base.duplicate(true)
 			match "hidden" if g.get("hidden", false) else g.stat:
-				"hidden", "unit_cost", "weapon_cost", "repair_cost", "radiance_pct", "heal":
+				"hidden", "unit_cost", "weapon_cost", "repair_cost", "radiance_pct", "heal", "block":
 					pass   # скрытый дар не действует; цены и Сияние читаются на лету (check_v46): снимок как без даров
 				"spread":
 					want.wave_spread = scaled(base.wave_spread, units[g.target], k)
@@ -204,7 +204,7 @@ func t_each_gift() -> void:
 			var hp_ok := true
 			for i in m.count:
 				hp_ok = hp_ok and m.team[i] == 0 and m.hp[i] == m.type_hp[m.unit_type[i]]
-			var hid: bool = g.get("hidden", false) or g.stat in ["unit_cost", "weapon_cost", "repair_cost", "radiance_pct", "heal"]
+			var hid: bool = g.get("hidden", false) or g.stat in ["unit_cost", "weapon_cost", "repair_cost", "radiance_pct", "heal", "block"]
 			check("%s, уровень %d (%s %s %s %s%s): меняется только своё — %s; юниты созданы с HP своего типа" % [g.id, lvl, g.stat, g.target, g.op, str(v),
 				", скрыт или на лету — снимок прежний" if hid else "", ", ".join(changed)],
 				diff(got, want).is_empty() and changed.is_empty() == hid and hp_ok, "не как ожидалось: " + ", ".join(diff(got, want)) if not diff(got, want).is_empty() else "")

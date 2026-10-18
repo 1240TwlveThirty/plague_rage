@@ -56,6 +56,7 @@
 		"discipline": "line",
 		"radiance_reserve": "radiance",
 		"infirmary": "cross",
-		"war_cry": "cry"
+		"war_cry": "cry",
+		"spear_wall": "shield"
 	}
 }

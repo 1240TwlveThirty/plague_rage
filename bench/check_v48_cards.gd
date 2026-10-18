@@ -49,8 +49,8 @@ func t_data() -> void:
 	var defs := CARDS.load_cards("res://data/cards.json")
 	var active := CARDS.active_ids(defs)
 	var disabled := defs.keys().filter(func(id): return defs[id].get("disabled", false))
-	check("40 карточек, 38 активных; выключены «Строй щитов» (9) и «Кипящая смола» (13), у обеих есть причина", defs.size() == 40 and active.size() == 38
-		and disabled == ["shield_wall", "boiling_pitch"] and defs.shield_wall.disabled_reason != "" and defs.boiling_pitch.disabled_reason != "", str(disabled))
+	check("40 карточек, 39 активных; выключена «Кипящая смола» (13), с причиной; «Строй щитов» (9) включён в задаче 8 (стат block)", defs.size() == 40
+		and active.size() == 39 and disabled == ["boiling_pitch"] and defs.boiling_pitch.disabled_reason != "" and defs.shield_wall.when.cond == "hold", str(disabled))
 	var nums := defs.keys().map(func(id): return int(defs[id].num))
 	var keys_ok := true
 	for id in defs:
@@ -155,7 +155,7 @@ func t_game() -> void:
 	g.run_rng.seed = 11
 	var r: Dictionary = g.pick_card("victory_sacrifice")
 	check("pick_card: запись добавлена, у карточки 30 есть результат; повтор, disabled и неизвестная — отказ", not r.is_empty() and r.has("result") and g.run_cards.size() == 1
-		and g.pick_card("victory_sacrifice").is_empty() and g.pick_card("shield_wall").is_empty() and g.pick_card("нет").is_empty() and g.run_cards.size() == 1)
+		and g.pick_card("victory_sacrifice").is_empty() and g.pick_card("boiling_pitch").is_empty() and g.pick_card("нет").is_empty() and g.run_cards.size() == 1)
 	check("mod_sources: дары и карточки (2 источника)", g.mod_sources().size() == 2 and g.mod_sources()[1].name == "cards")
 	g.run_cards = [{"id": "grace_blessing"}]
 	check("Благословение Благодати (+10% Сияния) в run_reward: поражение на волне 5 — 22 -> 24", g.run_reward("loss", 5) == 24)

@@ -227,7 +227,7 @@ func t_game() -> void:
 	g.save_path = SAVE
 	root.add_child(g)
 	check("старое сохранение (дары 5b, неизвестный дар): грузится без предупреждения, новые дары на уровне 0, купленные уровни прежние",
-		g.save_warning == "" and g.radiance == 40 and g.gift_levels.size() == 15 and g.gift_levels["armory"] == 0 and g.gift_levels["radiance_reserve"] == 0
+		g.save_warning == "" and g.radiance == 40 and g.gift_levels.size() == 16 and g.gift_levels["armory"] == 0 and g.gift_levels["radiance_reserve"] == 0
 		and g.gift_levels["reserve"] == 1 and g.gift_levels["fortress_walls"] == 2 and not g.gift_levels.has("старый дар") and DirAccess.get_files_at(DIR).size() == 1, str(g.gift_levels))
 	check("набор забега из старого сохранения: tempered_steel 1 и reserve 1 (скрытые не входят)", g.owned_gifts() == {"tempered_steel": 1, "reserve": 1})
 	check("Сияние без даров: поражение на волне 5 — 22, победа на волне 10 — 135", g.run_reward("loss", 5) == 22 and g.run_reward("win", 10) == 135)

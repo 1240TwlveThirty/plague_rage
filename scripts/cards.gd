@@ -8,7 +8,7 @@ const KINDS := ["M", "C", "K"]
 const BUILDS := ["shield", "archers", "gold", "risk", "common"]
 # Условия карточек C и их параметры (числа)
 const CONDS := {"hold": [], "retreat": [], "gate_low": ["frac"], "squad_low": ["frac"], "wave_time": ["seconds"], "gold_high": ["gold"], "lost_steps": ["step_pct", "max_steps"]}
-const COND_STATS := ["damage", "hp", "speed"]   # что может давать условие: множитель урона, получаемого урона (hp), скорости отряда
+const COND_STATS := ["damage", "hp", "speed", "block"]   # что может давать условие: множитель урона, получаемого урона (hp), скорости отряда, бонус блока
 const SPECIALS := ["vengeance", "gate_attack"]
 const FIELDS := ["id", "num", "name_key", "desc_key", "builds", "kind", "mods", "when", "on_pick", "special", "per_unit_pct", "max_pct", "disabled", "disabled_reason"]
 
@@ -107,8 +107,8 @@ static func load_cards(path: String) -> Dictionary:
 			if w.cond in ["gate_low", "squad_low"] and w.frac > 1.0:
 				return _err(path, id, "у условия %s frac больше 1" % w.cond)   # tr-skip: текст ошибки загрузки (лог)
 			for mod in e.mods:
-				if not mod.get("cost", false) and (not mod.stat in COND_STATS or mod.op != "add_pct" or not mod.target in ["all_units", "infantry", "archer"]):
-					return _err(path, id, "условный модификатор %s %s %s: условие даёт только add_pct к %s" % [mod.stat, mod.target, mod.op, ", ".join(COND_STATS)])   # tr-skip: текст ошибки загрузки (лог)
+				if not mod.get("cost", false) and (not mod.stat in COND_STATS or mod.op != ("add_flat" if mod.stat == "block" else "add_pct") or not mod.target in ["all_units", "infantry", "archer", "spearman"]):
+					return _err(path, id, "условный модификатор %s %s %s: условие даёт только add_pct к damage, hp, speed и add_flat к block" % [mod.stat, mod.target, mod.op])   # tr-skip: текст ошибки загрузки (лог)
 		elif e.has("when"):
 			return _err(path, id, "условие when бывает только у карточек C")   # tr-skip: текст ошибки загрузки (лог)
 		if e.has("special"):
