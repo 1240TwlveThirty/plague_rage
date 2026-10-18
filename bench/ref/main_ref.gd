@@ -7,8 +7,10 @@ const MAX_UNITS := 4000       # ёмкость всех массивов юни�
 const WAVES_ENABLED := true   # false: как bak21 (300 зомби на старте, без волн) — для старых бенчей
 const WAVES_PATH := "res://data/waves.json"
 const SHOP_PATH := "res://data/shop.json"
-const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate"]   # порядок = действия buy_1..buy_4 (по умолчанию Z X C V)
-const SHOP_COST_STATS := ["unit_cost", "unit_cost", "weapon_cost", "repair_cost"]   # стат цены товара для Mods.value, порядок SHOP_ITEMS
+const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate", "spear_pack"]   # товары магазина передышки
+const SHOP_ACTIONS := ["buy_1", "buy_2", "buy_3", "buy_4", "buy_spear"]   # действие покупки товара k (по умолчанию Z X C V B)
+const SHOP_COST_STATS := ["unit_cost", "unit_cost", "weapon_cost", "repair_cost", "unit_cost"]   # стат цены товара для Mods.value, порядок SHOP_ITEMS
+const SHOP_COST_TARGET := ["", "archer", "", "", "spearman"]   # дополнительная цель стата цены (unit_cost / archer, unit_cost / spearman)
 const WAR_CRY_GLOW := Color(1.0, 0.82, 0.3, 0.3)   # подсветка краёв экрана, пока действует Клич Благодати
 const WAR_CRY_GLOW_PX := 10.0
 const SPLIT_NAMES := {"infantry": "UI_SPLIT_INFANTRY", "archer": "UI_SPLIT_ARCHER"}   # «Жертва ради победы»: кому выпало
@@ -16,6 +18,7 @@ const COND_KEYS := {"hold": "COND_HOLD", "retreat": "COND_RETREAT", "gate_low": 
 	"wave_time": "COND_WAVE_TIME", "gold_high": "COND_GOLD_HIGH", "lost_steps": "COND_LOST_STEPS"}
 const CARD_ON := Color(1.0, 0.82, 0.3)          # строка карточки: условие выполнено
 const CARD_IDLE := Color(1.0, 1.0, 1.0, 0.55)   # условная карточка, условие не выполнено
+const BLOCK_CAP := 0.95   # общий шанс блока не выше
 const COND_EVERY := 15   # условия карточек пересчитываются раз в столько тиков симуляции
 const CD_CARRY := 2.0 / 30.0   # перенос остатка перезарядки: не больше одного шага решения юнита (2 тика при 30 Гц)
 const SETTINGS := preload("res://scripts/settings.gd")   # key_label(действие): клавиша для подсказок
@@ -25,7 +28,7 @@ const ACTION_KEYS := ["squad_new", "squad_split", "squad_merge"]
 const KEY_ACTIONS := ["select_all", "debug_restart", "squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4",
 	"squad_select_5", "squad_select_6", "squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side",
 	"wave_start", "buy_1", "buy_2", "buy_3", "buy_4", "order_attack", "order_hold", "order_retreat", "about_face", "banner_toggle",
-	"auto_width", "pause", "post_left", "post_top", "post_right", "post_back", "war_cry"]
+	"auto_width", "pause", "post_left", "post_top", "post_right", "post_back", "war_cry", "buy_spear"]
 const ROWS_MAX := 20       # строй не глубже: при большом отряде растёт ширина
 const WIDTH_MAX := 100     # и не шире
 const WAVE_DMG_TO_UNITS := true   # урон зомби по юнитам растёт с волной (team_dmg_mult[1])
@@ -48,6 +51,8 @@ const ORDER_ATTACK := 0   # как раньше: юниты идут на вра
 const ORDER_HOLD := 1     # держать: к врагу не идут, бьют только в дальности атаки
 const ORDER_RETREAT := 2  # отход: врага не ищут, не бьют, лучники не стреляют; скорость x1.5 до прихода
 const RETREAT_SPEED_MULT := 1.5
+const GATE_SPOTS := [0, -1, 1, -2, 2, -3, 3, 0]   # точка у ворот по номеру отряда, в шагах GATE_SPOT_DX от центра ворот
+const GATE_SPOT_DX := 110.0
 const ORDER_NAMES := ["ORDER_ATTACK", "ORDER_HOLD", "ORDER_RETREAT"]   # ключи перевода
 const UNIT_TYPES_PATH := "res://data/unit_types.json"
 const CASTLE_PATH := "res://data/castle.json"
@@ -58,7 +63,8 @@ const STORY_PATH := "res://bench/ref/story_ref.json"   # дневник: тек�
 const GIFTS_PATH := "res://data/gifts.json"   # дары: модификаторы забега
 const MODS := preload("res://scripts/mods.gd")
 const CARDS := preload("res://scripts/cards.gd")
-const CARD_PICK := preload("res://scripts/card_pick.gd")   # экран выбора карточки
+const CARD_PICK := preload("res://scripts/card_pick.gd")
+const ICONS := preload("res://scripts/icons.gd")   # иконки карточек (список в HUD)   # экран выбора карточки
 const CARD_RULES_PATH := "res://data/cards_rules.json"
 const ESC_MENU := preload("res://scripts/esc_menu.gd")   # меню паузы по Esc: «Продолжить», «Выйти в меню», «Выход из игры»
 const ESC_NOTE := "UI_PAUSE_NOTE_LOSS"   # ключ перевода
@@ -473,7 +479,10 @@ var type_damage := PackedFloat32Array()
 var type_range_sq := PackedFloat32Array()   # квадрат дальности атаки
 var type_cooldown := PackedFloat32Array()
 var type_speed := PackedFloat32Array()
-var type_block_mult := PackedFloat32Array()   # множитель урона при блоке щитом; 1.0 = без щита
+var type_block_mult := PackedFloat32Array()
+var type_block_chance := PackedFloat32Array()   # доля ударов, которые щит отражает по своему правилу (данные: block_chance; пехота ~0.6)
+var type_hold_block := PackedFloat32Array()     # навык «Стена щитов»: прибавка к шансу блока отряда на приказе «держать» (данные: hold_block_bonus)
+var type_block_bonus := PackedFloat32Array()    # стат block (дары, карточки M) на тип, долей; пересчёт в _apply_wave_data   # множитель урона при блоке щитом; 1.0 = без щита
 # Мягкая привязь к слоту: до leash_start юнит гонится за врагом, к leash_end — только к слоту.
 var type_leash_start := PackedFloat32Array()
 var type_leash_start_sq := PackedFloat32Array()
@@ -575,11 +584,18 @@ var active_cards: Array = []           # карточки забега без с
 var squad_dmg_mult := PackedFloat32Array()     # множитель урона отряда (удар и стрелы)
 var squad_taken_mult := PackedFloat32Array()   # множитель получаемого отрядом урона
 var squad_speed_mult := PackedFloat32Array()   # множитель скорости отряда (строй и юниты)
+var squad_fallen := PackedInt32Array()         # своих павших отряда за волну (стат recover)
+var squad_recover_carry := PackedFloat64Array()   # дробный остаток возврата павших отряда (переносится на следующие волны забега)
 var squad_start_n := PackedInt32Array()        # численность отряда на начало волны (squad_low, lost_steps); 0 — отряд создан в бою, берётся при первой проверке
+var wave_recovered := 0                        # своих юнитов вернулось после последней волны (стат recover), всего за забег — run_recovered
+var run_recovered := 0
 var wave_fallen := 0                           # своих юнитов пало за волну (карточка 24, vengeance)
 var cond_cards: Array = []                     # условные карточки забега на эту волну: [{cond, when, mods [{stat, target, value}]}]
 var vengeance := {}                            # карточка 24: {per_unit_pct, max_pct} или {}
-var squad_atk_speed_mult := PackedFloat32Array()   # множитель скорости ударов и стрельбы отряда (Клич Благодати); без него ровно 1.0
+var squad_block_bonus := PackedFloat32Array()   # бонус шанса блока отряда по условиям (карточка №9, навык «Стена щитов»); без них 0.0
+var squad_skill_on := PackedByteArray()          # 1 — навык «Стена щитов» отряда сейчас действует (для HUD)
+var squad_atk_speed_mult := PackedFloat32Array()   # множитель скорости ударов и стрельбы отряда: Клич Благодати x скорость боя по условиям карточек; без них ровно 1.0
+var squad_rate_mult := PackedFloat32Array()   # множитель скорости боя отряда по условиям карточек (стат attack_rate); без них ровно 1.0
 # Клич Благодати (дар war_cry, способность): состояние в тиках симуляции — пауза и ускорение работают сами.
 # Активация — команда с меткой тика: request_war_cry ставит запрос, он исполняется в начале следующего тика (_tick_war_cry);
 # war_cry_log — тики активаций, war_cry_plan — тики, на которых активировать (воспроизведение записанного прогона, бенчи).
@@ -643,11 +659,13 @@ var wave_remaining := 0              # зомби этой волны, ещё н
 var subwave_timer := 0.0
 var wave_hp_mult := 1.0
 var wave_kills := 0
+var wave_spawned := 0                  # зомби создано за волну: номер следующего — для разброса HP (hp_spread)
 var zombie_alive := 0
 var gold := 0.0
 var unit_rng := RandomNumberGenerator.new()   # unit_rand, джиттер спавна, точки выхода из ворот
 var infantry_type := -1
 var archer_type := -1
+var spearman_type := -1   # копейщики: свой товар (spear_pack) и свои отряды, создаются при первой покупке
 var zombie_type := -1
 var runner_type := -1
 var knight_type := -1
@@ -696,6 +714,7 @@ var shop_base := PackedFloat64Array()   # float64: цены вида 100·1.2 б
 var shop_growth := PackedFloat64Array()
 var shop_param := PackedFloat64Array()        # amount / dmg_mult / gate_max_gain
 var shop_bought := PackedInt32Array()
+var weapon_stat := "damage"                # что усиливает «Оружие» (shop.json weapons.stat): damage — урон, attack_rate — скорость боя; x dmg_mult за покупку
 var shop_cap := PackedInt32Array()          # inf_pack / archer_pack: максимум живых юнитов этого типа
 var hud_label: Label
 var shop_panel: VBoxContainer
@@ -1384,6 +1403,11 @@ func _load_waves() -> bool:
 	if d.heal_base < 0.0 or d.heal_base > 1.0:
 		push_error("%s: heal_base — доля потерянного HP от 0 до 1" % WAVES_PATH)
 		return false
+	var spread = d.get("hp_spread", 0.0)   # нет поля — разброса нет
+	if not (spread is float or spread is int) or spread < 0.0 or spread >= 1.0:
+		push_error("%s: hp_spread — число от 0 до 1 (не включая 1)" % WAVES_PATH)
+		return false
+	d.hp_spread = float(spread)
 	if not d.get("layers") is Array or d.layers.size() != 3:
 		push_error("%s: нет массива layers из трёх слоёв" % WAVES_PATH)
 		return false
@@ -1410,7 +1434,7 @@ func _load_shop() -> bool:
 	if not d is Dictionary:
 		push_error("%s: ожидается JSON-объект" % SHOP_PATH)
 		return false
-	var param_key := {"inf_pack": "amount", "archer_pack": "amount", "weapons": "dmg_mult", "gate": "gate_max_gain"}
+	var param_key := {"inf_pack": "amount", "archer_pack": "amount", "weapons": "dmg_mult", "gate": "gate_max_gain", "spear_pack": "amount"}
 	var n := SHOP_ITEMS.size()
 	shop_label.resize(n)
 	shop_base.resize(n)
@@ -1426,7 +1450,7 @@ func _load_shop() -> bool:
 			push_error("%s: нет товара %s" % [SHOP_PATH, id])
 			return false
 		var keys := ["base", "growth", param_key[id]]
-		if id in ["inf_pack", "archer_pack"]:
+		if id in ["inf_pack", "archer_pack", "spear_pack"]:
 			keys.append("cap")
 		if not _require_numbers(e, keys, "%s, товар %s" % [SHOP_PATH, id]):   # tr-skip: отладка или контекст лога
 			return false
@@ -1438,6 +1462,11 @@ func _load_shop() -> bool:
 		shop_growth[k] = e.growth
 		shop_param[k] = e[param_key[id]]
 		shop_cap[k] = e.get("cap", 0)   # только у отрядов; у остальных не используется
+		if id == "weapons":
+			weapon_stat = String(e.get("stat", "damage"))
+			if not weapon_stat in ["damage", "attack_rate"]:
+				push_error("%s: товар weapons, stat %s — нужен damage или attack_rate" % [SHOP_PATH, weapon_stat])
+				return false
 	return true
 
 
@@ -1545,7 +1574,7 @@ func _tick_war_cry() -> void:
 			war_cry_ready = tick_counter + war_cry_cd
 			war_cry_log.append(tick_counter)
 			war_cry_uses += 1
-			squad_atk_speed_mult.fill(war_cry_mult)
+			_sync_atk_mult()
 	if war_cry_until >= 0:
 		if tick_counter >= war_cry_until:
 			_end_war_cry()
@@ -1555,7 +1584,14 @@ func _tick_war_cry() -> void:
 
 func _end_war_cry() -> void:
 	war_cry_until = -1
-	squad_atk_speed_mult.fill(1.0)
+	_sync_atk_mult()
+
+
+# Множитель скорости ударов и стрельбы отряда = скорость боя по условиям карточек x Клич Благодати (пока действует).
+func _sync_atk_mult() -> void:
+	var cry := war_cry_mult if war_cry_until >= 0 else 1.0
+	for sq in SQUAD_MAX:
+		squad_atk_speed_mult[sq] = squad_rate_mult[sq] * cry
 
 
 # Новая волна: клич готов сразу (перезарядка между волнами сбрасывается).
@@ -1604,7 +1640,7 @@ func _apply_mods() -> void:
 # изменилась скорость — скорость строя отряда этого типа меняется в той же пропорции. Без модификаторов все множители ровно 1.0
 # и числа те же бит в бит. Вызывается при старте забега и в начале каждой волны (_prepare_wave).
 func _apply_wave_data() -> void:
-	var names := {infantry_type: "infantry", archer_type: "archer"}
+	var names := {infantry_type: "infantry", archer_type: "archer", spearman_type: "spearman"}
 	var hp_new := base_type_hp.duplicate()
 	var dmg_new := base_type_damage.duplicate()
 	var arrow_new := base_type_arrow_dmg.duplicate()
@@ -1620,22 +1656,40 @@ func _apply_wave_data() -> void:
 		hp_new[t] *= mods.get_mult("hp", "all_units") * mods.get_mult("hp", names[t])
 		speed_new[t] *= mods.get_mult("speed", "all_units") * mods.get_mult("speed", names[t])
 	var wk := SHOP_ITEMS.find("weapons")
-	for n in shop_bought[wk]:   # покупки оружия — после модификаторов, как в _buy
+	var wrate := 1.0   # «Оружие» на скорости боя: x dmg_mult за покупку пехоте, копейщикам и лучникам
+	if weapon_stat == "attack_rate":
+		for n in shop_bought[wk]:
+			wrate *= shop_param[wk]
+	for n in (shop_bought[wk] if weapon_stat == "damage" else 0):   # покупки оружия — после модификаторов, как в _buy
 		dmg_new[infantry_type] *= shop_param[wk]
+		dmg_new[spearman_type] *= shop_param[wk]
 		arrow_new[archer_type] *= shop_param[wk]
 	var enemy: float = mods.get_mult("enemy_hp", "enemy")
 	for t in hp_new.size():
 		if not names.has(t):
 			hp_new[t] *= enemy
-	if mods.has_key("attack_speed", "infantry"):
-		cd_new[infantry_type] = _cd_actual(base_type_cooldown[infantry_type]) / mods.get_mult("attack_speed", "infantry")
-	var reload: float = mods.get_mult("reload", "archer")
-	if mods.has_key("reload", "archer"):
+	# Скорость боя: проценты складываются — пехота: attack_speed + attack_rate (все, пехота); копейщики: attack_rate (все, пехота);
+	# лучники: reload + attack_rate (все, лучники). Интервал удара = фактический / множитель, остаток переносится (type_cd_floor).
+	var ar_all: bool = mods.has_key("attack_rate", "all_units")
+	var rate_all: float = mods.get_mult("attack_rate", "all_units") - 1.0
+	var w_on := wrate != 1.0
+	var inf_on: bool = mods.has_key("attack_speed", "infantry") or ar_all or mods.has_key("attack_rate", "infantry") or w_on
+	var inf_rate: float = (mods.get_mult("attack_speed", "infantry") + rate_all + (mods.get_mult("attack_rate", "infantry") - 1.0)) * wrate
+	var spear_on: bool = ar_all or mods.has_key("attack_rate", "infantry") or w_on
+	var spear_rate: float = (1.0 + rate_all + (mods.get_mult("attack_rate", "infantry") - 1.0)) * wrate
+	var arch_on: bool = mods.has_key("reload", "archer") or ar_all or mods.has_key("attack_rate", "archer") or w_on
+	var reload: float = (mods.get_mult("reload", "archer") + rate_all + (mods.get_mult("attack_rate", "archer") - 1.0)) * wrate
+	if inf_on:
+		cd_new[infantry_type] = _cd_actual(base_type_cooldown[infantry_type]) / inf_rate
+	if spear_on:
+		cd_new[spearman_type] = _cd_actual(base_type_cooldown[spearman_type]) / spear_rate
+	if arch_on:
 		cd_new[archer_type] = _cd_actual(base_type_cooldown[archer_type]) / reload
 	volley_new[archer_type] /= reload
 	range_new[archer_type] *= mods.get_mult("range", "archer")
-	type_cd_floor[infantry_type] = -CD_CARRY if mods.has_key("attack_speed", "infantry") else 0.0
-	type_cd_floor[archer_type] = -CD_CARRY if mods.has_key("reload", "archer") else 0.0
+	type_cd_floor[infantry_type] = -CD_CARRY if inf_on else 0.0
+	type_cd_floor[spearman_type] = -CD_CARRY if spear_on else 0.0
+	type_cd_floor[archer_type] = -CD_CARRY if arch_on else 0.0
 	var bounty: float = mods.get_mult("bounty", "player")
 	for t in bounty_new.size():
 		bounty_new[t] *= bounty
@@ -1658,6 +1712,10 @@ func _apply_wave_data() -> void:
 	type_volley_period = volley_new
 	type_range_far = range_new
 	type_bounty_mult = bounty_new
+	type_block_bonus.resize(type_hp.size())
+	type_block_bonus.fill(0.0)
+	for t in names:   # стат block: «все» и своя цель (пехота, копейщики)
+		type_block_bonus[t] = mods.get_flat("block", "all_units") + mods.get_flat("block", names[t])
 	var gm: float = mods.get_mult("gate_hp", "gate")
 	if gm != gate_mult:   # ворота — только при смене множителя: от базы с прибавками ремонта, текущее HP сохраняет долю
 		var gk := SHOP_ITEMS.find("gate")
@@ -1682,6 +1740,18 @@ func _cd_actual(cd: float) -> float:
 		c[0] = maxf(c[0] - CD_CARRY, 0.0)
 		steps += 1
 	return steps * CD_CARRY
+
+
+# Множитель HP зомби при разбросе s: 1 + s * (2u − 1), u в [0, 1) — из целочисленного хэша (seed, волна, номер зомби в волне).
+# Детерминирован и не трогает потоки ГСЧ симуляции; одинаковые аргументы — один и тот же множитель.
+static func hp_spread_factor(s: float, seed: int, w: int, n: int) -> float:
+	var h := (seed * 73856093) ^ (w * 19349663) ^ (n * 83492791)
+	for k in 3:   # перемешивание в 32 битах
+		h = (h ^ (h >> 16)) & 0xFFFFFFFF
+		h = (h * 0x45D9F3B) & 0xFFFFFFFF
+	h = (h ^ (h >> 16)) & 0xFFFFFFFF
+	var u := float(h & 0xFFFFFF) / 16777216.0
+	return 1.0 + s * (2.0 * u - 1.0)
 
 
 # Начало волны: модификаторы заново (карточки могли смениться в передышке), данные волны от базы, статы на лету,
@@ -1711,10 +1781,13 @@ func _prepare_cards() -> void:
 	for sq in SQUAD_MAX:
 		squad_start_n[sq] = squad_n[sq] if squad_used[sq] == 1 else 0
 	wave_fallen = 0
+	squad_fallen.fill(0)
 	_cards_off()
 	squad_dmg_mult.fill(1.0)
 	squad_taken_mult.fill(1.0)
 	squad_speed_mult.fill(1.0)
+	squad_rate_mult.fill(1.0)
+	_sync_atk_mult()
 
 
 # Индикаторы карточек: условия и особые — выключены, бонус 0 (начало пересчёта, начало волны, передышка).
@@ -1730,28 +1803,37 @@ func _cards_off() -> void:
 # Проценты условий складываются; урон — 1 + сумма / 100 (и vengeance: +per_unit_pct за павшего, не больше max_pct), скорость — так же.
 # Бонус к HP по условию — снижение получаемого урона 1 / (1 + x): HP юнитов на лету не переписывается.
 func _update_card_conditions() -> void:
-	if cond_cards.is_empty() and vengeance.is_empty():
+	if cond_cards.is_empty() and vengeance.is_empty() and not _any_hold_skill():
 		return
 	_cards_off()
 	for sq in SQUAD_MAX:
 		var d := 0.0
 		var h := 0.0
 		var sp := 0.0
+		var bl := 0.0
+		var ar := 0.0
+		var skill := 0
 		if squad_used[sq] == 1 and squad_n[sq] > 0 and squad_team[sq] == 0:
 			if squad_start_n[sq] == 0:
 				squad_start_n[sq] = squad_n[sq]
-			var tname := "infantry" if squad_type[sq] == infantry_type else ("archer" if squad_type[sq] == archer_type else "")
+			var tname: String = {infantry_type: "infantry", archer_type: "archer", spearman_type: "spearman"}.get(squad_type[sq], "")
+			if squad_order[sq] == ORDER_HOLD and type_hold_block[squad_type[sq]] > 0.0:   # навык «Стена щитов»
+				bl += type_hold_block[squad_type[sq]]
+				skill = 1
 			for c in cond_cards:
 				var k := cond_factor(c.cond, c.when, sq)
 				if k == 0.0:
 					continue
 				var st: Dictionary = card_state[c.id]
 				st.on = true
-				for e in c.mods:   # индикатор: бонус урона этой карточки в отряде (для ступеней — с их числом), наибольший по отрядам
-					if e.stat == "damage" and (e.target == "all_units" or e.target == tname):
+				for e in c.mods:   # индикатор: бонус урона или скорости боя этой карточки в отряде (для ступеней — с их числом), наибольший по отрядам
+					if (e.stat == "damage" and (e.target == "all_units" or e.target == tname)) or (e.stat == "attack_rate" and _rate_hits(e.target, tname)):
 						st.pct = maxf(st.pct, e.value * k)
 				for e in c.mods:
-					if e.target == "all_units" or e.target == tname:
+					if e.stat == "attack_rate":
+						if _rate_hits(e.target, tname):
+							ar += e.value * k
+					elif e.target == "all_units" or e.target == tname:
 						match e.stat:
 							"damage":
 								d += e.value * k
@@ -1759,6 +1841,8 @@ func _update_card_conditions() -> void:
 								h += e.value * k
 							"speed":
 								sp += e.value * k
+							"block":
+								bl += e.value * k
 			if not vengeance.is_empty():
 				var vp := minf(vengeance.per_unit_pct * wave_fallen, vengeance.max_pct)
 				d += vp
@@ -1766,6 +1850,33 @@ func _update_card_conditions() -> void:
 		squad_dmg_mult[sq] = 1.0 + d / 100.0
 		squad_taken_mult[sq] = 1.0 / (1.0 + h / 100.0)
 		squad_speed_mult[sq] = 1.0 + sp / 100.0
+		squad_block_bonus[sq] = bl
+		squad_skill_on[sq] = skill
+		squad_rate_mult[sq] = 1.0 + ar / 100.0
+	_sync_atk_mult()
+
+
+# Цель стата attack_rate для отряда типа tname: all_units — все; infantry — пехота и копейщики (удар ближнего боя); archer — лучники.
+static func _rate_hits(target: String, tname: String) -> bool:
+	return target == "all_units" or target == tname or (target == "infantry" and tname == "spearman")
+
+
+# Есть ли отряд, у типа которого навык на «держать» (копейщики, «Стена щитов»): тогда условия считаются и без карточек.
+func _any_hold_skill() -> bool:
+	for sq in SQUAD_MAX:
+		if squad_used[sq] == 1 and squad_n[sq] > 0 and type_hold_block[squad_type[sq]] > 0.0:
+			return true
+	return false
+
+
+# Детерминированное «выпадение» дополнительного блока в [0, 1): хэш (тик, атакующий, цель), без ГСЧ симуляции.
+static func block_roll(tick: int, i: int, j: int) -> float:
+	var h := (tick * 73856093) ^ (i * 19349663) ^ (j * 83492791)
+	for k in 3:
+		h = (h ^ (h >> 16)) & 0xFFFFFFFF
+		h = (h * 0x45D9F3B) & 0xFFFFFFFF
+	h = (h ^ (h >> 16)) & 0xFFFFFFFF
+	return float(h & 0xFFFFFF) / 16777216.0
 
 
 # Условие карточки для отряда sq: 0 — не выполнено, 1 — выполнено; lost_steps — число ступеней (0..max_steps).
@@ -1795,6 +1906,33 @@ func cond_factor(cond: String, w: Dictionary, sq: int) -> float:
 # процентными пунктами (+10 — это +0.10 доли, а не умножение базы), не больше 1.0 и не меньше 0.
 func heal_fraction() -> float:
 	return clampf(wave_cfg.heal_base + (mods.get_mult("heal", "player") - 1.0), 0.0, 1.0)
+
+
+# Доля павших за волну, что возвращаются после неё: стат recover (+10 — 0.10), не меньше 0.
+func recover_fraction() -> float:
+	return maxf(mods.get_mult("recover", "player") - 1.0, 0.0)
+
+
+# Конец побеждённой волны (до магазина): каждый свой отряд получает назад floor(павшие x доля + остаток) юнитов своего типа
+# бесплатно с полным HP (выходят из ворот); дробный остаток копится в отряде на следующие волны. Отряд не больше, чем в начале
+# волны. Отряд, погибший целиком (0 юнитов), не получает никого: созданный удаляется в начале передышки, его остаток пропадает.
+func _recover_fallen() -> void:
+	var frac := recover_fraction()
+	if frac <= 0.0:
+		return
+	for s in SQUAD_MAX:
+		if squad_used[s] == 0 or squad_team[s] != 0 or squad_fallen[s] == 0:
+			continue
+		if squad_n[s] == 0:
+			squad_recover_carry[s] = 0.0
+			continue
+		squad_recover_carry[s] += squad_fallen[s] * frac
+		var back := floori(squad_recover_carry[s] + 1e-9)   # 1e-9: 0.3 x 10 не должно дать 2
+		squad_recover_carry[s] = maxf(squad_recover_carry[s] - back, 0.0)
+		back = mini(back, squad_start_n[s] - squad_n[s])
+		if back > 0:
+			_squad_add_units(s, squad_type[s], back)
+			wave_recovered += back
 
 
 # Начало передышки после волны из pick_after_waves: тройка карточек (генератор забега), с интерфейсом — экран выбора.
@@ -1890,16 +2028,23 @@ func _update_cards_ui() -> void:
 	var recs := _cards()
 	if cards_rows.size() != recs.size():
 		for l in cards_rows:
-			l.queue_free()
+			l.get_parent().queue_free()
 		cards_rows.clear()
 		for r in recs:
+			var row := HBoxContainer.new()   # иконка карточки и название
+			row.alignment = BoxContainer.ALIGNMENT_END
+			row.add_theme_constant_override("separation", 6)
+			var icon := ICONS.make(ICONS.of_card(r.id), 1)
+			icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			row.add_child(icon)
 			var l := Label.new()
 			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 			l.mouse_filter = Control.MOUSE_FILTER_STOP   # подсказка при наведении
 			l.add_theme_font_size_override("font_size", 18)
 			l.add_theme_color_override("font_outline_color", Color.BLACK)
 			l.add_theme_constant_override("outline_size", 5)
-			cards_box.add_child(l)
+			row.add_child(l)
+			cards_box.add_child(row)
 			cards_rows.append(l)
 	cards_label.visible = not recs.is_empty()
 	for k in recs.size():
@@ -2345,6 +2490,7 @@ func _start_wave() -> void:
 	team_dmg_mult[1] = 1.0 + wave_cfg.dmg_growth * (wave_number - 1)
 	wave_kills = 0
 	wave_kills_by_type.fill(0)
+	wave_spawned = 0
 	_prepare_wave()
 	arrows_fired = 0   # в отладочной строке — за текущую волну
 	arrows_hit = 0
@@ -2460,6 +2606,9 @@ func _spawn_zombie(p: Vector2, type: int) -> void:
 	unit_rand[i] = unit_rng.randf()
 	unit_render_off[i] = _render_offset(i)
 	hp[i] = type_hp[type] * wave_hp_mult
+	if wave_cfg.hp_spread > 0.0:   # разброс HP: свой хэш (волна, номер зомби в волне, seed), не ГСЧ симуляции
+		hp[i] *= hp_spread_factor(wave_cfg.hp_spread, spawn_seed, wave_number, wave_spawned)
+	wave_spawned += 1
 	arrivals_now += 1
 	cooldown[i] = unit_rand[i] * type_cooldown[type]
 	unit_state[i] = ST_IDLE
@@ -2500,6 +2649,9 @@ func _wave_cleared() -> void:
 				hp[i] = type_hp[unit_type[i]]   # полное лечение
 			else:
 				hp[i] += (type_hp[unit_type[i]] - hp[i]) * heal   # возвращается доля heal потерянного HP
+	wave_recovered = 0
+	_recover_fallen()
+	run_recovered += wave_recovered
 	wave_state = WS_RESPITE
 	_set_paused(false)
 	_free_empty_squads()
@@ -2514,7 +2666,7 @@ func _wave_cleared() -> void:
 
 # Цена товара k: база с ростом за купленные, затем Mods.value по стату товара (SHOP_COST_STATS); без модификаторов — как есть.
 func _price(k: int) -> float:
-	return mods.value(SHOP_COST_STATS[k], shop_base[k] * (1.0 + shop_growth[k] * shop_bought[k]), "archer" if SHOP_ITEMS[k] == "archer_pack" else "")
+	return mods.value(SHOP_COST_STATS[k], shop_base[k] * (1.0 + shop_growth[k] * shop_bought[k]), SHOP_COST_TARGET[k])
 
 
 # Отряд упёрся в cap: живых этого типа плюс покупка больше предела.
@@ -2525,6 +2677,8 @@ func _at_cap(k: int) -> bool:
 			type = infantry_type
 		"archer_pack":
 			type = archer_type
+		"spear_pack":
+			type = spearman_type
 	if type < 0:
 		return false
 	var alive := 0
@@ -2538,6 +2692,14 @@ func _at_cap(k: int) -> bool:
 func _buy(k: int) -> bool:
 	if wave_state != WS_RESPITE or gold < _price(k) or _at_cap(k):
 		return false
+	var spear_sq := -1
+	if SHOP_ITEMS[k] == "spear_pack":   # отряд копейщиков: выбранный или первый; нет — новый у ворот; нет свободного индекса — отказ
+		spear_sq = _buy_target(spearman_type)
+		if squad_type[spear_sq] != spearman_type or squad_used[spear_sq] == 0:
+			spear_sq = _squad_create(0, spearman_type)
+			if spear_sq < 0:
+				_say(tr("MSG_NO_SQUAD_FOR_SPEARMEN"))
+				return false
 	gold -= _price(k)
 	shop_bought[k] += 1
 	match SHOP_ITEMS[k]:
@@ -2545,9 +2707,15 @@ func _buy(k: int) -> bool:
 			_squad_add_units(_buy_target(infantry_type), infantry_type, int(shop_param[k]))
 		"archer_pack":
 			_squad_add_units(_buy_target(archer_type), archer_type, int(shop_param[k]))
+		"spear_pack":
+			_squad_add_units(spear_sq, spearman_type, int(shop_param[k]))
 		"weapons":
-			type_damage[infantry_type] *= shop_param[k]
-			type_arrow_dmg[archer_type] *= shop_param[k]
+			if weapon_stat == "attack_rate":
+				_apply_wave_data()   # скорость боя: интервалы удара и стрельбы заново от базы (с этой покупкой)
+			else:
+				type_damage[infantry_type] *= shop_param[k]
+				type_damage[spearman_type] *= shop_param[k]   # оружие и копейщикам (удар ближнего боя)
+				type_arrow_dmg[archer_type] *= shop_param[k]
 		"gate":
 			gate_hp_max += shop_param[k]   # фиксированная прибавка gate_max_gain
 			gate_hp = gate_hp_max
@@ -2600,7 +2768,7 @@ func _squad_add_units(s: int, type: int, n: int) -> void:
 	squad_dir_angle[s] = NAN
 	_reflow_squad(s)
 	if at_gate:
-		squad_pos[s] = Vector2(GATE_POS.x, WALL_Y - 40.0)
+		squad_pos[s] = gate_spot(s)
 		squad_target[s] = squad_pos[s]
 
 
@@ -2636,11 +2804,14 @@ func _squad_reset(s: int) -> void:
 	squad_aspect[s] = Vector2.ONE
 	squad_order[s] = ORDER_ATTACK
 	squad_dir_angle[s] = NAN
+	squad_fallen[s] = 0
+	squad_recover_carry[s] = 0.0
 
 
 # Новый пустой отряд по образцу отряда src (тип, команда, пропорция строя) в первом свободном индексе
-# >= START_SQUADS. Стоит у ворот лицом вверх, приказ «атака». Возвращает индекс или -1, если все заняты.
-func _squad_create(src: int) -> int:
+# >= START_SQUADS; type >= 0 — другой тип юнитов (копейщики по образцу пехоты). Стоит у своей точки у ворот (gate_spot) лицом вверх,
+# приказ «атака». Возвращает индекс или -1, если все заняты.
+func _squad_create(src: int, type := -1) -> int:
 	for s in range(START_SQUADS, SQUAD_MAX):
 		if squad_used[s] == 1:
 			continue
@@ -2650,9 +2821,11 @@ func _squad_create(src: int) -> int:
 		squad_team[s] = squad_team[src]
 		squad_ranged[s] = squad_ranged[src]
 		squad_aspect[s] = squad_aspect[src]
-		squad_speed[s] = 0.75 * type_speed[squad_type[src]]
+		if type >= 0:
+			squad_type[s] = type
+		squad_speed[s] = 0.75 * type_speed[squad_type[s]]
 		squad_width[s] = maxi(int(squad_aspect[src].x), 1)
-		squad_pos[s] = Vector2(GATE_POS.x, WALL_Y - 40.0)
+		squad_pos[s] = gate_spot(s)
 		squad_target[s] = squad_pos[s]
 		return s
 	return -1
@@ -3101,6 +3274,8 @@ func _load_types() -> bool:
 	type_cooldown.resize(n)
 	type_speed.resize(n)
 	type_block_mult.resize(n)
+	type_block_chance.resize(n)
+	type_hold_block.resize(n)
 	type_leash_start.resize(n)
 	type_leash_start_sq.resize(n)
 	type_leash_end.resize(n)
@@ -3151,6 +3326,8 @@ func _load_types() -> bool:
 		type_cooldown[t] = e.cooldown
 		type_speed[t] = _scaled(e.speed, SPEED_REL)
 		type_block_mult[t] = e.block_mult
+		type_block_chance[t] = clampf(float(e.get("block_chance", 0.0)), 0.0, BLOCK_CAP)
+		type_hold_block[t] = maxf(float(e.get("hold_block_bonus", 0.0)), 0.0)
 		type_leash_start[t] = e.leash_start
 		type_leash_start_sq[t] = e.leash_start * e.leash_start
 		type_leash_end[t] = e.leash_end
@@ -3191,7 +3368,8 @@ func _setup_data() -> void:
 	var peasant := _type_of("peasant")     # орда зомби
 	var runner := _type_of("runner")
 	var knight := _type_of("fallen_knight")
-	if infantry == -1 or archer == -1 or peasant == -1 or runner == -1 or knight == -1 or not _load_castle() or not _load_waves() or not _load_shop() or not _load_run() or not _load_story() 			or not _load_mods():
+	var spearman := _type_of("spearman")   # копейщики
+	if infantry == -1 or archer == -1 or peasant == -1 or runner == -1 or knight == -1 or spearman == -1 or not _load_castle() or not _load_waves() or not _load_shop() or not _load_run() or not _load_story() 			or not _load_mods():
 		type_id = {}
 		set_physics_process(false)
 		set_process(false)
@@ -3201,6 +3379,7 @@ func _setup_data() -> void:
 	zombie_type = peasant
 	runner_type = runner
 	knight_type = knight
+	spearman_type = spearman
 	_apply_mods()
 	_read_wave_mods()
 	# Все массивы юнитов — один раз на MAX_UNITS; живые юниты всегда в [0, count).
@@ -3270,8 +3449,18 @@ func _setup_data() -> void:
 		arr.fill(1.0)
 	squad_atk_speed_mult.resize(SQUAD_MAX)
 	squad_atk_speed_mult.fill(1.0)
+	squad_rate_mult.resize(SQUAD_MAX)
+	squad_rate_mult.fill(1.0)
+	squad_block_bonus.resize(SQUAD_MAX)
+	squad_block_bonus.fill(0.0)
+	squad_skill_on.resize(SQUAD_MAX)
+	squad_skill_on.fill(0)
 	squad_start_n.resize(SQUAD_MAX)
 	squad_start_n.fill(0)
+	squad_fallen.resize(SQUAD_MAX)
+	squad_fallen.fill(0)
+	squad_recover_carry.resize(SQUAD_MAX)
+	squad_recover_carry.fill(0.0)
 	squad_center_off.resize(SQUAD_MAX)
 	squad_reflow_n.resize(SQUAD_MAX)
 	squad_front_row.resize(SQUAD_MAX)
@@ -3864,7 +4053,15 @@ func _box_select(r: Rect2, add: bool) -> void:
 func _set_order(o: int) -> void:
 	for s in _sel_list():
 		squad_order[s] = o
+		if o == ORDER_RETREAT and squad_follow[s] < 0:
+			squad_target[s] = gate_spot(s)   # отход — к своей точке у ворот (ведомый идёт за ведущим)
 	_update_squad_panel()
+
+
+# Точка отряда s у ворот: отход и появление нового отряда. Точки разнесены по номеру отряда (GATE_SPOTS, шаг GATE_SPOT_DX),
+# чтобы отряды не сходились в одну; центр строя выше стены на 40 px и на половину глубины строя (большой отряд не упирается в стену).
+func gate_spot(s: int) -> Vector2:
+	return Vector2(GATE_POS.x + GATE_SPOTS[s % GATE_SPOTS.size()] * GATE_SPOT_DX, WALL_Y - 40.0 - squad_depth[s] * 0.5)
 
 
 # Название отряда для панели и магазина: label типа, а если отрядов этого типа несколько — с номером по порядку.
@@ -3893,6 +4090,9 @@ func _update_squad_panel() -> void:
 		sig |= 2 << s
 		squad_swatches[s].color = type_color[squad_type[s]]
 		squad_buttons[s].text = "%s  %s — %d — %s" % [SETTINGS.key_label("squad_select_%d" % (s + 1)), _squad_label(s), squad_n[s], tr(ORDER_NAMES[squad_order[s]])]
+		if squad_skill_on[s] == 1:   # навык «Стена щитов» действует — отметка и золотой цвет, как у горящих карточек
+			squad_buttons[s].text += "  ● " + tr("UI_SKILL_SHIELD_WALL")
+		squad_buttons[s].add_theme_color_override("font_color", CARD_ON if squad_skill_on[s] == 1 else Color.WHITE)
 		squad_buttons[s].set_pressed_no_signal(_is_sel(s))
 	squad_actions.visible = acts
 	for k in action_buttons.size():   # подписи с актуальной клавишей (её могли переназначить)
@@ -3995,12 +4195,15 @@ func _update_ui() -> void:
 	for k in shop_buttons.size():
 		var price := _price(k)
 		var capped := _at_cap(k)
-		shop_buttons[k].text = tr("HUD_SHOP_ROW") % [SETTINGS.key_label("buy_%d" % (k + 1)), _shop_title(k), tr("HUD_SHOP_MAX") if capped else tr("HUD_SHOP_PRICE") % ceili(price), shop_bought[k]]
-		# Юниты идут в выбранный отряд своего типа, иначе в первый отряд типа.
-		var pack_type := infantry_type if SHOP_ITEMS[k] == "inf_pack" else (archer_type if SHOP_ITEMS[k] == "archer_pack" else -1)
+		shop_buttons[k].text = tr("HUD_SHOP_ROW") % [SETTINGS.key_label(SHOP_ACTIONS[k]), _shop_title(k), tr("HUD_SHOP_MAX") if capped else tr("HUD_SHOP_PRICE") % ceili(price), shop_bought[k]]
+		# Юниты идут в выбранный отряд своего типа, иначе в первый отряд типа (копейщиков без отряда — в новый).
+		var pack_type: int = {"inf_pack": infantry_type, "archer_pack": archer_type, "spear_pack": spearman_type}.get(SHOP_ITEMS[k], -1)
 		if pack_type >= 0:
 			var target := _buy_target(pack_type)
-			shop_buttons[k].text += "\n" + tr("HUD_SHOP_TARGET") % [target + 1, _squad_label(target)]
+			if squad_used[target] == 1 and squad_type[target] == pack_type:
+				shop_buttons[k].text += "\n" + tr("HUD_SHOP_TARGET") % [target + 1, _squad_label(target)]
+			else:
+				shop_buttons[k].text += "\n" + tr("HUD_SHOP_NEW_SQUAD")
 		shop_buttons[k].disabled = capped or gold < price   # серая при нехватке золота или на пределе
 
 
@@ -4405,11 +4608,23 @@ func _update_unit(i: int, delta: float) -> void:
 				# Блок щитом: жертва в отряде, щит поднят (с её удара прошло >= SHIELD_DOWN_TIME;
 				# cooldown = сколько осталось до её следующего удара), удар из переднего сектора.
 				var sj := unit_squad[best]
+				var blocked := false
 				if sj >= 0 and type_cooldown[unit_type[best]] - cooldown[best] >= SHIELD_DOWN_TIME:
 					var a := p - pos[best]
 					if a.dot(Vector2.from_angle(squad_angle[sj])) > BLOCK_COS * a.length():
 						dmg *= m
 						blocked_hits += 1
+						blocked = true
+				# Бонус блока (стат block, карточка №9, «Стена щитов»): часть не отражённых по правилу ударов тоже отражается,
+				# чтобы общий шанс стал block_chance + бонус (не выше BLOCK_CAP); выпадение — хэш, не ГСЧ. Без бонуса ветки нет.
+				if not blocked and sj >= 0:
+					var bt := unit_type[best]
+					var extra := type_block_bonus[bt] + squad_block_bonus[sj]
+					if extra > 0.0:
+						var base := type_block_chance[bt]
+						if base < 1.0 and block_roll(tick_counter, i, best) < (minf(base + extra, BLOCK_CAP) - base) / (1.0 - base):
+							dmg *= m
+							blocked_hits += 1
 			if unit_squad[best] >= 0:
 				dmg *= squad_taken_mult[unit_squad[best]]   # бонус к HP по условию — меньше получаемого урона
 			hp[best] -= dmg
@@ -4475,6 +4690,8 @@ func _remove_dead() -> void:
 				wave_kills_by_type[unit_type[i]] += 1
 			elif team[i] == 0:
 				wave_fallen += 1   # пал свой (карточка 24)
+				if unit_squad[i] >= 0:
+					squad_fallen[unit_squad[i]] += 1   # павшие отряда (стат recover)
 			if unit_squad[i] >= 0:
 				squad_dirty[unit_squad[i]] = 1
 				squad_n[unit_squad[i]] -= 1
@@ -5499,8 +5716,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_toggle_sel(s)
 			else:
 				_select_only(s)
-		elif act.begins_with("buy_"):
-			_buy(int(act.trim_prefix("buy_")) - 1)
+		elif act in SHOP_ACTIONS:
+			_buy(SHOP_ACTIONS.find(act))
 		match act:
 			"about_face":
 				if drag_active:
