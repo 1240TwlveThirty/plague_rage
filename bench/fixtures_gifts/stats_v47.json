@@ -1,0 +1,17 @@
+[
+	{"id": "flat60", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "income_flat", "target": "player", "op": "add_flat", "levels": [60]},
+	{"id": "heal50", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "heal", "target": "player", "op": "add_pct", "levels": [50]},
+	{"id": "spd_inf15", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "speed", "target": "infantry", "op": "add_pct", "levels": [15]},
+	{"id": "spd_all_m10", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "speed", "target": "all_units", "op": "add_pct", "levels": [-10]},
+	{"id": "reload20", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "reload", "target": "archer", "op": "add_pct", "levels": [20]},
+	{"id": "as12", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "attack_speed", "target": "infantry", "op": "add_pct", "levels": [12]},
+	{"id": "range15", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "range", "target": "archer", "op": "add_pct", "levels": [15]},
+	{"id": "ehp10", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "enemy_hp", "target": "enemy", "op": "add_pct", "levels": [10]},
+	{"id": "bk100", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "bounty", "target": "knight", "op": "add_pct", "levels": [100]},
+	{"id": "uca25", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "unit_cost", "target": "archer", "op": "add_pct", "levels": [25]},
+	{"id": "uc15", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "unit_cost", "target": "player", "op": "add_pct", "levels": [-15]},
+	{"id": "grant10", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "grant_units_free", "target": "player", "op": "add_flat", "levels": [10]},
+	{"id": "hp12", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "hp", "target": "infantry", "op": "add_pct", "levels": [12, 50]},
+	{"id": "gate40", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "gate_hp", "target": "gate", "op": "add_pct", "levels": [40]},
+	{"id": "inc30", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "income", "target": "player", "op": "add_pct", "levels": [30]}
+]

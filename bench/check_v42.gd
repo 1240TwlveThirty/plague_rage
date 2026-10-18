@@ -89,6 +89,9 @@ func boost(m: Node2D) -> void:
 	m.type_hp[m.infantry_type] *= 10.0
 	m.type_hp[m.archer_type] *= 10.0
 	m.type_damage[m.infantry_type] *= 10.0
+	m.base_type_hp[m.infantry_type] *= 10.0   # база тоже: данные волны пересчитываются от неё в начале каждой волны
+	m.base_type_hp[m.archer_type] *= 10.0
+	m.base_type_damage[m.infantry_type] *= 10.0
 	for i in m.count:
 		if m.team[i] == 0:
 			m.hp[i] = m.type_hp[m.unit_type[i]]

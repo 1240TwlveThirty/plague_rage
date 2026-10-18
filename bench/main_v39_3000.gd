@@ -9,6 +9,8 @@ const WAVES_PATH := "res://data/waves.json"
 const SHOP_PATH := "res://data/shop.json"
 const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate"]   # порядок = действия buy_1..buy_4 (по умолчанию Z X C V)
 const SHOP_COST_STATS := ["unit_cost", "unit_cost", "weapon_cost", "repair_cost"]   # стат цены товара для Mods.value, порядок SHOP_ITEMS
+const HEAL_BASE := 1.0    # лечение между волнами: доля потерянного HP, база — полное; стат heal прибавляет проценты (выше 1.0 ничего не меняет)
+const CD_CARRY := 2.0 / 30.0   # перенос остатка перезарядки: не больше одного шага решения юнита (2 тика при 30 Гц)
 const SETTINGS := preload("res://scripts/settings.gd")   # key_label(действие): клавиша для подсказок
 # Действия клавиатуры в порядке проверки (_key_action): с модификаторами раньше, чтобы Ctrl+A не ушло в действие на A
 const ACTION_TEXTS := ["HUD_SQUAD_NEW", "HUD_SQUAD_SPLIT", "HUD_SQUAD_MERGE"]   # кнопки под панелью отрядов (ключи, %s — клавиша)
@@ -554,8 +556,22 @@ var drag_flip := false                 # F во время протяжки: л�
 var story_path := STORY_PATH           # тесты подменяют
 var gifts_path := GIFTS_PATH           # тесты подменяют
 var active_gifts := {}                 # активные дары забега, id -> уровень: с синглтоном берутся из Game.active_gifts, бенчи задают до _setup_data
-var mods: RefCounted = null            # MODS: спрашивается один раз в _apply_mods, тик его не вызывает
-var income_pct := 0.0                  # дар на доход: эта доля дохода прошлой волны начисляется в начале волны
+var gift_defs := {}                    # дары из gifts_path (MODS.load_gifts)
+var mods: RefCounted = null            # MODS: собирается при старте забега и в начале каждой волны (_prepare_wave), тик его не вызывает
+var income_pct := 0.0                  # стат income: эта доля дохода волны начисляется в конце волны (до магазина передышки)
+var income_flat := 0.0                 # стат income_flat: столько золота начисляется в конце волны вместе с доходом
+# База данных типов (из unit_types.json, castle.json) — от неё в начале каждой волны считаются эффективные массивы type_* (_apply_wave_data)
+var base_type_hp := PackedFloat32Array()
+var base_type_damage := PackedFloat32Array()
+var base_type_arrow_dmg := PackedFloat32Array()
+var base_type_bounty := PackedFloat32Array()
+var base_type_speed := PackedFloat32Array()
+var base_type_cooldown := PackedFloat32Array()
+var base_type_volley := PackedFloat32Array()
+var base_type_range_far := PackedFloat32Array()
+var base_gate_hp_max := 0.0
+var gate_mult := 1.0                   # множитель gate_hp, с которым посчитан gate_hp_max
+var type_cd_floor := PackedFloat32Array()   # нижний предел cooldown: 0, с модификатором скорости удара -CD_CARRY (остаток переносится на следующий удар)
 var wave_income := 0.0                 # доход прошлой волны: золото за убитых и бонус волны
 var gold_wave_start := 0.0             # золото в начале волны (после начисления дара): от него считается доход волны
 var story_intro := ""
@@ -1418,32 +1434,146 @@ func _save_record() -> void:
 
 # Дары: gifts.json и активный набор (Game.active_gifts или active_gifts бенча). Ошибка в файле или в наборе — остановка.
 func _load_mods() -> bool:
-	var defs: Dictionary = MODS.load_gifts(gifts_path)
-	if defs.is_empty():
+	gift_defs = MODS.load_gifts(gifts_path)
+	if gift_defs.is_empty():
 		return false
 	if game != null:
 		active_gifts = game.active_gifts.duplicate()
-	mods = MODS.new(defs)
-	return mods.build_sources([MODS.gifts_source(defs, active_gifts)])   # источники — как Game.mod_sources, но с defs из gifts_path сцены
+	mods = MODS.new(gift_defs)
+	return _load_mods_sources()
 
 
-# Эффективные характеристики забега — один раз, до создания юнитов: дальше бой читает только готовые числа.
-# Урон, HP и награда умножаются прямо в массивах типов (type_damage, type_arrow_dmg, type_hp, type_bounty_mult),
-# ворота — в gate_hp_max, доход — в income_pct. Тип игрока получает множители цели all_units и своей (infantry, archer).
-# Без даров все множители ровно 1.0 и числа те же бит в бит.
+# Собрать модификаторы из списка источников — как Game.mod_sources, но с defs из gifts_path сцены.
+func _load_mods_sources() -> bool:
+	return mods.build_sources(_mod_sources())
+
+
+func _mod_sources() -> Array:
+	return [MODS.gifts_source(gift_defs, active_gifts)]
+
+
+# Старт забега, до создания юнитов: запомнить базу типов и ворот, посчитать эффективные данные (_apply_wave_data), ворота полные.
 func _apply_mods() -> void:
+	base_type_hp = type_hp.duplicate()
+	base_type_damage = type_damage.duplicate()
+	base_type_arrow_dmg = type_arrow_dmg.duplicate()
+	base_type_bounty = type_bounty_mult.duplicate()
+	base_type_speed = type_speed.duplicate()
+	base_type_cooldown = type_cooldown.duplicate()
+	base_type_volley = type_volley_period.duplicate()
+	base_type_range_far = type_range_far.duplicate()
+	base_gate_hp_max = gate_hp_max
+	gate_mult = 1.0
+	type_cd_floor.resize(type_hp.size())
+	type_cd_floor.fill(0.0)
+	_apply_wave_data()
+	gate_hp = gate_hp_max
+
+
+# Эффективные данные волны = база + все активные модификаторы (дары и карточки), каждый раз от базы, не поверх прошлых:
+# урон и стрелы (с покупками оружия в том же порядке, что _buy), HP, скорость, перезарядка и скорость удара, дальность лучников,
+# HP зомби (enemy_hp), награда (общая и за рыцаря), ворота (с прибавками ремонта), доход. Тип игрока получает множители цели
+# all_units и своей (infantry, archer). Изменился максимум HP типа — у живых юнитов этого типа HP сохраняет долю от максимума;
+# изменилась скорость — скорость строя отряда этого типа меняется в той же пропорции. Без модификаторов все множители ровно 1.0
+# и числа те же бит в бит. Вызывается при старте забега и в начале каждой волны (_prepare_wave).
+func _apply_wave_data() -> void:
 	var names := {infantry_type: "infantry", archer_type: "archer"}
+	var hp_new := base_type_hp.duplicate()
+	var dmg_new := base_type_damage.duplicate()
+	var arrow_new := base_type_arrow_dmg.duplicate()
+	var speed_new := base_type_speed.duplicate()
+	var cd_new := base_type_cooldown.duplicate()
+	var volley_new := base_type_volley.duplicate()
+	var range_new := base_type_range_far.duplicate()
+	var bounty_new := base_type_bounty.duplicate()
 	for t in names:
 		var dmg: float = mods.get_mult("damage", "all_units") * mods.get_mult("damage", names[t])
-		type_damage[t] *= dmg
-		type_arrow_dmg[t] *= dmg
-		type_hp[t] *= mods.get_mult("hp", "all_units") * mods.get_mult("hp", names[t])
+		dmg_new[t] *= dmg
+		arrow_new[t] *= dmg
+		hp_new[t] *= mods.get_mult("hp", "all_units") * mods.get_mult("hp", names[t])
+		speed_new[t] *= mods.get_mult("speed", "all_units") * mods.get_mult("speed", names[t])
+	var wk := SHOP_ITEMS.find("weapons")
+	for n in shop_bought[wk]:   # покупки оружия — после модификаторов, как в _buy
+		dmg_new[infantry_type] *= shop_param[wk]
+		arrow_new[archer_type] *= shop_param[wk]
+	var enemy: float = mods.get_mult("enemy_hp", "enemy")
+	for t in hp_new.size():
+		if not names.has(t):
+			hp_new[t] *= enemy
+	if mods.has_key("attack_speed", "infantry"):
+		cd_new[infantry_type] = _cd_actual(base_type_cooldown[infantry_type]) / mods.get_mult("attack_speed", "infantry")
+	var reload: float = mods.get_mult("reload", "archer")
+	if mods.has_key("reload", "archer"):
+		cd_new[archer_type] = _cd_actual(base_type_cooldown[archer_type]) / reload
+	volley_new[archer_type] /= reload
+	range_new[archer_type] *= mods.get_mult("range", "archer")
+	type_cd_floor[infantry_type] = -CD_CARRY if mods.has_key("attack_speed", "infantry") else 0.0
+	type_cd_floor[archer_type] = -CD_CARRY if mods.has_key("reload", "archer") else 0.0
 	var bounty: float = mods.get_mult("bounty", "player")
-	for t in type_bounty_mult.size():
-		type_bounty_mult[t] *= bounty
-	gate_hp_max *= mods.get_mult("gate_hp", "gate")
-	gate_hp = gate_hp_max
+	for t in bounty_new.size():
+		bounty_new[t] *= bounty
+	bounty_new[knight_type] *= mods.get_mult("bounty", "knight")
+	for t in hp_new.size():
+		if hp_new[t] != type_hp[t] and type_hp[t] > 0.0:
+			var k: float = hp_new[t] / type_hp[t]
+			for i in mini(count, unit_type.size()):   # при старте забега массивов юнитов ещё нет
+				if unit_type[i] == t:
+					hp[i] *= k
+		if speed_new[t] != type_speed[t] and type_speed[t] > 0.0:
+			for sq in SQUAD_MAX:
+				if squad_used.size() > sq and squad_used[sq] == 1 and squad_type[sq] == t:
+					squad_speed[sq] *= speed_new[t] / type_speed[t]
+	type_hp = hp_new
+	type_damage = dmg_new
+	type_arrow_dmg = arrow_new
+	type_speed = speed_new
+	type_cooldown = cd_new
+	type_volley_period = volley_new
+	type_range_far = range_new
+	type_bounty_mult = bounty_new
+	var gm: float = mods.get_mult("gate_hp", "gate")
+	if gm != gate_mult:   # ворота — только при смене множителя: от базы с прибавками ремонта, текущее HP сохраняет долю
+		var gk := SHOP_ITEMS.find("gate")
+		var gmax: float = base_gate_hp_max * gm
+		for n in shop_bought[gk]:   # прибавки ремонта — после множителя, как в _buy
+			gmax += shop_param[gk]
+		if gate_hp_max > 0.0:
+			gate_hp *= gmax / gate_hp_max
+		gate_hp_max = gmax
+		gate_mult = gm
 	income_pct = mods.get_mult("income", "player") - 1.0
+	income_flat = mods.value("income_flat", 0.0)
+
+
+# Фактический интервал удара без модификатора: cooldown убывает шагами решения юнита (CD_CARRY = 2 тика) до 0 без переноса,
+# и из-за float32 0.8 с — это 13 шагов (0.867 с), а не 12. С модификатором скорости удара интервал = этот фактический / множитель
+# и остаток переносится (type_cd_floor), поэтому +12% к скорости дают в среднем +12% ударов, а не прыжок к ближайшему шагу.
+func _cd_actual(cd: float) -> float:
+	var c := PackedFloat32Array([cd])
+	var steps := 0
+	while c[0] > 0.0 and steps < 10000:
+		c[0] = maxf(c[0] - CD_CARRY, 0.0)
+		steps += 1
+	return steps * CD_CARRY
+
+
+# Начало волны: модификаторы заново (карточки могли смениться в передышке), данные волны от базы, статы на лету,
+# бесплатные юниты (grant_units_free) в первый отряд пехоты — до начала боя, с уже пересчитанным HP.
+func _prepare_wave() -> void:
+	_load_mods_sources()
+	_apply_wave_data()
+	_read_wave_mods()
+	var free := int(mods.value("grant_units_free", 0.0))
+	if free > 0:
+		_squad_add_units(_first_squad_of(infantry_type), infantry_type, free)
+
+
+# Первый занятый отряд типа type (пехота — всегда есть отряд 0).
+func _first_squad_of(type: int) -> int:
+	for s in SQUAD_MAX:
+		if squad_used[s] == 1 and squad_type[s] == type:
+			return s
+	return 0
 
 
 # Статы волны «на лету» (Mods.value): разброс стрел и окно сигнала всплеска. Читаются при старте забега и в начале каждой волны,
@@ -1850,8 +1980,6 @@ func _start_wave() -> void:
 	wave_number += 1
 	wave_state = WS_BATTLE
 	_set_paused(false)
-	if income_pct != 0.0:
-		gold += wave_income * income_pct
 	gold_wave_start = gold
 	if wave_plan_for != wave_number:   # план строится в начале передышки; сюда — если номер волны сменили в обход
 		wave_plan = _plan_wave(wave_number)
@@ -1866,7 +1994,7 @@ func _start_wave() -> void:
 	team_dmg_mult[1] = 1.0 + wave_cfg.dmg_growth * (wave_number - 1)
 	wave_kills = 0
 	wave_kills_by_type.fill(0)
-	_read_wave_mods()
+	_prepare_wave()
 	arrows_fired = 0   # в отладочной строке — за текущую волну
 	arrows_hit = 0
 	arrows_out_of_range = 0
@@ -2006,9 +2134,17 @@ func _wave_cleared() -> void:
 		return
 	gold += wave_cfg.wave_bonus_gold
 	wave_income = gold - gold_wave_start
+	if income_pct != 0.0:
+		gold += wave_income * income_pct   # доход (стат income) — в конце волны, до магазина передышки
+	if income_flat != 0.0:
+		gold += income_flat
+	var heal: float = mods.value("heal", HEAL_BASE)
 	for i in count:
 		if team[i] == 0:
-			hp[i] = type_hp[unit_type[i]]   # бесплатное лечение армии
+			if heal >= 1.0:
+				hp[i] = type_hp[unit_type[i]]   # бесплатное лечение армии
+			else:
+				hp[i] = minf(type_hp[unit_type[i]], hp[i] + (type_hp[unit_type[i]] - hp[i]) * heal)
 	wave_state = WS_RESPITE
 	_set_paused(false)
 	_free_empty_squads()
@@ -2022,7 +2158,7 @@ func _wave_cleared() -> void:
 
 # Цена товара k: база с ростом за купленные, затем Mods.value по стату товара (SHOP_COST_STATS); без модификаторов — как есть.
 func _price(k: int) -> float:
-	return mods.value(SHOP_COST_STATS[k], shop_base[k] * (1.0 + shop_growth[k] * shop_bought[k]))
+	return mods.value(SHOP_COST_STATS[k], shop_base[k] * (1.0 + shop_growth[k] * shop_bought[k]), "archer" if SHOP_ITEMS[k] == "archer_pack" else "")
 
 
 # Отряд упёрся в cap: живых этого типа плюс покупка больше предела.
@@ -3812,7 +3948,7 @@ func _update_unit(i: int, delta: float) -> void:
 			hp[best] -= dmg
 			if my_team == 1 and contact_tick < 0:
 				contact_tick = tick_counter
-			cooldown[i] = type_cooldown[t]
+			cooldown[i] = type_cooldown[t] + cooldown[i]   # cooldown <= 0: остаток (до -CD_CARRY) переносится, без модификатора скорости удара он 0
 			unit_anim_t[i] = ATTACK_ANIM_T
 		if leash_w > 0.0:
 			v = v.lerp(slot_vel, leash_w)   # смесь «к врагу (или стоять и бить)» и «к слоту»
@@ -3845,7 +3981,7 @@ func _update_unit(i: int, delta: float) -> void:
 	# Толчок не разовым сдвигом позиции, а добавкой к скорости на 2 тика до следующего решения:
 	# delta здесь = 2 тика, поэтому за эти 2 тика юнит сместится ровно на push * PUSH_K_2.
 	vel[i] = v + push * PUSH_K_2 / delta
-	cooldown[i] = maxf(cooldown[i] - delta, 0.0)
+	cooldown[i] = maxf(cooldown[i] - delta, type_cd_floor[t])
 
 
 func _move_units(delta: float) -> void:
@@ -4670,7 +4806,7 @@ func _single_fire(s: int) -> void:
 		if j == -1:
 			continue
 		_fire_arrow(i, pos[j], 0.0)
-		cooldown[i] = type_cooldown[t]
+		cooldown[i] = type_cooldown[t] + cooldown[i]   # cooldown <= 0: остаток переносится (см. type_cd_floor)
 
 
 # Залп: цикл draw (draw_time) -> fire -> reload до volley_period от начала цикла.

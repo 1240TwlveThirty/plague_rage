@@ -57,6 +57,10 @@ func boost(m: Node2D) -> void:
 	m.type_hp[m.infantry_type] *= 10.0
 	m.type_hp[m.archer_type] *= 10.0
 	m.type_damage[m.infantry_type] *= 10.0
+	m.base_type_hp[m.infantry_type] *= 10.0   # база тоже: данные волны пересчитываются от неё в начале каждой волны
+	m.base_type_hp[m.archer_type] *= 10.0
+	m.base_type_damage[m.infantry_type] *= 10.0
+	m.base_type_arrow_dmg[m.archer_type] *= 10.0
 	m.type_arrow_dmg[m.archer_type] *= 10.0   # без этого при численности волн x2.7 (калибровка, этап 2) ворота падают на волне 9
 	for i in m.count:
 		if m.team[i] == 0:

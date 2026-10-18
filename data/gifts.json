@@ -11,5 +11,6 @@
 	{"id": "repairers", "name_key": "GIFT_REPAIRERS_NAME", "desc_key": "GIFT_REPAIRERS_DESC", "stat": "repair_cost", "target": "player", "op": "add_pct", "levels": [-15, -30, -45], "req_sieges": [0, 1, 2]},
 	{"id": "watch", "name_key": "GIFT_WATCH_NAME", "desc_key": "GIFT_WATCH_DESC", "stat": "signal_window", "target": "player", "op": "add_flat", "levels": [0.25, 0.5, 0.75], "req_sieges": [0, 1, 2]},
 	{"id": "discipline", "name_key": "GIFT_DISCIPLINE_NAME", "desc_key": "GIFT_DISCIPLINE_DESC", "stat": "spread", "target": "archer", "op": "add_pct", "levels": [-10, -20, -30], "req_sieges": [0, 1, 2]},
-	{"id": "radiance_reserve", "name_key": "GIFT_RADIANCE_RESERVE_NAME", "desc_key": "GIFT_RADIANCE_RESERVE_DESC", "stat": "radiance_pct", "target": "player", "op": "add_pct", "levels": [5, 10, 15], "req_sieges": [0, 1, 2]}
+	{"id": "radiance_reserve", "name_key": "GIFT_RADIANCE_RESERVE_NAME", "desc_key": "GIFT_RADIANCE_RESERVE_DESC", "stat": "radiance_pct", "target": "player", "op": "add_pct", "levels": [5, 10, 15], "req_sieges": [0, 1, 2]},
+	{"id": "infirmary", "name_key": "GIFT_INFIRMARY_NAME", "desc_key": "GIFT_INFIRMARY_DESC", "stat": "heal", "target": "player", "op": "add_pct", "levels": [10, 20, 30], "req_sieges": [0, 1, 2]}
 ]

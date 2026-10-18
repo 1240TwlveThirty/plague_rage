@@ -1,1 +1,1 @@
-[{"id": "g", "name_key": "Дар", "desc_key": "GIFT_TEST_DESC", "stat": "speed", "target": "all_units", "op": "add_pct", "levels": [8, 16, 24]}]
+[{"id": "g", "name_key": "Дар", "desc_key": "GIFT_TEST_DESC", "stat": "luck", "target": "all_units", "op": "add_pct", "levels": [8, 16, 24]}]

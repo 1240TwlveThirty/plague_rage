@@ -6,28 +6,33 @@ extends RefCounted
 # Сцена боя спрашивает Mods один раз при старте забега (main.gd, _apply_mods) и кладёт итог в свои массивы; тик сюда не ходит.
 # Статы «в момент использования» (цены магазина, окно сигнала, разброс, награда Сиянием) — value(stat, base): читаются при покупке,
 # при старте волны или в Game.run_reward и хранятся в переменной; горячие циклы симуляции value не вызывают.
-# Модификаторы собираются из списка источников (sources): сейчас один — дары забега (Game.active_gifts), позже — временные карточки.
-const STATS := ["damage", "hp", "bounty", "income", "gate_hp", "start_units", "unit_cost", "weapon_cost", "repair_cost", "signal_window", "spread", "radiance_pct"]
-const TARGETS := ["all_units", "infantry", "archer", "gate", "player"]
+# Модификаторы собираются из списка источников (sources): дары забега (Game.active_gifts) и карточки забега (Game.run_cards).
+# Данные юнитов волны (урон, HP, скорость, перезарядка, дальность, HP зомби, награда) main.gd пересчитывает от базы в начале каждой волны.
+const STATS := ["damage", "hp", "bounty", "income", "gate_hp", "start_units", "unit_cost", "weapon_cost", "repair_cost", "signal_window", "spread", "radiance_pct",
+	"income_flat", "heal", "speed", "reload", "attack_speed", "range", "enemy_hp", "grant_units_free"]
+const TARGETS := ["all_units", "infantry", "archer", "gate", "player", "enemy", "knight"]
 const OPS := ["add_pct", "add_flat", "mult"]
 # Допустимые сочетания: stat -> его target. Пары вне таблицы сцена боя не читает, дар с такой парой молча не действовал бы.
-const PAIRS := {"damage": ["all_units", "infantry", "archer"], "hp": ["all_units", "infantry", "archer"], "bounty": ["player"], "income": ["player"],
-	"gate_hp": ["gate"], "start_units": ["player"], "unit_cost": ["player"], "weapon_cost": ["player"], "repair_cost": ["player"], "signal_window": ["player"],
-	"spread": ["archer"], "radiance_pct": ["player"]}
+# Первый target в списке — по умолчанию (value без target); bounty / knight и unit_cost / archer — добавка к общему ключу.
+const PAIRS := {"damage": ["all_units", "infantry", "archer"], "hp": ["all_units", "infantry", "archer"], "bounty": ["player", "knight"], "income": ["player"],
+	"gate_hp": ["gate"], "start_units": ["player"], "unit_cost": ["player", "archer"], "weapon_cost": ["player"], "repair_cost": ["player"], "signal_window": ["player"],
+	"spread": ["archer"], "radiance_pct": ["player"], "income_flat": ["player"], "heal": ["player"], "speed": ["all_units", "infantry", "archer"],
+	"reload": ["archer"], "attack_speed": ["infantry"], "range": ["archer"], "enemy_hp": ["enemy"], "grant_units_free": ["player"]}
 # Допустимые op для stat: сцена боя читает множители (get_mult), прибавку к числу (get_count) или value; остальное не действовало бы.
 const STAT_OPS := {"damage": ["add_pct", "mult"], "hp": ["add_pct", "mult"], "bounty": ["add_pct", "mult"], "income": ["add_pct", "mult"],
 	"gate_hp": ["add_pct", "mult"], "start_units": ["add_pct", "add_flat"], "unit_cost": ["add_pct"], "weapon_cost": ["add_pct"], "repair_cost": ["add_pct"],
-	"signal_window": ["add_flat"], "spread": ["add_pct"], "radiance_pct": ["add_pct"]}
+	"signal_window": ["add_flat"], "spread": ["add_pct"], "radiance_pct": ["add_pct"], "income_flat": ["add_flat"], "heal": ["add_pct"], "speed": ["add_pct"],
+	"reload": ["add_pct"], "attack_speed": ["add_pct"], "range": ["add_pct"], "enemy_hp": ["add_pct"], "grant_units_free": ["add_flat"]}
 # Цены в value: итог не ниже COST_FLOOR базовой (против накопления скидок), затем округление до целого, не меньше 1.
 const COSTS := ["unit_cost", "weapon_cost", "repair_cost"]
 const COST_FLOOR := 0.2
-const NON_NEGATIVE := ["signal_window", "spread"]   # в value не ниже 0
+const NON_NEGATIVE := ["signal_window", "spread", "income_flat", "grant_units_free"]   # в value не ниже 0
 
 var defs := {}       # id дара -> {name_key, desc_key, stat, target, op, levels, req_sieges, prices, hidden}
 var pct := {}        # ключ "stat|target" -> сумма add_pct, в процентах
 var mult := {}       # ключ -> произведение mult
 var flat := {}       # ключ -> сумма add_flat
-var sources: Array = []   # источники модификаторов: [{name, defs, levels}], levels — id -> уровень
+var sources: Array = []   # источники модификаторов: [{name, defs, levels}] (дары: levels — id -> уровень) или [{name, mods}] (готовый список {stat, target, op, value})
 
 
 func _init(gift_defs := {}) -> void:
@@ -123,7 +128,8 @@ func build(active: Dictionary) -> bool:
 	return build_sources([gifts_source(defs, active)])
 
 
-# Собрать суммы по всем источникам списка; другой источник (карточки забега) — ещё один элемент с теми же полями.
+# Собрать суммы по всем источникам списка. Источник даров — {name, defs, levels}; источник с готовыми модификаторами (карточки забега) —
+# {name, mods: [{stat, target, op, value}]}, модификаторы проверены его загрузчиком.
 # Скрытый дар (hidden) пропускается молча, какой бы ни был уровень. Неизвестный id или уровень вне диапазона — push_error и false (суммы при этом пустые).
 func build_sources(list: Array) -> bool:
 	sources = list
@@ -134,6 +140,10 @@ func build_sources(list: Array) -> bool:
 	var m := {}
 	var f := {}
 	for src in list:
+		if src.has("mods"):
+			for e in src.mods:
+				_add(p, m, f, e.stat + "|" + e.target, e.op, e.value)
+			continue
 		var src_defs: Dictionary = src.defs
 		for id in src.levels:
 			if not src_defs.has(id):
@@ -146,19 +156,27 @@ func build_sources(list: Array) -> bool:
 			if not (lvl is float or lvl is int) or lvl != floorf(lvl) or lvl < 1 or lvl > d.levels.size():
 				push_error("Активный дар \"%s\" (%s): уровень %s вне 1..%d" % [id, src.name, str(lvl), d.levels.size()])
 				return false
-			var v: float = d.levels[int(lvl) - 1]
-			var key: String = d.stat + "|" + d.target
-			match d.op:
-				"add_pct":
-					p[key] = p.get(key, 0.0) + v
-				"mult":
-					m[key] = m.get(key, 1.0) * v
-				"add_flat":
-					f[key] = f.get(key, 0.0) + v
+			_add(p, m, f, d.stat + "|" + d.target, d.op, d.levels[int(lvl) - 1])
 	pct = p
 	mult = m
 	flat = f
 	return true
+
+
+static func _add(p: Dictionary, m: Dictionary, f: Dictionary, key: String, op: String, v: float) -> void:
+	match op:
+		"add_pct":
+			p[key] = p.get(key, 0.0) + v
+		"mult":
+			m[key] = m.get(key, 1.0) * v
+		"add_flat":
+			f[key] = f.get(key, 0.0) + v
+
+
+# Есть ли хоть один модификатор ключа (stat, target).
+func has_key(stat: String, target: String) -> bool:
+	var key := stat + "|" + target
+	return pct.has(key) or mult.has(key) or flat.has(key)
 
 
 # Множитель ключа: (1 + сумма add_pct / 100) * произведение mult. Без модификаторов — ровно 1.0.
@@ -184,15 +202,16 @@ func get_count(stat: String, target: String, base: int) -> int:
 
 
 # Значение стата на лету: base * (1 + сумма add_pct / 100) * произведение mult + сумма add_flat — тот же порядок, что в _apply_mods
-# (множитель get_mult, затем прибавка get_flat). target по умолчанию — единственный допустимый у stat (PAIRS[stat][0]).
-# Модификаторов этого ключа нет — base как есть, без ограничений и округления (бит в бит с игрой без даров).
+# (множитель get_mult, затем прибавка get_flat). Ключ по умолчанию — (stat, PAIRS[stat][0]); target другой — его множитель и прибавка
+# добавляются к ключу по умолчанию (цена лучников: unit_cost / player и unit_cost / archer).
+# Модификаторов этих ключей нет — base как есть, без ограничений и округления (бит в бит с игрой без даров).
 # Есть: цены (COSTS) — не ниже COST_FLOOR * base, округление до целого, не меньше 1; NON_NEGATIVE — не ниже 0.
 func value(stat: String, base: float, target := "") -> float:
-	var t: String = target if target != "" else PAIRS[stat][0]
-	var key := stat + "|" + t
-	if not (pct.has(key) or mult.has(key) or flat.has(key)):
+	var t: String = PAIRS[stat][0]
+	var extra := target != "" and target != t
+	if not has_key(stat, t) and not (extra and has_key(stat, target)):
 		return base
-	var v := base * get_mult(stat, t) + get_flat(stat, t)
+	var v := base * get_mult(stat, t) * (get_mult(stat, target) if extra else 1.0) + get_flat(stat, t) + (get_flat(stat, target) if extra else 0.0)
 	if stat in COSTS:
 		v = maxf(1.0, roundf(maxf(v, COST_FLOOR * base)))
 	elif stat in NON_NEGATIVE:

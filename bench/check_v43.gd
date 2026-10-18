@@ -136,11 +136,12 @@ func t_loader() -> void:
 	var want := {"tempered_steel": ["damage", "infantry", "add_pct"], "sturdy_shields": ["hp", "all_units", "add_pct"], "marksmen": ["damage", "archer", "add_pct"],
 		"spoils": ["bounty", "player", "add_pct"], "mine": ["income", "player", "add_pct"], "fortress_walls": ["gate_hp", "gate", "add_pct"], "reserve": ["start_units", "player", "add_pct"],
 		"armory": ["unit_cost", "player", "add_pct"], "smith_thomas": ["weapon_cost", "player", "add_pct"], "repairers": ["repair_cost", "player", "add_pct"],
-		"watch": ["signal_window", "player", "add_flat"], "discipline": ["spread", "archer", "add_pct"], "radiance_reserve": ["radiance_pct", "player", "add_pct"]}
+		"watch": ["signal_window", "player", "add_flat"], "discipline": ["spread", "archer", "add_pct"], "radiance_reserve": ["radiance_pct", "player", "add_pct"],
+		"infirmary": ["heal", "player", "add_pct"]}
 	var ok := defs.size() == want.size()
 	for id in want:
 		ok = ok and defs.has(id) and [defs[id].stat, defs[id].target, defs[id].op] == want[id] and defs[id].levels.size() == 3 and defs[id].name_key != "" and defs[id].desc_key != ""
-	check("data/gifts.json грузится: 13 даров, stat / target / op как в задании, по 3 уровня", ok, str(defs.keys()))
+	check("data/gifts.json грузится: 14 даров, stat / target / op как в задании, по 3 уровня", ok, str(defs.keys()))
 	var hidden := defs.keys().filter(func(id): return defs[id].hidden)
 	check("скрыт ровно fortress_walls", hidden == ["fortress_walls"], str(hidden))
 	for name in ["bad_stat", "bad_target", "bad_op", "bad_stat_op", "bad_hidden", "no_field", "bad_levels", "dup_id", "not_array", "missing_file"]:
@@ -171,7 +172,7 @@ func t_each_gift() -> void:
 			var k := 1.0 + v / 100.0
 			var want := base.duplicate(true)
 			match "hidden" if g.get("hidden", false) else g.stat:
-				"hidden", "unit_cost", "weapon_cost", "repair_cost", "radiance_pct":
+				"hidden", "unit_cost", "weapon_cost", "repair_cost", "radiance_pct", "heal":
 					pass   # скрытый дар не действует; цены и Сияние читаются на лету (check_v46): снимок как без даров
 				"spread":
 					want.wave_spread = scaled(base.wave_spread, units[g.target], k)
@@ -201,7 +202,7 @@ func t_each_gift() -> void:
 			var hp_ok := true
 			for i in m.count:
 				hp_ok = hp_ok and m.team[i] == 0 and m.hp[i] == m.type_hp[m.unit_type[i]]
-			var hid: bool = g.get("hidden", false) or g.stat in ["unit_cost", "weapon_cost", "repair_cost", "radiance_pct"]
+			var hid: bool = g.get("hidden", false) or g.stat in ["unit_cost", "weapon_cost", "repair_cost", "radiance_pct", "heal"]
 			check("%s, уровень %d (%s %s %s %s%s): меняется только своё — %s; юниты созданы с HP своего типа" % [g.id, lvl, g.stat, g.target, g.op, str(v),
 				", скрыт или на лету — снимок прежний" if hid else "", ", ".join(changed)],
 				diff(got, want).is_empty() and changed.is_empty() == hid and hp_ok, "не как ожидалось: " + ", ".join(diff(got, want)) if not diff(got, want).is_empty() else "")
@@ -227,11 +228,12 @@ func t_battle() -> void:
 	while c.wave_state == c.WS_BATTLE and t < 30 * 600:
 		c._physics_process(DT)
 		t += 1
-	var before: float = c.gold
 	var income: float = c.wave_income
+	var after: float = c.gold
+	check("mine 3: доход волны 1 = убитые + бонус (%d), в конце волны 1 (до магазина) начислено 15%% от него (%.1f)" % [roundi(income), after - gold0 - income],
+		c.wave_state == c.WS_RESPITE and absf(income - (earned + bonus)) < 0.01 and absf((after - gold0 - income) - 0.15 * income) < 0.01)
 	c._start_wave()
-	check("mine 3: доход волны 1 = убитые + бонус (%d), в начале волны 2 начислено 15%% от него (%.1f)" % [roundi(income), c.gold - before],
-		absf(income - (earned + bonus)) < 0.01 and absf((c.gold - before) - 0.15 * income) < 0.01 and c.gold == c.gold_wave_start)
+	check("mine 3: в начале волны 2 золото не меняется", c.gold == after and c.gold == c.gold_wave_start)
 	c.free()
 	var gold_a: float = a.gold
 	a._start_wave()
@@ -278,7 +280,7 @@ func same(a: Node2D, b: Node2D) -> bool:
 func t_determinism() -> void:
 	print("(г) детерминизм")
 	var gifts := {"tempered_steel": 3, "sturdy_shields": 3, "marksmen": 3, "spoils": 3, "mine": 3, "fortress_walls": 3, "reserve": 3,
-		"armory": 3, "smith_thomas": 3, "repairers": 3, "watch": 3, "discipline": 3, "radiance_reserve": 3}
+		"armory": 3, "smith_thomas": 3, "repairers": 3, "watch": 3, "discipline": 3, "radiance_reserve": 3, "infirmary": 3}
 	var a := make(gifts, 6)
 	var b := make(gifts, 6)
 	var first := -1
@@ -294,7 +296,7 @@ func t_determinism() -> void:
 			ticks += 1
 			if first < 0 and not same(a, b):
 				first = ticks
-	check("все 13 даров уровня 3 (fortress_walls скрыт), волны 1-3 с покупками (seed 6, %d тиков, юнитов на старте %d): два прогона бит в бит на каждом тике" % [ticks, 520],
+	check("все 14 даров уровня 3 (fortress_walls скрыт), волны 1-3 с покупками (seed 6, %d тиков, юнитов на старте %d): два прогона бит в бит на каждом тике" % [ticks, 520],
 		first < 0 and a.wave_number == 3 and b.wave_number == 3 and ticks > 300, "" if first < 0 else "первое расхождение: тик %d" % first)
 	a.free()
 	b.free()
