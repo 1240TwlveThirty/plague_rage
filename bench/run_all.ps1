@@ -70,6 +70,7 @@ Godot "статы волны, доход, скорость удара (v47)" "re
 Godot "карточки: данные, валидатор (v48c)" "res://bench/check_v48_cards.gd" "CHECK: провалов 0"
 Godot "карточки: условия C и особые K (v49c)" "res://bench/check_v49_conds.gd" "CHECK: провалов 0"
 Godot "карточки: выбор в забеге (v53)" "res://bench/check_v53_pick.gd" "CHECK: провалов 0"
+Godot "Клич Благодати (v54)" "res://bench/check_v54_warcry.gd" "CHECK: провалов 0"
 Godot "меню, хаб, пауза по Esc (v45)" "res://bench/check_v45.gd" "CHECK: провалов 0"
 Godot "подгонка слоя замка (v48)" "res://bench/check_v48.gd" "CHECK: провалов 0"
 Godot "настройки, полный экран (v49)" "res://bench/check_v49.gd" "CHECK: провалов 0"
@@ -86,6 +87,7 @@ Godot "смоук с окном: F11 (v49)" "res://bench/smoke_v49.gd" "SMOKE: �
 Godot "смоук с окном: языки (v51)" "res://bench/smoke_v51.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: звук (v52)" "res://bench/smoke_v52.gd" "SMOKE: провалов 0" @() -Window
 Godot "смоук с окном: выбор карточки (v53)" "res://bench/smoke_v53_cards.gd" "SMOKE: провалов 0" @("$tmp") -Window
+Godot "смоук с окном: Клич Благодати (v54)" "res://bench/smoke_v54_warcry.gd" "SMOKE: провалов 0" @("$tmp") -Window
 if (-not $Quick) {
 	Godot "серия 50 боёв" "res://bench/series.gd" "SERIES\|"
 	Godot "тик: волна 20 слоя 1" "res://bench/time_v35.gd" "TIME\|" @("1", "20", "0", "caps", "1", "res://scripts/main.gd")

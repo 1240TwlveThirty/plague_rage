@@ -137,11 +137,11 @@ func t_loader() -> void:
 		"spoils": ["bounty", "player", "add_pct"], "mine": ["income", "player", "add_pct"], "fortress_walls": ["gate_hp", "gate", "add_pct"], "reserve": ["start_units", "player", "add_pct"],
 		"armory": ["unit_cost", "player", "add_pct"], "smith_thomas": ["weapon_cost", "player", "add_pct"], "repairers": ["repair_cost", "player", "add_pct"],
 		"watch": ["signal_window", "player", "add_flat"], "discipline": ["spread", "archer", "add_pct"], "radiance_reserve": ["radiance_pct", "player", "add_pct"],
-		"infirmary": ["heal", "player", "add_pct"]}
+		"infirmary": ["heal", "player", "add_pct"], "war_cry": ["", "", ""]}
 	var ok := defs.size() == want.size()
 	for id in want:
 		ok = ok and defs.has(id) and [defs[id].stat, defs[id].target, defs[id].op] == want[id] and defs[id].levels.size() == 3 and defs[id].name_key != "" and defs[id].desc_key != ""
-	check("data/gifts.json грузится: 14 даров, stat / target / op как в задании, по 3 уровня", ok, str(defs.keys()))
+	check("data/gifts.json грузится: 15 даров (с Кличем Благодати — способность без stat), stat / target / op как в задании, по 3 уровня", ok, str(defs.keys()))
 	var hidden := defs.keys().filter(func(id): return defs[id].hidden)
 	check("скрыт ровно fortress_walls", hidden == ["fortress_walls"], str(hidden))
 	for name in ["bad_stat", "bad_target", "bad_op", "bad_stat_op", "bad_hidden", "no_field", "bad_levels", "dup_id", "not_array", "missing_file"]:
@@ -167,6 +167,8 @@ func t_each_gift() -> void:
 	check("пустой набор дважды: снимки равны", diff(snap(none), base).is_empty())
 	none.free()
 	for g in raw:
+		if g.get("type", "mods") == "ability":
+			continue   # способность (Клич Благодати) данных старта не меняет — она в check_v54_warcry
 		for lvl in range(1, g.levels.size() + 1):
 			var v: float = g.levels[lvl - 1]
 			var k := 1.0 + v / 100.0

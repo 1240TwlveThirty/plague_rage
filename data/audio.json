@@ -3,6 +3,7 @@
 	"hover_min_interval_ms": 40,
 	"pitch_jitter": 0.03,
 	"battle_queue": ["battle_theme", "battle_theme_2"],
+	"future_sounds": {"war_cry": "Клич Благодати: файла звука пока нет; когда появится — перенести запись в sounds"},
 	"sounds": {
 		"main_menu": {"path": "res://music_sounds/main_menu.wav", "bus": "Music", "volume_db": -6.0, "loop": true},
 		"hub": {"path": "res://music_sounds/hub.wav", "bus": "Music", "volume_db": -6.0, "loop": true},

@@ -23,7 +23,7 @@ var waves_per_run := 0
 # Забег: waves [{p, e}], defeat — волна смерти (ALIVE — дожил, -1 — нет данных), death — непрерывная волна смерти, gold — золото в начале последней волны после покупок.
 func load_run(cfg: String, bot: String, seed: int) -> Dictionary:
 	var path := "%s%s_%s_s%d.txt" % [DIR, cfg, bot, seed]
-	var r := {"waves": [], "defeat": -1, "death": -1.0, "gold": 0}
+	var r := {"waves": [], "defeat": -1, "death": -1.0, "gold": 0, "wc_uses": 0, "wc_active": 0, "wc_battle": 0}
 	if not FileAccess.file_exists(path):
 		return r
 	var frac := 0.0
@@ -36,6 +36,10 @@ func load_run(cfg: String, bot: String, seed: int) -> Dictionary:
 		elif f[0] == "RUN":
 			r.defeat = int(f[3]) if int(f[3]) > 0 else (int(ALIVE) if int(f[4]) == 1 else -1)
 			r.death = -1.0 if r.defeat < 0 else (ALIVE if r.defeat == int(ALIVE) else r.defeat + minf(frac, 0.99))
+		elif f[0] == "WARCRY":   # Клич Благодати: активаций, тиков с бонусом, тиков боя
+			r.wc_uses = int(f[1])
+			r.wc_active = int(f[2])
+			r.wc_battle = int(f[3])
 	return r
 
 func runs_of(cfg: String, bot: String) -> Array:
@@ -99,9 +103,10 @@ func gifts_of(cfg: String) -> Dictionary:
 	if cfg == "none":
 		return out
 	var lvl := int(cfg.right(1))
-	if cfg.begins_with("all_"):
+	if cfg.begins_with("all_") or cfg.begins_with("allno_"):
 		for g in gifts:
-			out[g.id] = lvl
+			if not (cfg.begins_with("allno_") and g.id == "war_cry"):
+				out[g.id] = lvl
 	else:
 		out[cfg.left(cfg.length() - 2)] = lvl
 	return out
@@ -120,7 +125,12 @@ func label(cfg: String) -> String:
 		return "без даров"
 	if cfg.begins_with("all_"):
 		return "все дары (%d), уровень %s" % [gifts.size(), cfg.right(1)]
+	if cfg.begins_with("allno_"):
+		return "все дары без клича (%d), уровень %s" % [gifts.size() - 1, cfg.right(1)]
 	for g in gifts:
+		if cfg == "%s_%s" % [g.id, cfg.right(1)] and g.get("type", "mods") == "ability":
+			var lv: Dictionary = g.levels[int(cfg.right(1)) - 1]
+			return "%s %s (+%d%% удара, %d с / %d с)" % [g.id, cfg.right(1), int(lv.bonus_pct), int(lv.duration_s), int(lv.cooldown_s)]
 		if cfg == "%s_%s" % [g.id, cfg.right(1)]:
 			var v: float = g.levels[int(cfg.right(1)) - 1]
 			var num := ("%+d" % int(v)) if v == floorf(v) else ("+" if v > 0 else "") + String.num(v)
@@ -150,6 +160,9 @@ func _initialize() -> void:
 			cfgs.append("%s_%d" % [g.id, lvl])
 	for lvl in [1, 2, 3]:
 		cfgs.append("all_%d" % lvl)
+	if ver == "v5":   # Клич Благодати: «все дары» и с ним, и без него
+		for lvl in [1, 2, 3]:
+			cfgs.append("allno_%d" % lvl)
 	var total := cfgs.size() * BOTS.size() * SEEDS.size()
 	var L: Array[String] = []
 	var missing := 0
@@ -162,7 +175,7 @@ func _initialize() -> void:
 	L.append("gift_ablation_%s: абляция даров с непрерывной волной смерти, только измерения. Дары по одному: %s; «все дары» — все %d видимых в gifts.json (скрытые не входят)." % [
 		ver, ", ".join(ids), gifts.size()])
 	L.append("Рабочие scripts/main.gd и data/*.json, осада I (слой 1), волны без предела до поражения.")
-	L.append("Пересчёт (из корня проекта):  sh bench/balance/ablation_run.sh \"<путь к godot.exe>\"")
+	L.append("Пересчёт (из корня проекта):  sh bench/balance/%s \"<путь к godot.exe>\"" % ("ablation_v5_run.sh" if ver == "v5" else "ablation_run.sh"))
 	L.append("Время этого прогона: %s (%d забегов, до 10 процессов сразу, %d потоков процессора)." % ["%d мин %02d с" % [secs / 60, secs % 60] if secs > 0 else "не измерялось (сборщик запущен отдельно)",
 		total, OS.get_processor_count()])
 	L.append("Боты B2 (%s) и B5 (%s), seed 1-5; отряды стоят на старте, приказ «атака», всё золото тратится в передышке." % [DESC.B2, DESC.B5])
@@ -202,7 +215,7 @@ func _initialize() -> void:
 		for bot in BOTS:
 			shifts.append(median(runs_of(cfg, bot)) - median(runs_of("none", bot)))
 		var price := 0
-		if not cfg.begins_with("all_"):
+		if not cfg.begins_with("all"):
 			var lvl := int(cfg.right(1))
 			var id: String = cfg.left(cfg.length() - 2)
 			for g in gifts:
@@ -228,6 +241,25 @@ func _initialize() -> void:
 		L.append("  %-42s | %5.3f | %5.3f | %7.3f" % [label(r.cfg), r.b2, r.b5, r.avg])
 	L.append("  В P входят только HP и урон армии: золото (spoils, mine) — только через купленное к волне 4.")
 	L.append("")
+	var wc_cfgs := cfgs.filter(func(c): return BOTS.any(func(bot): return runs_of(c, bot).any(func(r): return r.wc_battle > 0 and r.wc_uses > 0)))
+	if not wc_cfgs.is_empty():
+		L.append("7. Клич Благодати: среднее число активаций за забег и доля времени боя с действующим бонусом (тики с бонусом / тики боя, сумма по seed).")
+		L.append("  Бот жмёт клич, когда он готов и хоть один зомби ближе 400 к центру своего отряда (calib_worker.gd, --war-cry on).")
+		L.append("  %-42s | B2: активаций, доля | B5: активаций, доля" % "набор")
+		for c in wc_cfgs:
+			var cells := PackedStringArray()
+			for bot in BOTS:
+				var rs := runs_of(c, bot).filter(func(r): return r.defeat >= 0)
+				var uses := 0.0
+				var act := 0
+				var bat := 0
+				for r in rs:
+					uses += r.wc_uses
+					act += r.wc_active
+					bat += r.wc_battle
+				cells.append("%5.1f, %5.1f%%" % [uses / maxf(rs.size(), 1), 100.0 * act / maxf(bat, 1)])
+			L.append("  %-42s | %-19s | %s" % [label(c), cells[0], cells[1]])
+		L.append("")
 	L.append("6. Сияние за забег, среднее по seed и сколько таких забегов нужно на первый уровень дара (цена %d): контроль и набор «все дары, уровень 1»." % rc.gift_prices[0])
 	for cfg in ["none", "all_1"]:
 		for bot in BOTS:

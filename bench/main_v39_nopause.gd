@@ -10,6 +10,8 @@ const SHOP_PATH := "res://data/shop.json"
 const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate"]   # порядок = действия buy_1..buy_4 (по умолчанию Z X C V)
 const SHOP_COST_STATS := ["unit_cost", "unit_cost", "weapon_cost", "repair_cost"]   # стат цены товара для Mods.value, порядок SHOP_ITEMS
 const HEAL_BASE := 1.0    # лечение между волнами: доля потерянного HP, база — полное; стат heal прибавляет проценты (выше 1.0 ничего не меняет)
+const WAR_CRY_GLOW := Color(1.0, 0.82, 0.3, 0.3)   # подсветка краёв экрана, пока действует Клич Благодати
+const WAR_CRY_GLOW_PX := 10.0
 const COND_EVERY := 15   # условия карточек пересчитываются раз в столько тиков симуляции
 const CD_CARRY := 2.0 / 30.0   # перенос остатка перезарядки: не больше одного шага решения юнита (2 тика при 30 Гц)
 const SETTINGS := preload("res://scripts/settings.gd")   # key_label(действие): клавиша для подсказок
@@ -19,7 +21,7 @@ const ACTION_KEYS := ["squad_new", "squad_split", "squad_merge"]
 const KEY_ACTIONS := ["select_all", "debug_restart", "squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4",
 	"squad_select_5", "squad_select_6", "squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side",
 	"wave_start", "buy_1", "buy_2", "buy_3", "buy_4", "order_attack", "order_hold", "order_retreat", "about_face", "banner_toggle",
-	"auto_width", "pause", "post_left", "post_top", "post_right", "post_back"]
+	"auto_width", "pause", "post_left", "post_top", "post_right", "post_back", "war_cry"]
 const ROWS_MAX := 20       # строй не глубже: при большом отряде растёт ширина
 const WIDTH_MAX := 100     # и не шире
 const WAVE_DMG_TO_UNITS := true   # урон зомби по юнитам растёт с волной (team_dmg_mult[1])
@@ -573,6 +575,25 @@ var squad_start_n := PackedInt32Array()        # численность отря
 var wave_fallen := 0                           # своих юнитов пало за волну (карточка 24, vengeance)
 var cond_cards: Array = []                     # условные карточки забега на эту волну: [{cond, when, mods [{stat, target, value}]}]
 var vengeance := {}                            # карточка 24: {per_unit_pct, max_pct} или {}
+var squad_atk_speed_mult := PackedFloat32Array()   # множитель скорости ударов и стрельбы отряда (Клич Благодати); без него ровно 1.0
+# Клич Благодати (дар war_cry, способность): состояние в тиках симуляции — пауза и ускорение работают сами.
+# Активация — команда с меткой тика: request_war_cry ставит запрос, он исполняется в начале следующего тика (_tick_war_cry);
+# war_cry_log — тики активаций, war_cry_plan — тики, на которых активировать (воспроизведение записанного прогона, бенчи).
+var war_cry_level := 0          # уровень купленного дара; 0 — способности нет
+var war_cry_mult := 1.0         # 1 + бонус / 100
+var war_cry_dur := 0            # длительность, тиков
+var war_cry_cd := 0             # перезарядка от активации, тиков
+var war_cry_until := -1         # действует на тиках [активация, war_cry_until); -1 — не действует
+var war_cry_ready := 0          # с этого тика можно активировать
+var war_cry_request := false
+var war_cry_log: Array = []
+var war_cry_plan: Array = []
+var war_cry_uses := 0           # активаций за забег (статистика бенчей)
+var war_cry_active_ticks := 0   # тиков с действующим бонусом за забег
+var war_cry_box: VBoxContainer = null   # кнопка в HUD (только с интерфейсом)
+var war_cry_button: Button = null
+var war_cry_bar: ProgressBar = null
+var war_cry_glow: Array = []    # золотистая подсветка краёв экрана, пока клич действует
 # Выбор карточек: в начале передышки после волн card_rules.pick_after_waves — тройка (pending_offer). С Game — правила и генератор забега Game;
 # без Game выбора нет, если бенч не задал card_pick_auto ("random": бенч выбирает сам через choose_card) и bench_card_rng.
 var card_rules := {}
@@ -1468,7 +1489,68 @@ func _load_mods() -> bool:
 	if game != null:
 		active_gifts = game.active_gifts.duplicate()
 	mods = MODS.new(gift_defs)
+	_setup_war_cry()
 	return _load_mods_sources()
+
+
+# Клич Благодати: уровень из набора даров забега (Game.active_gifts или active_gifts бенча), параметры уровня из gifts.json.
+func _setup_war_cry() -> void:
+	war_cry_level = 0
+	var d: Dictionary = gift_defs.get("war_cry", {})
+	var lvl := int(active_gifts.get("war_cry", 0))
+	if d.is_empty() or d.get("type", "") != "ability" or d.get("hidden", false) or lvl < 1 or lvl > d.levels.size():
+		return
+	var lv: Dictionary = d.levels[lvl - 1]
+	var tps := Engine.physics_ticks_per_second
+	war_cry_level = lvl
+	war_cry_mult = 1.0 + lv.bonus_pct / 100.0
+	war_cry_dur = roundi(lv.duration_s * tps)
+	war_cry_cd = roundi(lv.cooldown_s * tps)
+
+
+# Можно ли активировать клич сейчас: дар куплен, идёт бой, перезарядка прошла (исполнится на следующем тике).
+func war_cry_can() -> bool:
+	return war_cry_level > 0 and wave_state == WS_BATTLE and not paused and tick_counter + 1 >= war_cry_ready
+
+
+# Команда игрока или бота: активировать клич на ближайшем тике симуляции. Нельзя — false, ничего не меняется.
+func request_war_cry() -> bool:
+	if not war_cry_can():
+		return false
+	war_cry_request = true
+	return true
+
+
+# Начало тика: план (воспроизведение), запрос, окончание действия. Активация на тике T: бонус на тиках T..T+dur-1, готов снова с T+cd.
+func _tick_war_cry() -> void:
+	while not war_cry_plan.is_empty() and war_cry_plan[0] <= tick_counter:
+		war_cry_plan.pop_front()
+		war_cry_request = true
+	if war_cry_request:
+		war_cry_request = false
+		if wave_state == WS_BATTLE and tick_counter >= war_cry_ready:
+			war_cry_until = tick_counter + war_cry_dur
+			war_cry_ready = tick_counter + war_cry_cd
+			war_cry_log.append(tick_counter)
+			war_cry_uses += 1
+			squad_atk_speed_mult.fill(war_cry_mult)
+	if war_cry_until >= 0:
+		if tick_counter >= war_cry_until:
+			_end_war_cry()
+		else:
+			war_cry_active_ticks += 1
+
+
+func _end_war_cry() -> void:
+	war_cry_until = -1
+	squad_atk_speed_mult.fill(1.0)
+
+
+# Новая волна: клич готов сразу (перезарядка между волнами сбрасывается).
+func _reset_war_cry() -> void:
+	_end_war_cry()
+	war_cry_request = false
+	war_cry_ready = 0
 
 
 # Собрать модификаторы из списка источников — как Game.mod_sources, но с defs из gifts_path сцены.
@@ -2155,6 +2237,7 @@ func _start_wave() -> void:
 	subwave_timer = 0.0
 	wave_t = 0.0
 	_update_card_conditions()   # условия карточек — с первого тика волны
+	_reset_war_cry()
 	burst_idx = 0
 	burst_signal_n = 0
 	burst_active = false
@@ -2280,6 +2363,7 @@ func _kills_text() -> String:
 
 
 func _wave_cleared() -> void:
+	_end_war_cry()   # в передышке клич не действует
 	if run_limit and wave_number == waves_per_run:
 		_on_win()   # последняя волна забега: передышки не будет
 		return
@@ -3064,6 +3148,8 @@ func _setup_data() -> void:
 	for arr in [squad_dmg_mult, squad_taken_mult, squad_speed_mult]:
 		arr.resize(SQUAD_MAX)
 		arr.fill(1.0)
+	squad_atk_speed_mult.resize(SQUAD_MAX)
+	squad_atk_speed_mult.fill(1.0)
 	squad_start_n.resize(SQUAD_MAX)
 	squad_start_n.fill(0)
 	squad_center_off.resize(SQUAD_MAX)
@@ -3437,6 +3523,7 @@ func _setup_fps_label() -> void:
 	squad_panel.add_child(split_box)
 	_update_split_ui()
 	hint_label = Label.new()
+	_setup_war_cry_ui(layer)
 	hint_label.text = "HUD_MOUSE_HINT"
 	hint_label.add_theme_font_size_override("font_size", 13)
 	hint_label.modulate = Color(1.0, 1.0, 1.0, 0.7)
@@ -3696,6 +3783,72 @@ func _update_squad_panel() -> void:
 		squad_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 16)
 
 
+# Кнопка Клича Благодати под списком отрядов (только если дар куплен) и подсветка краёв экрана.
+func _setup_war_cry_ui(layer: CanvasLayer) -> void:
+	if war_cry_level <= 0:
+		return
+	war_cry_box = VBoxContainer.new()
+	war_cry_box.add_theme_constant_override("separation", 2)
+	war_cry_button = Button.new()
+	war_cry_button.focus_mode = Control.FOCUS_NONE
+	war_cry_button.custom_minimum_size = Vector2(300, 40)
+	war_cry_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	war_cry_button.pressed.connect(request_war_cry)
+	war_cry_box.add_child(war_cry_button)
+	war_cry_bar = ProgressBar.new()
+	war_cry_bar.show_percentage = false
+	war_cry_bar.min_value = 0.0
+	war_cry_bar.max_value = 1.0
+	war_cry_bar.custom_minimum_size = Vector2(300, 8)
+	war_cry_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	war_cry_box.add_child(war_cry_bar)
+	squad_panel.add_child(war_cry_box)
+	for side in 4:   # тонкие полосы по краям экрана: верх, низ, лево, право
+		var r := ColorRect.new()
+		r.color = WAR_CRY_GLOW
+		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var a: Array = [[0, 0, 1, 0], [0, 1, 1, 1], [0, 0, 0, 1], [1, 0, 1, 1]][side]   # left, top, right, bottom якоря
+		r.anchor_left = a[0]
+		r.anchor_top = a[1]
+		r.anchor_right = a[2]
+		r.anchor_bottom = a[3]
+		var o: Array = [[0, 0, 0, WAR_CRY_GLOW_PX], [0, -WAR_CRY_GLOW_PX, 0, 0], [0, 0, WAR_CRY_GLOW_PX, 0], [-WAR_CRY_GLOW_PX, 0, 0, 0]][side]
+		r.offset_left = o[0]
+		r.offset_top = o[1]
+		r.offset_right = o[2]
+		r.offset_bottom = o[3]
+		r.visible = false
+		layer.add_child(r)
+		war_cry_glow.append(r)
+
+
+# Вид кнопки: готов — полная полоса; действует — золотая кнопка, остаток времени и убывающая полоса; перезарядка — заполнение до готовности.
+func _update_war_cry_ui() -> void:
+	if war_cry_button == null:
+		return
+	var tps := float(Engine.physics_ticks_per_second)
+	var key := SETTINGS.key_label("war_cry")
+	var active := war_cry_until >= 0
+	var gold_tint := Color(1.0, 0.85, 0.35) if active else Color.WHITE
+	war_cry_button.modulate = gold_tint
+	if active:
+		war_cry_button.text = tr("HUD_WAR_CRY_ACTIVE") % [key, "%.1f" % ((war_cry_until - tick_counter) / tps)]
+		war_cry_bar.value = float(war_cry_until - tick_counter) / maxf(war_cry_dur, 1)
+	elif wave_state != WS_BATTLE:
+		war_cry_button.text = tr("HUD_WAR_CRY_BATTLE") % key
+		war_cry_bar.value = 1.0
+	elif tick_counter + 1 < war_cry_ready:
+		war_cry_button.text = tr("HUD_WAR_CRY_WAIT") % [key, "%d" % ceili((war_cry_ready - tick_counter) / tps)]
+		war_cry_bar.value = 1.0 - float(war_cry_ready - tick_counter) / maxf(war_cry_cd, 1)
+	else:
+		war_cry_button.text = tr("HUD_WAR_CRY_READY") % key
+		war_cry_bar.value = 1.0
+	war_cry_button.disabled = not active and not war_cry_can()
+	war_cry_bar.modulate = gold_tint
+	for r in war_cry_glow:
+		r.visible = active
+
+
 # HUD и магазин: раз в 0.1 с (и сразу после покупки).
 func _update_ui() -> void:
 	if hud_label == null:
@@ -3704,6 +3857,7 @@ func _update_ui() -> void:
 		"%d/%d" % [wave_number, waves_per_run] if run_limit else str(wave_number), zombie_alive + wave_remaining, ceili(maxf(gate_hp, 0.0)), roundi(gate_hp_max), floori(gold)]
 	if scout_shown and waves_enabled and wave_state == WS_RESPITE:
 		hud_label.text += "\n" + _plan_text()   # разведка
+	_update_war_cry_ui()
 	if cards_label != null:
 		var names := _cards().map(func(r): return tr(card_defs[r.id].name_key)) if not card_defs.is_empty() else []
 		cards_label.text = "" if names.is_empty() else tr("HUD_CARDS") + "\n" + "\n".join(names)
@@ -3742,6 +3896,8 @@ func _physics_process(delta: float) -> void:
 	var t := Time.get_ticks_usec()
 	prev_pos = pos.duplicate()   # для интерполяции в _process
 	tick_counter += 1
+	if war_cry_level > 0:
+		_tick_war_cry()
 	if wave_state == WS_BATTLE and tick_counter % COND_EVERY == 0:
 		_update_card_conditions()
 	_update_waves(delta)
@@ -4135,7 +4291,10 @@ func _update_unit(i: int, delta: float) -> void:
 			hp[best] -= dmg
 			if my_team == 1 and contact_tick < 0:
 				contact_tick = tick_counter
-			cooldown[i] = type_cooldown[t] + cooldown[i]   # cooldown <= 0: остаток (до -CD_CARRY) переносится, без модификатора скорости удара он 0
+			var cd := type_cooldown[t]
+			if unit_squad[i] >= 0:
+				cd /= squad_atk_speed_mult[unit_squad[i]]   # Клич Благодати (без него 1.0)
+			cooldown[i] = cd + cooldown[i]   # cooldown <= 0: остаток (до -CD_CARRY) переносится, без модификатора скорости удара он 0
 			unit_anim_t[i] = ATTACK_ANIM_T
 		if leash_w > 0.0:
 			v = v.lerp(slot_vel, leash_w)   # смесь «к врагу (или стоять и бить)» и «к слоту»
@@ -4995,7 +5154,7 @@ func _single_fire(s: int) -> void:
 		if j == -1:
 			continue
 		_fire_arrow(i, pos[j], 0.0)
-		cooldown[i] = type_cooldown[t] + cooldown[i]   # cooldown <= 0: остаток переносится (см. type_cd_floor)
+		cooldown[i] = type_cooldown[t] / squad_atk_speed_mult[s] + cooldown[i]   # cooldown <= 0: остаток переносится (см. type_cd_floor); Клич — скорострельность
 
 
 # Залп: цикл draw (draw_time) -> fire -> reload до volley_period от начала цикла.
@@ -5025,7 +5184,7 @@ func _volley(s: int, delta: float) -> void:
 		if contact_tick < 0:
 			volleys_before_contact += 1
 		squad_volley_t[s] = t
-	elif t >= type_volley_period[ut]:
+	elif t >= type_volley_period[ut] / squad_atk_speed_mult[s]:   # Клич Благодати ускоряет цикл залпа (без него 1.0)
 		squad_volley_t[s] = 0.0   # перезарядка закончилась: новый цикл с натяжения
 		squad_volley_fired[s] = 0
 	else:
@@ -5264,6 +5423,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_set_order(ORDER_HOLD)
 			"order_retreat":
 				_set_order(ORDER_RETREAT)
+			"war_cry":
+				request_war_cry()
 		if key == null:
 			return
 		match key.keycode:

@@ -177,9 +177,14 @@ func _cell(grid: GridContainer, text := "", color := Color.WHITE) -> Label:
 
 # Эффект уровня дара одной строкой по desc_key дара: «+6% к урону пехоты», «+5% воинов в каждом стартовом отряде (не меньше +1)».
 static func effect_text(def: Dictionary, level: int) -> String:
-	var v: float = def.levels[level - 1]
-	var num := str(int(v)) if v == floorf(v) else String.num(v)   # 8, а не 8.0
-	return String(TranslationServer.translate(def.desc_key)) % num
+	if def.get("type", "mods") == "ability":   # способность: бонус, длительность и перезарядка уровня
+		var lv: Dictionary = def.levels[level - 1]
+		return String(TranslationServer.translate(def.desc_key)) % [_num(lv.bonus_pct), _num(lv.duration_s), _num(lv.cooldown_s)]
+	return String(TranslationServer.translate(def.desc_key)) % _num(def.levels[level - 1])
+
+
+static func _num(v: float) -> String:
+	return str(int(v)) if v == floorf(v) else String.num(v)   # 8, а не 8.0
 
 
 # Баланс и строки магазина по состоянию Game: уровень, эффект и цена следующего уровня, кнопка и причина, если купить нельзя.

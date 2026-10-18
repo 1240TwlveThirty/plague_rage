@@ -22,6 +22,7 @@ var sfx_volume := VOLUME_DEFAULT     # audio/sfx: шины SFX
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS   # F11 и на паузе
+	ensure_code_actions()
 	persist = get_tree().get_script() == null   # обычный запуск игры, не тестовый SceneTree
 	if persist:
 		load_settings()
@@ -144,7 +145,10 @@ func _input(event: InputEvent) -> void:
 # Переназначаемые действия в порядке списка на вкладке «Управление» (подпись — action_title).
 const REBINDABLE := ["squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4", "squad_select_5", "squad_select_6",
 	"squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side", "wave_start", "buy_1", "buy_2",
-	"buy_3", "buy_4"]
+	"buy_3", "buy_4", "war_cry"]
+# Действия, которых нет в [input] project.godot: клавиша по умолчанию задаётся здесь, действие добавляется после каждой загрузки InputMap
+# (war_cry — «Клич Благодати»; R занята возвратом в хаб, T — авто-шириной строя, ближайшая свободная — D).
+const CODE_DEFAULTS := {"war_cry": KEY_D}
 # Остальные действия игры: клавиши фиксированы (их нельзя занять переназначением).
 const FIXED_ACTIONS := ["order_attack", "order_hold", "order_retreat", "about_face", "banner_toggle", "auto_width", "pause",
 	"post_left", "post_top", "post_right", "post_back", "select_all", "to_hub", "debug_restart"]
@@ -283,12 +287,14 @@ func rebind_event(action: String, e: InputEvent) -> Dictionary:
 # Клавиши по умолчанию (секция [input] project.godot).
 func reset_keys() -> void:
 	InputMap.load_from_project_settings()
+	ensure_code_actions()
 	save_settings()
 	changed.emit("input")
 
 
 func _load_keys(cfg: ConfigFile) -> void:
 	InputMap.load_from_project_settings()
+	ensure_code_actions()
 	for r in REBINDABLE:
 		var v = cfg.get_value("input", r, "")
 		if not v is String or v == "":
@@ -305,6 +311,14 @@ func _load_keys(cfg: ConfigFile) -> void:
 			push_warning("%s: клавиша «%s» для %s не подходит, оставлена по умолчанию" % [path, v, r])
 			continue
 		_set_key(r, code)
+
+
+# Действия CODE_DEFAULTS с клавишей по умолчанию, если их ещё нет в InputMap. Работает и без автозагрузки (бенчи).
+static func ensure_code_actions() -> void:
+	for a in CODE_DEFAULTS:
+		if not InputMap.has_action(a):
+			InputMap.add_action(a)
+			_set_key(a, CODE_DEFAULTS[a])
 
 
 # Клавиша — её имя («N», «Space»), кнопка мыши — «Mouse8».

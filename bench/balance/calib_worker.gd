@@ -1,17 +1,33 @@
 extends SceneTree
 # Калибровка осады I: один забег бота. Аргументы: <бот B1..B6> <seed> [множитель численности, по умолчанию 1] [--gifts id:уровень,id:уровень]
-# [--cards id,id] [--pick random] [--variants путь].
+# [--cards id,id] [--pick random] [--variants путь] [--war-cry on|off].
 # Рабочие scripts/main.gd и JSON из data/ (только чтение). Пример замера «потолка»: B5 1 --gifts tempered_steel:3,reserve:2
 # --cards — карточки с начала забега (разовые эффекты сразу; случайный результат карточки 30 — генератор забега бенча, seed = seed бота).
 # --pick random — настоящий выбор: после волн pick_after_waves бот берёт случайную карточку из тройки (тот же генератор забега).
 # --variants — файл с дополнительными карточками (варианты для сравнения, bench/card_variants.json): они добавляются к пулу data/cards.json
 # во временный файл user://, в выбор (--pick) не попадают, задаются через --cards.
+# --war-cry (по умолчанию on): если дар war_cry в наборе, бот жмёт Клич Благодати, когда он готов и хоть один зомби ближе WAR_CRY_DIST
+# к центру любого своего отряда (проверка раз в WAR_CRY_EVERY тиков); off — не жмёт. В конце строка WARCRY: активаций, тиков с бонусом, тиков боя.
 # Множитель (свип этапа 2) умножает в памяти count_base, count_step и knight_per_wave: число зомби каждого типа растёт в это число раз, доли типов те же.
 # Слой 1, синглтона Game нет — волны без предела, до поражения (страховка 40 волн). Отряды стоят на старте, приказ «атака», кликов нет;
 # в каждой передышке бот тратит всё золото. Сила игрока и врага — bench/balance/strength.gd.
 # Товары: 0 inf_pack, 1 archer_pack, 2 weapons, 3 gate.
 const STRENGTH := preload("res://bench/balance/strength.gd")
 const CARDS := preload("res://scripts/cards.gd")
+const WAR_CRY_DIST := 400.0
+const WAR_CRY_EVERY := 5
+
+# Хоть один живой зомби ближе WAR_CRY_DIST к центру любого занятого отряда игрока.
+func zombie_near(m: Node2D) -> bool:
+	var d2 := WAR_CRY_DIST * WAR_CRY_DIST
+	for s in m.SQUAD_MAX:
+		if m.squad_used[s] != 1 or m.squad_n[s] == 0:
+			continue
+		var c: Vector2 = m.squad_pos[s]
+		for i in m.count:
+			if m.team[i] == 1 and m.pos[i].distance_squared_to(c) < d2:
+				return true
+	return false
 const WAVE_CAP := 40
 const CYCLES := {"B1": [0, 2, 1, 3], "B2": [0, 2], "B3": [3], "B5": [0, 1], "B6": [2, 0, 2, 1]}
 
@@ -27,7 +43,7 @@ func _initialize() -> void:
 		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	var args := Array(OS.get_cmdline_user_args())
 	var opt := {}   # --gifts, --cards, --pick, --variants -> значение
-	for key in ["--gifts", "--cards", "--pick", "--variants"]:
+	for key in ["--gifts", "--cards", "--pick", "--variants", "--war-cry"]:
 		var at := args.find(key)
 		if at >= 0:
 			opt[key] = String(args[at + 1]) if at + 1 < args.size() else ""
@@ -74,6 +90,8 @@ func _initialize() -> void:
 		for key in ["count_base", "count_step", "knight_per_wave"]:
 			m.wave_cfg[key] *= mult
 		m.wave_plan_for = -1   # план волны 1 построен до правки: _start_wave построит заново
+	var war_cry_on: bool = opt.get("--war-cry", "on") != "off"
+	var battle_ticks := 0
 	var ptr := 0
 	var defeat := 0
 	var full := 1
@@ -108,8 +126,11 @@ func _initialize() -> void:
 		var e: Dictionary = STRENGTH.enemy(m)
 		var ticks := 0
 		while m.wave_state == m.WS_BATTLE and ticks < 30 * 1200:
+			if war_cry_on and m.war_cry_level > 0 and ticks % WAR_CRY_EVERY == 0 and m.war_cry_can() and zombie_near(m):
+				m.request_war_cry()
 			m._physics_process(1.0 / 30.0)
 			ticks += 1
+		battle_ticks += ticks
 		var lost := inf + arch - count_type(m, m.infantry_type) - count_type(m, m.archer_type)
 		# поля 17-18 (с нуля от WAVE): золото после покупок и убито зомби за волну (из e.n в поле 9); 19 — dps игрока по порогам урона
 		print("WAVE,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.4f,%.4f,%.4f,%.4f,%.1f,%d,%d,%.4f" % [bot, seed, m.wave_number, inf, arch, m.shop_bought[2], gold_start, lost, e.n,
@@ -120,7 +141,8 @@ func _initialize() -> void:
 		if m.wave_state == m.WS_BATTLE:
 			full = 0
 			break
-	print("RUN,%s,%d,%d,%d,%d" % [bot, seed, defeat, full, floori(m.gold)])   # последнее поле — золото, не потраченное к концу забега
+	print("RUN,%s,%d,%d,%d,%d" % [bot, seed, defeat, full, floori(m.gold)])
+	print("WARCRY,%d,%d,%d" % [m.war_cry_uses, m.war_cry_active_ticks, battle_ticks])   # последнее поле — золото, не потраченное к концу забега
 	print("CARDS," + ",".join(m.active_cards.map(func(r): return r.id + ("" if not r.has("result") else ":" + r.result.good))))   # выбранные карточки (30 — с целью x1.5)
 	m.free()
 	quit()

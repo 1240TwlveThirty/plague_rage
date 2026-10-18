@@ -56,7 +56,7 @@ func _run() -> void:
 		if ST.key_label(a) != defaults[a]:
 			bad.append("%s=%s" % [a, ST.key_label(a)])
 	check("клавиши по умолчанию прежние (InputMap из project.godot)", bad.is_empty(), ", ".join(bad))
-	check("переназначаемых действий 17, у всех есть клавиша", ST.REBINDABLE.size() == 17 and ST.REBINDABLE.all(func(r): return ST.action_key(r) != KEY_NONE))
+	check("переназначаемых действий 18 (с war_cry — Клич Благодати), у всех есть клавиша", ST.REBINDABLE.size() == 18 and ST.REBINDABLE.all(func(r): return ST.action_key(r) != KEY_NONE))
 
 	print("игра по действиям")
 	var m: Node2D = load("res://scenes/main.tscn").instantiate()
@@ -155,7 +155,7 @@ func _run() -> void:
 	var titles := []
 	for t in sm.tabs.get_tab_count():
 		titles.append(tr(sm.tabs.get_tab_title(t)))
-	check("вкладки «Видео», «Звук», «Управление», «Язык»; строк 17, кнопка «Сбросить»", titles == ["Видео", "Звук", "Управление", "Язык"] and sm.key_buttons.size() == 17 and sm.reset_keys_button != null, str(titles))
+	check("вкладки «Видео», «Звук», «Управление», «Язык»; строк 18, кнопка «Сбросить»", titles == ["Видео", "Звук", "Управление", "Язык"] and sm.key_buttons.size() == 18 and sm.reset_keys_button != null, str(titles))
 	sm.key_buttons["buy_2"].pressed.emit()
 	check("клик по строке: ждёт клавишу", sm.waiting_action == "buy_2" and sm.key_buttons["buy_2"].text.begins_with("Нажмите"))
 	root.push_input(ev(KEY_ESCAPE))

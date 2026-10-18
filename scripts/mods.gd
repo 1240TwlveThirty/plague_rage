@@ -25,6 +25,8 @@ const STAT_OPS := {"damage": ["add_pct", "mult"], "hp": ["add_pct", "mult"], "bo
 	"reload": ["add_pct"], "attack_speed": ["add_pct"], "range": ["add_pct"], "enemy_hp": ["add_pct"], "grant_units_free": ["add_flat"]}
 # Цены в value: итог не ниже COST_FLOOR базовой (против накопления скидок), затем округление до целого, не меньше 1.
 const COSTS := ["unit_cost", "weapon_cost", "repair_cost"]
+const GIFT_TYPES := ["mods", "ability"]
+const ABILITY_FIELDS := ["bonus_pct", "duration_s", "cooldown_s"]
 const COST_FLOOR := 0.2
 const NON_NEGATIVE := ["signal_window", "spread", "income_flat", "grant_units_free"]   # в value не ниже 0
 
@@ -43,6 +45,8 @@ func _init(gift_defs := {}) -> void:
 # Пара stat / target — из таблицы PAIRS. Для магазина даров, по желанию: req_sieges — сколько осад пройдено для покупки уровня n
 # (нет поля — 0, 1, 2, ...), prices — цены уровней в Сиянии (нет поля — пустой массив: цены по умолчанию из radiance.json); длина обоих — как у levels.
 # op — из STAT_OPS своего stat. hidden (по желанию, нет поля — false): дар скрыт — хаб его не показывает, build и забег его пропускают.
+# type (по желанию): "mods" (по умолчанию) или "ability" — активная способность: нет stat / target / op, уровень — объект
+# {bonus_pct, duration_s, cooldown_s} (числа больше 0); в build не участвует.
 # Остального по умолчанию нет: чего нет — ошибка. Результат: id -> {name_key, desc_key, stat, target, op, levels, req_sieges, prices, hidden};
 # при ошибке push_error и пустой словарь.
 static func load_gifts(path: String) -> Dictionary:
@@ -64,33 +68,47 @@ static func load_gifts(path: String) -> Dictionary:
 		if out.has(e.id):
 			push_error("%s: дар \"%s\" повторяется" % [path, e.id])
 			return {}
-		for key in ["name_key", "desc_key", "stat", "target", "op"]:
+		if e.has("type") and not e.type in GIFT_TYPES:
+			push_error("%s: у дара \"%s\" неизвестный type \"%s\" (допустимы %s)" % [path, e.id, str(e.type), ", ".join(GIFT_TYPES)])
+			return {}
+		var ability: bool = e.get("type", "mods") == "ability"   # активная способность: уровни — объекты ABILITY_FIELDS, модификаторов нет
+		for key in (["name_key", "desc_key"] if ability else ["name_key", "desc_key", "stat", "target", "op"]):
 			if not e.get(key) is String:
 				push_error("%s: у дара \"%s\" нет строкового поля %s" % [path, e.id, key])
 				return {}
-		if not e.stat in STATS:
-			push_error("%s: у дара \"%s\" неизвестный stat \"%s\"" % [path, e.id, e.stat])
-			return {}
-		if not e.target in TARGETS:
-			push_error("%s: у дара \"%s\" неизвестный target \"%s\"" % [path, e.id, e.target])
-			return {}
-		if not e.target in PAIRS[e.stat]:
-			push_error("%s: у дара \"%s\" недопустимая пара stat \"%s\" и target \"%s\"" % [path, e.id, e.stat, e.target])
-			return {}
-		if not e.op in OPS:
-			push_error("%s: у дара \"%s\" неизвестный op \"%s\"" % [path, e.id, e.op])
-			return {}
-		if not e.op in STAT_OPS[e.stat]:
-			push_error("%s: у дара \"%s\" op \"%s\" недопустим для stat \"%s\"" % [path, e.id, e.op, e.stat])
-			return {}
+		if not ability:
+			if not e.stat in STATS:
+				push_error("%s: у дара \"%s\" неизвестный stat \"%s\"" % [path, e.id, e.stat])
+				return {}
+			if not e.target in TARGETS:
+				push_error("%s: у дара \"%s\" неизвестный target \"%s\"" % [path, e.id, e.target])
+				return {}
+			if not e.target in PAIRS[e.stat]:
+				push_error("%s: у дара \"%s\" недопустимая пара stat \"%s\" и target \"%s\"" % [path, e.id, e.stat, e.target])
+				return {}
+			if not e.op in OPS:
+				push_error("%s: у дара \"%s\" неизвестный op \"%s\"" % [path, e.id, e.op])
+				return {}
+			if not e.op in STAT_OPS[e.stat]:
+				push_error("%s: у дара \"%s\" op \"%s\" недопустим для stat \"%s\"" % [path, e.id, e.op, e.stat])
+				return {}
 		if not e.get("hidden", false) is bool:
 			push_error("%s: у дара \"%s\" поле hidden — не true / false" % [path, e.id])
 			return {}
 		if not e.get("levels") is Array or e.levels.is_empty():
 			push_error("%s: у дара \"%s\" нет непустого массива levels" % [path, e.id])
 			return {}
-		var levels := PackedFloat64Array()
+		var levels = PackedFloat64Array() if not ability else []
 		for v in e.levels:
+			if ability:
+				var ok_level: bool = v is Dictionary and v.size() == ABILITY_FIELDS.size()
+				for f in ABILITY_FIELDS:
+					ok_level = ok_level and (v.get(f) is float or v.get(f) is int) and v[f] > 0
+				if not ok_level:
+					push_error("%s: у способности \"%s\" уровень — не объект {%s} с числами больше 0" % [path, e.id, ", ".join(ABILITY_FIELDS)])
+					return {}
+				levels.append({"bonus_pct": float(v.bonus_pct), "duration_s": float(v.duration_s), "cooldown_s": float(v.cooldown_s)})
+				continue
 			if not (v is float or v is int):
 				push_error("%s: у дара \"%s\" в levels не число" % [path, e.id])
 				return {}
@@ -112,8 +130,8 @@ static func load_gifts(path: String) -> Dictionary:
 				req = PackedInt32Array(e[key])
 			else:
 				prices = PackedInt32Array(e[key])
-		out[e.id] = {"name_key": e.name_key, "desc_key": e.desc_key, "stat": e.stat, "target": e.target, "op": e.op, "levels": levels, "req_sieges": req, "prices": prices,
-			"hidden": e.get("hidden", false)}
+		out[e.id] = {"name_key": e.name_key, "desc_key": e.desc_key, "type": "ability" if ability else "mods", "stat": "" if ability else e.stat,
+			"target": "" if ability else e.target, "op": "" if ability else e.op, "levels": levels, "req_sieges": req, "prices": prices, "hidden": e.get("hidden", false)}
 	return out
 
 
@@ -152,6 +170,8 @@ func build_sources(list: Array) -> bool:
 			var d: Dictionary = src_defs[id]
 			if d.get("hidden", false):
 				continue
+			if d.get("type", "mods") == "ability":
+				continue   # способность (Клич Благодати): модификаторов нет, её параметры читает сцена боя
 			var lvl = src.levels[id]
 			if not (lvl is float or lvl is int) or lvl != floorf(lvl) or lvl < 1 or lvl > d.levels.size():
 				push_error("Активный дар \"%s\" (%s): уровень %s вне 1..%d" % [id, src.name, str(lvl), d.levels.size()])
