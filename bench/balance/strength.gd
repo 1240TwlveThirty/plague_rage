@@ -8,11 +8,36 @@ extends RefCounted
 # В метрику не входят: щит пехоты (block_mult), дальность, разброс и промахи стрел, одиночный огонь и ближний бой лучников,
 # скорость, ворота, подход орды всплесками (враг считается так, будто вся волна на поле сразу).
 
+# Флаг «эффективный урон по порогам» (задача 6, этап E): урон одного удара игрока заменяется на HP цели / ceil(HP цели / урон),
+# взвешенно по составу следующей волны (wave_plan, HP с ростом волны): удар сверх нужного для убийства пропадает. По умолчанию выключен —
+# прежние отчёты не меняются; player(m, true) включает его для одного вызова.
+const BREAKPOINTS := false
+
+
 # Урон в секунду одного юнита типа t команды team (0 — игрок, 1 — орда).
 static func type_dps(m: Node2D, t: int, team: int) -> float:
 	if m.type_range_far[t] > 0.0:
 		return m.type_arrow_dmg[t] / m.type_volley_period[t]
 	return m.type_damage[t] * m.team_dmg_mult[team] / m.type_cooldown[t]
+
+
+# Урон удара dmg по порогам: среднее по составу волны plan (вес — число зомби) от HP / ceil(HP / dmg), HP = HP типа * hp_mult.
+static func breakpoint_damage(m: Node2D, dmg: float, plan: Array, hp_mult: float) -> float:
+	var s := 0.0
+	var n := 0
+	for r in plan:
+		var hp: float = m.type_hp[r.type] * hp_mult
+		s += r.count * (hp / ceilf(hp / dmg - 1e-6))
+		n += r.count
+	return s / n if n > 0 and dmg > 0.0 else dmg
+
+
+# dps юнита игрока типа t по порогам для следующей волны (план wave_plan, рост HP волны wave_plan_for).
+static func type_dps_bp(m: Node2D, t: int) -> float:
+	var hp_mult: float = 1.0 + m.wave_cfg.hp_growth * (m.wave_plan_for - 1)
+	if m.type_range_far[t] > 0.0:
+		return breakpoint_damage(m, m.type_arrow_dmg[t], m.wave_plan, hp_mult) / m.type_volley_period[t]
+	return breakpoint_damage(m, m.type_damage[t] * m.team_dmg_mult[0], m.wave_plan, hp_mult) / m.type_cooldown[t]
 
 
 # Армия из групп [число, hp одного, dps одного]: {n, hp, dps, power}.
@@ -27,7 +52,7 @@ static func army(groups: Array) -> Dictionary:
 	return {"n": n, "hp": h, "dps": d, "power": h * d}
 
 
-static func player(m: Node2D) -> Dictionary:
+static func player(m: Node2D, breakpoints := BREAKPOINTS) -> Dictionary:
 	var cnt := {}
 	var hps := {}
 	for i in m.count:
@@ -37,7 +62,7 @@ static func player(m: Node2D) -> Dictionary:
 			hps[t] = hps.get(t, 0.0) + m.hp[i]
 	var groups := []
 	for t in cnt:
-		groups.append([cnt[t], hps[t] / cnt[t], type_dps(m, t, 0)])
+		groups.append([cnt[t], hps[t] / cnt[t], type_dps_bp(m, t) if breakpoints else type_dps(m, t, 0)])
 	return army(groups)
 
 

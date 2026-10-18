@@ -1,0 +1,20 @@
+[
+	{"id": "v_meteor_blades_as", "num": 101, "name_key": "CARD_METEOR_BLADES_NAME", "desc_key": "CARD_METEOR_BLADES_DESC", "builds": ["common"], "kind": "M",
+		"mods": [{"stat": "attack_speed", "target": "infantry", "op": "add_pct", "value": 12}]},
+	{"id": "v_silver_vs_dead_as", "num": 102, "name_key": "CARD_SILVER_VS_DEAD_NAME", "desc_key": "CARD_SILVER_VS_DEAD_DESC", "builds": ["common"], "kind": "M",
+		"mods": [{"stat": "attack_speed", "target": "infantry", "op": "add_pct", "value": 10}]},
+	{"id": "v_long_spears_as", "num": 127, "name_key": "CARD_LONG_SPEARS_NAME", "desc_key": "CARD_LONG_SPEARS_DESC", "builds": ["risk"], "kind": "M",
+		"mods": [{"stat": "attack_speed", "target": "infantry", "op": "add_pct", "value": 15}, {"stat": "enemy_hp", "target": "enemy", "op": "add_pct", "value": 10, "cost": true}]},
+	{"id": "v_tempered_steel_1", "num": 201, "name_key": "GIFT_TEMPERED_STEEL_NAME", "desc_key": "GIFT_TEMPERED_STEEL_DESC", "builds": ["common"], "kind": "M",
+		"mods": [{"stat": "damage", "target": "infantry", "op": "add_pct", "value": 6}]},
+	{"id": "v_tempered_steel_2", "num": 202, "name_key": "GIFT_TEMPERED_STEEL_NAME", "desc_key": "GIFT_TEMPERED_STEEL_DESC", "builds": ["common"], "kind": "M",
+		"mods": [{"stat": "damage", "target": "infantry", "op": "add_pct", "value": 12}]},
+	{"id": "v_tempered_steel_3", "num": 203, "name_key": "GIFT_TEMPERED_STEEL_NAME", "desc_key": "GIFT_TEMPERED_STEEL_DESC", "builds": ["common"], "kind": "M",
+		"mods": [{"stat": "damage", "target": "infantry", "op": "add_pct", "value": 18}]},
+	{"id": "v_tempered_steel_as_1", "num": 211, "name_key": "GIFT_TEMPERED_STEEL_NAME", "desc_key": "GIFT_TEMPERED_STEEL_DESC", "builds": ["common"], "kind": "M",
+		"mods": [{"stat": "attack_speed", "target": "infantry", "op": "add_pct", "value": 6}]},
+	{"id": "v_tempered_steel_as_2", "num": 212, "name_key": "GIFT_TEMPERED_STEEL_NAME", "desc_key": "GIFT_TEMPERED_STEEL_DESC", "builds": ["common"], "kind": "M",
+		"mods": [{"stat": "attack_speed", "target": "infantry", "op": "add_pct", "value": 12}]},
+	{"id": "v_tempered_steel_as_3", "num": 213, "name_key": "GIFT_TEMPERED_STEEL_NAME", "desc_key": "GIFT_TEMPERED_STEEL_DESC", "builds": ["common"], "kind": "M",
+		"mods": [{"stat": "attack_speed", "target": "infantry", "op": "add_pct", "value": 18}]}
+]
