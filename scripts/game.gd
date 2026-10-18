@@ -51,6 +51,7 @@ var gift_defs := {}            # дары из gifts.json (MODS.load_gifts) ил
 var radiance_cfg := {}         # radiance.json (load_radiance_cfg) или {} при ошибке: тогда наград и покупок нет
 var gifts_override = null      # набор из параметра --gifts (id -> уровень) или null: заменяет купленные дары в start_run
 var cards_path := CARDS_PATH   # тесты подменяют
+var card_rules_path := CARD_RULES_PATH   # тесты каркаса забега ставят "": выбора карточек нет
 var card_defs := {}            # карточки из cards.json (CARDS.load_cards) или {} при ошибке
 var card_rules := {}           # cards_rules.json (CARDS.load_rules) или {} при ошибке: тогда выбора карточек нет
 var run_cards: Array = []      # выбранные карточки забега: записи {id[, result]}; очищается в start_run; в сохранение не пишется (сохранения посреди забега нет)
@@ -226,7 +227,7 @@ func _setup() -> void:
 	radiance_cfg = load_radiance_cfg(radiance_path)
 	gift_defs = MODS.load_gifts(gifts_path)
 	card_defs = CARDS.load_cards(cards_path)
-	card_rules = CARDS.load_rules(CARD_RULES_PATH)
+	card_rules = CARDS.load_rules(card_rules_path) if card_rules_path != "" else {}
 	gifts_override = parse_gifts_arg(OS.get_cmdline_user_args())
 	_clean_state()
 	if not cfg_ok:

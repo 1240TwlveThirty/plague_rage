@@ -52,6 +52,8 @@ const STORY_PATH := "res://data/story.json"   # дневник: тексты б�
 const GIFTS_PATH := "res://data/gifts.json"   # дары: модификаторы забега
 const MODS := preload("res://scripts/mods.gd")
 const CARDS := preload("res://scripts/cards.gd")
+const CARD_PICK := preload("res://scripts/card_pick.gd")   # экран выбора карточки
+const CARD_RULES_PATH := "res://data/cards_rules.json"
 const ESC_MENU := preload("res://scripts/esc_menu.gd")   # меню паузы по Esc: «Продолжить», «Выйти в меню», «Выход из игры»
 const ESC_NOTE := "UI_PAUSE_NOTE_LOSS"   # ключ перевода
 const BANNER_WIDTH := 700.0                   # ширина баннера, px: длинный текст переносится по словам
@@ -571,6 +573,14 @@ var squad_start_n := PackedInt32Array()        # численность отря
 var wave_fallen := 0                           # своих юнитов пало за волну (карточка 24, vengeance)
 var cond_cards: Array = []                     # условные карточки забега на эту волну: [{cond, when, mods [{stat, target, value}]}]
 var vengeance := {}                            # карточка 24: {per_unit_pct, max_pct} или {}
+# Выбор карточек: в начале передышки после волн card_rules.pick_after_waves — тройка (pending_offer). С Game — правила и генератор забега Game;
+# без Game выбора нет, если бенч не задал card_pick_auto ("random": бенч выбирает сам через choose_card) и bench_card_rng.
+var card_rules := {}
+var pending_offer: Array = []          # тройка, ждущая выбора; пока не пуста, волну не начать
+var card_pick_auto := ""               # бенчи: "random" — выбор без экрана
+var bench_card_rng: RandomNumberGenerator = null
+var card_screen: CanvasLayer = null    # экран выбора (только с интерфейсом)
+var cards_label: Label = null          # выбранные карточки в HUD
 var mods: RefCounted = null            # MODS: собирается при старте забега и в начале каждой волны (_prepare_wave), тик его не вызывает
 var income_pct := 0.0                  # стат income: эта доля дохода волны начисляется в конце волны (до магазина передышки)
 var income_flat := 0.0                 # стат income_flat: столько золота начисляется в конце волны вместе с доходом
@@ -1454,6 +1464,7 @@ func _load_mods() -> bool:
 	card_defs = CARDS.load_cards(cards_path)
 	if card_defs.is_empty():
 		return false
+	card_rules = game.card_rules if game != null else (CARDS.load_rules(CARD_RULES_PATH) if card_pick_auto != "" else {})
 	if game != null:
 		active_gifts = game.active_gifts.duplicate()
 	mods = MODS.new(gift_defs)
@@ -1666,6 +1677,38 @@ func cond_factor(cond: String, w: Dictionary, sq: int) -> float:
 			var lost_pct := (squad_start_n[sq] - squad_n[sq]) * 100.0 / squad_start_n[sq]
 			return float(clampi(floori(lost_pct / w.step_pct + 1e-9), 0, int(w.max_steps)))
 	return 0.0
+
+
+# Начало передышки после волны из pick_after_waves: тройка карточек (генератор забега), с интерфейсом — экран выбора.
+func _offer_cards() -> void:
+	if card_rules.is_empty() or not wave_number in card_rules.pick_after_waves:
+		return
+	var rng: RandomNumberGenerator = game.run_rng if game != null else bench_card_rng
+	if rng == null:
+		return
+	pending_offer = CARDS.offer(card_defs, _cards(), card_rules, rng)
+	if card_screen != null and not pending_offer.is_empty():
+		card_screen.open(pending_offer, card_defs, _cards().map(func(r): return card_defs[r.id].name_key))
+
+
+# Выбрать карточку из тройки: запись (Game.pick_card или запись бенча), разовый эффект, экран закрыт. Не из тройки — false.
+func choose_card(id: String) -> bool:
+	if not id in pending_offer:
+		return false
+	var r: Dictionary
+	if game != null:
+		r = game.pick_card(id)
+	else:
+		r = CARDS.make_record(card_defs[id], bench_card_rng)
+		active_cards.append(r)
+	pending_offer = []
+	if card_screen != null:
+		card_screen.visible = false
+		banner.visible = banner_any and not banner_hidden
+	if not r.is_empty():
+		apply_on_pick(r)
+	ui_t = 0.0
+	return true
 
 
 # Разовый эффект выбранной карточки (on_pick): grant_units — столько пехоты в первый отряд пехоты сразу.
@@ -2082,8 +2125,8 @@ func _update_bursts(delta: float) -> void:
 
 # Space в передышке: следующая волна. Сила зомби растёт с номером волны.
 func _start_wave() -> void:
-	if not waves_enabled or wave_state != WS_RESPITE:
-		return
+	if not waves_enabled or wave_state != WS_RESPITE or not pending_offer.is_empty():
+		return   # пока карточка не выбрана, волна не начинается
 	wave_number += 1
 	wave_state = WS_BATTLE
 	_set_paused(false)
@@ -2259,6 +2302,7 @@ func _wave_cleared() -> void:
 	wave_plan = _plan_wave(wave_number + 1)   # состав и всплески следующей волны известны с начала передышки
 	wave_plan_for = wave_number + 1
 	wave_bursts = _plan_bursts(wave_plan_for, wave_plan)
+	_offer_cards()
 	_set_banner(_banner_wave_cleared.bind(_entry_text(wave_number), wave_number, wave_kills, int(wave_cfg.wave_bonus_gold)))
 	queue_redraw()   # маркеры разведки
 
@@ -2712,7 +2756,7 @@ func _show_banner(text: String, story := "", hint := "", title := "") -> void:
 		any = any or banner_parts[k] != ""
 	banner_any = any
 	banner_hidden = false   # новый текст показывается, даже если прошлый скрыли клавишей H
-	banner.visible = any
+	banner.visible = any and not _picking()
 	# размер по содержимому, по центру сверху: иначе после длинного текста баннер остаётся высоким
 	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
 	banner.position.y = BANNER_TOP
@@ -2724,7 +2768,12 @@ func _toggle_banner() -> void:
 		return
 	banner_hidden = not banner_hidden
 	if banner != null:
-		banner.visible = banner_any and not banner_hidden
+		banner.visible = banner_any and not banner_hidden and not _picking()
+
+
+# Открыт экран выбора карточки: баннер итога волны ждёт выбора (не просвечивает сквозь экран).
+func _picking() -> bool:
+	return card_screen != null and card_screen.visible
 
 
 # F вне протяжки: каждый выбранный отряд разворачивается «кругом» на месте (слоты в мире не двигаются).
@@ -3269,6 +3318,19 @@ func _setup_fps_label() -> void:
 	esc_menu = ESC_MENU.new()
 	esc_menu.before_menu = _abandon_run
 	add_child(esc_menu)
+	card_screen = CARD_PICK.new()
+	card_screen.picked.connect(choose_card)
+	add_child(card_screen)
+	# Выбранные карточки: справа сверху, компактным списком названий
+	cards_label = Label.new()
+	cards_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	cards_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	cards_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	cards_label.position = Vector2(-16.0, 8.0)
+	cards_label.add_theme_font_size_override("font_size", 18)
+	cards_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	cards_label.add_theme_constant_override("outline_size", 5)
+	layer.add_child(cards_label)
 	# HUD сверху по центру
 	hud_label = Label.new()
 	hud_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -3642,6 +3704,9 @@ func _update_ui() -> void:
 		"%d/%d" % [wave_number, waves_per_run] if run_limit else str(wave_number), zombie_alive + wave_remaining, ceili(maxf(gate_hp, 0.0)), roundi(gate_hp_max), floori(gold)]
 	if scout_shown and waves_enabled and wave_state == WS_RESPITE:
 		hud_label.text += "\n" + _plan_text()   # разведка
+	if cards_label != null:
+		var names := _cards().map(func(r): return tr(card_defs[r.id].name_key)) if not card_defs.is_empty() else []
+		cards_label.text = "" if names.is_empty() else tr("HUD_CARDS") + "\n" + "\n".join(names)
 	burst_label.text = burst_msg
 	burst_label.visible = wave_state == WS_BATTLE and burst_msg != "" and wave_t < burst_msg_until
 	if hud_msg != "":

@@ -258,3 +258,13 @@ CARD_GRACE_BLESSING_NAME,Благословение Благодати,Blessing 
 CARD_GRACE_BLESSING_DESC,+10% Сияния за забег,+10% Radiance per run
 CARD_FIELD_KITCHEN_NAME,Полевая кухня,Field Kitchen
 CARD_FIELD_KITCHEN_DESC,+50% к лечению между волнами,+50% healing between waves
+UI_CARDS_TITLE,Выберите карточку,Choose a card
+UI_CARDS_HINT,Клавиши 1 / 2 / 3 или мышь. Пропустить нельзя.,Keys 1 / 2 / 3 or mouse. You can't skip.
+UI_CARDS_OWNED,Уже выбрано: %s,Already chosen: %s
+UI_CARDS_NONE,пока ничего,nothing yet
+HUD_CARDS,Карточки:,Cards:
+UI_BUILD_SHIELD,Щиты,Shields
+UI_BUILD_ARCHERS,Лучники,Archers
+UI_BUILD_GOLD,Золото,Gold
+UI_BUILD_RISK,Риск,Risk
+UI_BUILD_COMMON,Общая,Common

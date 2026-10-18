@@ -69,6 +69,7 @@ func new_game() -> void:
 	g = load(GAME).new()
 	g.name = "Game"
 	g.save_path = SAVE
+	g.card_rules_path = ""   # каркас забега без выбора карточек (он — в check_v53_pick.gd)
 	root.add_child(g)
 
 func clean() -> bool:

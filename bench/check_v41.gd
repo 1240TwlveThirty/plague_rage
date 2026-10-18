@@ -124,6 +124,8 @@ func _run() -> void:
 	print("Game: %s" % ("создан вручную" if manual else "автозагрузка проекта"))
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
 	g.save_path = SAVE
+	g.card_rules_path = ""   # каркас забега без выбора карточек (он — в check_v53_pick.gd)
+	g.card_rules = {}
 	node_added.connect(_on_node_added)
 	var args := OS.get_cmdline_user_args()
 	var mode := "all" if args.is_empty() else args[0]
