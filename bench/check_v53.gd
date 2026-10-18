@@ -56,14 +56,16 @@ func _initialize() -> void:
 	check("лучники (без приказа) остались на месте", is_equal_approx(a.squad_pos[1].distance_to(b.squad_pos[1]), 0.0))
 	a.free()
 	b.free()
-	print("воспроизведение бага на эталоне (код до исправления)")
+	# Эталон с задачи 6d (bench/ref, c9b64be) уже содержит исправление: раньше здесь воспроизводился баг на эталоне до исправления,
+	# теперь эталон должен вести себя как рабочий main.
+	print("эталон (уже с исправлением)")
 	var r := make(REF)
 	var r0: float = r.squad_pos[0].distance_to(r.GATE_POS)
 	r._select_only(0)
 	r._set_order(r.ORDER_RETREAT)
 	ticks(r, 150)
-	check("в эталоне отход не двигает отряд (%.0f -> %.0f) и сразу превращается в «держать»" % [r0, r.squad_pos[0].distance_to(r.GATE_POS)],
-		is_equal_approx(r.squad_pos[0].distance_to(r.GATE_POS), r0) and r.squad_order[0] == r.ORDER_HOLD)
+	check("в эталоне отход тоже ведёт отряд к его точке у ворот (%.0f -> %.0f)" % [r0, r.squad_pos[0].distance_to(r.GATE_POS)],
+		r.squad_pos[0].distance_to(r.GATE_POS) < r0 - 50.0 and r.squad_target[0] == r.gate_spot(0))
 	r.free()
 	print("отход в бою и карточка №11")
 	var c := make(MAIN, [{"id": "mobile_reserve"}])
