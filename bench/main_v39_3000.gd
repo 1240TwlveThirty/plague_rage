@@ -8,6 +8,7 @@ const WAVES_ENABLED := true   # false: как bak21 (300 зомби на ста�
 const WAVES_PATH := "res://data/waves.json"
 const SHOP_PATH := "res://data/shop.json"
 const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate"]   # порядок = действия buy_1..buy_4 (по умолчанию Z X C V)
+const SHOP_COST_STATS := ["unit_cost", "unit_cost", "weapon_cost", "repair_cost"]   # стат цены товара для Mods.value, порядок SHOP_ITEMS
 const SETTINGS := preload("res://scripts/settings.gd")   # key_label(действие): клавиша для подсказок
 # Действия клавиатуры в порядке проверки (_key_action): с модификаторами раньше, чтобы Ctrl+A не ушло в действие на A
 const ACTION_TEXTS := ["HUD_SQUAD_NEW", "HUD_SQUAD_SPLIT", "HUD_SQUAD_MERGE"]   # кнопки под панелью отрядов (ключи, %s — клавиша)
@@ -470,6 +471,7 @@ var type_range_far := PackedFloat32Array()      # дальность стрел�
 var type_volley_period := PackedFloat32Array()  # период цикла залпа, с
 var type_draw_time := PackedFloat32Array()      # натяжение перед залпом, с
 var type_spread := PackedFloat32Array()         # разброс: радиус = spread * дистанция
+var wave_spread := PackedFloat32Array()         # разброс на эту волну: type_spread через Mods.value (стат spread), _read_wave_mods
 var type_arrow_dmg := PackedFloat32Array()
 var type_bounty_mult := PackedFloat32Array()   # золото за убитого = gold_per_kill * это
 var type_chase := PackedByteArray()            # орда: 1 = идёт к врагу в VIEW_RANGE; 0 = идёт мимо, бьёт только в дальности атаки
@@ -597,6 +599,7 @@ var debug_layer := DEBUG_LAYER         # и слой тоже
 var burst_pending := 0                 # слои: ещё не появившиеся юниты уже начавшихся всплесков
 var burst_live := 0                    # слои: сколько всплесков сейчас появляется
 var signal_redraw_until := 0.0         # до какого wave_t полоса сигнала меняется (перерисовка каждый кадр)
+var wave_signal_lead := 0.0            # окно сигнала всплеска на эту волну, с: signal_lead слоя (или burst_signal_lead) через Mods.value, _read_wave_mods
 const ARRIVALS_WINDOW := 300           # тиков в окне arrivals_10s_max (10 с)
 var arrivals_ring := PackedInt32Array()   # PROFILE: сколько зомби появилось в каждом из последних тиков
 var arrivals_sum := 0
@@ -1421,7 +1424,7 @@ func _load_mods() -> bool:
 	if game != null:
 		active_gifts = game.active_gifts.duplicate()
 	mods = MODS.new(defs)
-	return mods.build(active_gifts)
+	return mods.build_sources([MODS.gifts_source(defs, active_gifts)])   # источники — как Game.mod_sources, но с defs из gifts_path сцены
 
 
 # Эффективные характеристики забега — один раз, до создания юнитов: дальше бой читает только готовые числа.
@@ -1441,6 +1444,14 @@ func _apply_mods() -> void:
 	gate_hp_max *= mods.get_mult("gate_hp", "gate")
 	gate_hp = gate_hp_max
 	income_pct = mods.get_mult("income", "player") - 1.0
+
+
+# Статы волны «на лету» (Mods.value): разброс стрел и окно сигнала всплеска. Читаются при старте забега и в начале каждой волны,
+# тик берёт готовые wave_spread и wave_signal_lead. Без модификаторов — те же числа, что в данных.
+func _read_wave_mods() -> void:
+	wave_spread = type_spread.duplicate()
+	wave_spread[archer_type] = mods.value("spread", type_spread[archer_type])
+	wave_signal_lead = mods.value("signal_window", _layer().signal_lead if bursts_layered else wave_cfg.burst_signal_lead)
 
 
 # Дар на стартовые юниты: прибавка каждому стартовому отряду (процент от его числа — вниз, не меньше +1), юниты выходят из ворот, как купленные.
@@ -1692,7 +1703,7 @@ func _spread_group(bursts: Array, first: int, last: int, rng: RandomNumberGenera
 # появляться одновременно, каждый своей сеткой блока. Куски — по burst_chunk раз в burst_chunk_interval.
 func _update_bursts_layered(delta: float) -> void:
 	wave_t += delta
-	var lead: float = _layer().signal_lead
+	var lead := wave_signal_lead
 	while burst_signal_n < wave_bursts.size() and wave_t >= wave_bursts[burst_signal_n].t_group - lead:
 		var g: int = wave_bursts[burst_signal_n].group
 		var words := PackedStringArray()
@@ -1792,7 +1803,7 @@ func _burst_signals() -> Array:
 # по burst_chunk юнитов раз в burst_chunk_interval; куски продолжают одну сетку блока своей стороны.
 func _update_bursts(delta: float) -> void:
 	wave_t += delta
-	while burst_signal_n < wave_bursts.size() and wave_t >= wave_bursts[burst_signal_n].t_start - wave_cfg.burst_signal_lead:
+	while burst_signal_n < wave_bursts.size() and wave_t >= wave_bursts[burst_signal_n].t_start - wave_signal_lead:
 		burst_msg = tr("HUD_BURST") % tr(SIDE_WORDS[wave_bursts[burst_signal_n].side])
 		burst_msg_until = wave_t + 3.0
 		burst_signal_n += 1
@@ -1855,6 +1866,7 @@ func _start_wave() -> void:
 	team_dmg_mult[1] = 1.0 + wave_cfg.dmg_growth * (wave_number - 1)
 	wave_kills = 0
 	wave_kills_by_type.fill(0)
+	_read_wave_mods()
 	arrows_fired = 0   # в отладочной строке — за текущую волну
 	arrows_hit = 0
 	arrows_out_of_range = 0
@@ -2008,8 +2020,9 @@ func _wave_cleared() -> void:
 
 # --- Магазин ------------------------------------------------------------------
 
+# Цена товара k: база с ростом за купленные, затем Mods.value по стату товара (SHOP_COST_STATS); без модификаторов — как есть.
 func _price(k: int) -> float:
-	return shop_base[k] * (1.0 + shop_growth[k] * shop_bought[k])
+	return mods.value(SHOP_COST_STATS[k], shop_base[k] * (1.0 + shop_growth[k] * shop_bought[k]))
 
 
 # Отряд упёрся в cap: живых этого типа плюс покупка больше предела.
@@ -2692,6 +2705,7 @@ func _setup_data() -> void:
 	runner_type = runner
 	knight_type = knight
 	_apply_mods()
+	_read_wave_mods()
 	# Все массивы юнитов — один раз на MAX_UNITS; живые юниты всегда в [0, count).
 	pos.resize(MAX_UNITS)
 	team.resize(MAX_UNITS)
@@ -4734,7 +4748,7 @@ func _fire_arrow(i: int, aim: Vector2, delay: float, own_range := false, release
 		return
 	var t := unit_type[i]
 	var dist := pos[i].distance_to(aim)
-	var land := aim + Vector2.from_angle(arrow_rng.randf() * TAU) * (type_spread[t] * dist * sqrt(arrow_rng.randf()))
+	var land := aim + Vector2.from_angle(arrow_rng.randf() * TAU) * (wave_spread[t] * dist * sqrt(arrow_rng.randf()))
 	if own_range and pos[i].distance_to(land) > type_range_far[t]:
 		arrows_out_of_range += 1
 		return

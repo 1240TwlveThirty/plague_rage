@@ -1,20 +1,23 @@
 extends SceneTree
-# Абляция даров: сборщик bench/balance/ablation_v3_runs/*.txt (bench/balance/ablation_run.sh) -> bench/gift_ablation_v3.txt.
-# Аргумент (необязательный): сколько секунд шли забеги — попадает в шапку итога.
-# Прежние итоги (gift_ablation_v1.txt, gift_ablation_v2.txt) собраны прежними версиями этого файла (история git) и не пересчитываются.
+# Абляция даров: сборщик bench/balance/ablation_<версия>_runs/*.txt (bench/balance/ablation_run.sh) -> bench/gift_ablation_<версия>.txt.
+# Аргументы: <секунд шли забеги, 0 — не измерялось> [версия, по умолчанию v4] [id даров через запятую для наборов «по одному»; по умолчанию все видимые].
+# Наборы «все дары» — все видимые дары gifts.json. Прежние итоги v1, v2 собраны прежними версиями этого файла (история git) и не пересчитываются;
+# v3 собран этим же файлом с версией v3 и даром «Резерв» +5/10/15% (до задачи 6a).
 # Метрика: непрерывная волна смерти = номер волны смерти + доля убитых зомби этой волны (7.64 — умер на волне 7, убив 64% её зомби).
 # Шкала: линейная сила = sqrt(H * D) по bench/balance/strength.gd; P — игрок на старте волны после покупок, E — вся волна.
-const OUT := "res://bench/gift_ablation_v3.txt"
-const DIR := "res://bench/balance/ablation_v3_runs/"
 const GAME := preload("res://scripts/game.gd")   # формула Сияния и загрузчики run.json, radiance.json
+const MODS := preload("res://scripts/mods.gd")
 const BOTS := ["B2", "B5"]
 const DESC := {"B2": "по кругу пехота, оружие", "B5": "по кругу пехота, лучники"}
 const SEEDS := [1, 2, 3, 4, 5]
 const WAVES := [1, 4, 7]
 const LAST := 10
 const ALIVE := 41.0   # дожил до страховки 40 волн
-var gifts := []   # из data/gifts.json, в порядке файла, без скрытых (hidden)
-var game: Node    # узел Game вне дерева: только run_reward по data/radiance.json
+var gifts := []   # из data/gifts.json, в порядке файла, без скрытых (hidden): все видимые — для наборов «все дары»
+var singles := [] # дары для наборов «по одному» (аргумент или все видимые)
+var game: Node    # узел Game вне дерева: только run_reward по data/radiance.json и дарам набора (radiance_pct)
+var ver := "v4"
+var DIR := ""
 var waves_per_run := 0
 
 # Забег: waves [{p, e}], defeat — волна смерти (ALIVE — дожил, -1 — нет данных), death — непрерывная волна смерти, gold — золото в начале последней волны после покупок.
@@ -90,8 +93,23 @@ func mean_gold(rs: Array) -> float:
 		s += r.gold
 	return s / rs.size()
 
+# Дары набора: id -> уровень (как --gifts в ablation_run.sh).
+func gifts_of(cfg: String) -> Dictionary:
+	var out := {}
+	if cfg == "none":
+		return out
+	var lvl := int(cfg.right(1))
+	if cfg.begins_with("all_"):
+		for g in gifts:
+			out[g.id] = lvl
+	else:
+		out[cfg.left(cfg.length() - 2)] = lvl
+	return out
+
 # Средняя награда Сияния: забег игры кончается победой на волне waves_per_run, поэтому смерть бота позже неё считается победой.
-func mean_radiance(rs: Array) -> float:
+# Дары набора действуют и здесь (Резерв Сияния — через Game.run_reward).
+func mean_radiance(cfg: String, rs: Array) -> float:
+	game.active_gifts = gifts_of(cfg)
 	var s := 0.0
 	for r in rs:
 		s += game.run_reward("win", waves_per_run) if r.defeat > waves_per_run else game.run_reward("loss", r.defeat)
@@ -103,8 +121,10 @@ func label(cfg: String) -> String:
 	if cfg.begins_with("all_"):
 		return "все дары (%d), уровень %s" % [gifts.size(), cfg.right(1)]
 	for g in gifts:
-		if cfg.begins_with(g.id + "_"):
-			return "%s %s (%s %s%s)" % [g.id, cfg.right(1), g.stat, "+%d" % int(g.levels[int(cfg.right(1)) - 1]), "%" if g.op == "add_pct" else ""]
+		if cfg == "%s_%s" % [g.id, cfg.right(1)]:
+			var v: float = g.levels[int(cfg.right(1)) - 1]
+			var num := ("%+d" % int(v)) if v == floorf(v) else ("+" if v > 0 else "") + String.num(v)
+			return "%s %s (%s %s%s)" % [g.id, cfg.right(1), g.stat, num, "%" if g.op == "add_pct" else (" с" if g.stat == "signal_window" else "")]
 	return cfg
 
 func _initialize() -> void:
@@ -113,13 +133,20 @@ func _initialize() -> void:
 	gifts = JSON.parse_string(FileAccess.get_file_as_string("res://data/gifts.json")).filter(func(g): return not g.get("hidden", false))
 	game = GAME.new()
 	game.radiance_cfg = GAME.load_radiance_cfg("res://data/radiance.json")
+	game.gift_defs = MODS.load_gifts("res://data/gifts.json")
 	waves_per_run = GAME.load_run_cfg("res://data/run.json").waves_per_run
 	var rc: Dictionary = game.radiance_cfg
 	var args := OS.get_cmdline_user_args()
 	var secs := int(args[0]) if args.size() > 0 else 0
+	ver = args[1] if args.size() > 1 else "v4"
+	DIR = "res://bench/balance/ablation_%s_runs/" % ver
+	singles = gifts
+	if args.size() > 2:
+		var want := args[2].split(",", false)
+		singles = gifts.filter(func(g): return g.id in want)
 	var cfgs := ["none"]
 	for lvl in [1, 2, 3]:
-		for g in gifts:
+		for g in singles:
 			cfgs.append("%s_%d" % [g.id, lvl])
 	for lvl in [1, 2, 3]:
 		cfgs.append("all_%d" % lvl)
@@ -131,8 +158,9 @@ func _initialize() -> void:
 			for r in runs_of(cfg, bot):
 				if r.defeat < 0:
 					missing += 1
-	var ids := PackedStringArray(gifts.map(func(g): return g.id))
-	L.append("gift_ablation_v3: абляция даров с непрерывной волной смерти, только измерения. Дары: %s (скрытые в gifts.json не входят)." % ", ".join(ids))
+	var ids := PackedStringArray(singles.map(func(g): return g.id))
+	L.append("gift_ablation_%s: абляция даров с непрерывной волной смерти, только измерения. Дары по одному: %s; «все дары» — все %d видимых в gifts.json (скрытые не входят)." % [
+		ver, ", ".join(ids), gifts.size()])
 	L.append("Рабочие scripts/main.gd и data/*.json, осада I (слой 1), волны без предела до поражения.")
 	L.append("Пересчёт (из корня проекта):  sh bench/balance/ablation_run.sh \"<путь к godot.exe>\"")
 	L.append("Время этого прогона: %s (%d забегов, до 10 процессов сразу, %d потоков процессора)." % ["%d мин %02d с" % [secs / 60, secs % 60] if secs > 0 else "не измерялось (сборщик запущен отдельно)",
@@ -144,7 +172,7 @@ func _initialize() -> void:
 	L.append("Золото — среднее по seed золото в начале последней волны (волны смерти) после покупок: остаток, на который бот ничего не смог купить.")
 	L.append("Сияние — средняя по seed награда за забег по data/radiance.json: %d + %d * номер за каждую пройденную волну, +%d за победу. В игре забег кончается победой на волне %d," % [
 		rc.wave_base, rc.wave_step, rc.win_bonus, waves_per_run])
-	L.append("  поэтому смерть бота позже волны %d считается победой (%d Сияния)." % [waves_per_run, game.run_reward("win", waves_per_run)])
+	L.append("  поэтому смерть бота позже волны %d считается победой (%d Сияния без даров); дары набора (Резерв Сияния) действуют через Game.run_reward." % [waves_per_run, game.run_reward("win", waves_per_run)])
 	if missing > 0:
 		L.append("ВНИМАНИЕ: не завершено забегов: %d из %d." % [missing, total])
 	L.append("")
@@ -160,8 +188,8 @@ func _initialize() -> void:
 				pe.append("%7s" % ("—" if p <= 0.0 else "%.2f" % (p / gmean(rs, "e", w))))
 			var med := median(rs)
 			L.append("  %-42s | %-32s | %5s (%s) | %s | %s | %s | %8.3f | %6.0f | %6.1f" % [label(cfg), "/".join(rs.map(func(r): return fmt_death(r.death))), fmt_death(med),
-				"%+6.2f" % (med - base_med) if cfg != "none" else "  0.00", pe[0], pe[1], pe[2], fit(rs), mean_gold(rs), mean_radiance(rs)])
-			if cfg == "none" or cfg.begins_with(gifts[-1].id + "_"):
+				"%+6.2f" % (med - base_med) if cfg != "none" else "  0.00", pe[0], pe[1], pe[2], fit(rs), mean_gold(rs), mean_radiance(cfg, rs)])
+			if cfg == "none" or cfg.begins_with(singles[-1].id + "_"):
 				L.append("")
 		L.append("")
 	L.append("4. Влияние дара: сдвиг медианы непрерывной волны смерти относительно «без даров», среднее двух ботов. Сортировка по убыванию (сверху — сильнейшие).")
@@ -203,10 +231,10 @@ func _initialize() -> void:
 	L.append("6. Сияние за забег, среднее по seed и сколько таких забегов нужно на первый уровень дара (цена %d): контроль и набор «все дары, уровень 1»." % rc.gift_prices[0])
 	for cfg in ["none", "all_1"]:
 		for bot in BOTS:
-			var rad := mean_radiance(runs_of(cfg, bot))
+			var rad := mean_radiance(cfg, runs_of(cfg, bot))
 			L.append("  %-28s | %s | Сияние %6.1f | забегов до дара %d | золото в начале последней волны %5.0f" % [label(cfg), bot, rad, ceili(rc.gift_prices[0] / rad), mean_gold(runs_of(cfg, bot))])
 	game.free()
-	var f := FileAccess.open(OUT, FileAccess.WRITE)
+	var f := FileAccess.open("res://bench/gift_ablation_%s.txt" % ver, FileAccess.WRITE)
 	f.store_string("\n".join(L) + "\n")
 	f.close()
 	for l in L:

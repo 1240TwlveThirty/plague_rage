@@ -11,7 +11,7 @@ const DIARY_EMPTY := "HUB_DIARY_EMPTY"
 const RADIANCE_COLOR := Color(0.6, 0.9, 1.0)
 const RADIANCE_ICON := "res://art/shine.png"
 const GIFT_ICON := "res://art/card_meta_perk.png"   # общая заглушка; своя иконка дара — art/gift_<id>.png, если есть
-const GIFT_ICON_SIZE := Vector2(40.0, 60.0)
+const GIFT_ICON_SIZE := Vector2(32.0, 48.0)   # 12 строк даров помещаются на экран 1080
 const GIFT_FONT := 26
 const GIFT_MAX := "—"
 
@@ -128,7 +128,7 @@ func _setup_gifts() -> void:
 	var grid := GridContainer.new()
 	grid.columns = 7
 	grid.add_theme_constant_override("h_separation", 24)
-	grid.add_theme_constant_override("v_separation", 10)
+	grid.add_theme_constant_override("v_separation", 6)
 	col.add_child(grid)
 	for head in ["", "HUB_GIFTS_HEAD_GIFT", "HUB_GIFTS_HEAD_LEVEL", "HUB_GIFTS_HEAD_NEXT", "HUB_GIFTS_HEAD_PRICE", "", ""]:
 		_cell(grid, head, Color(1.0, 1.0, 1.0, 0.6))

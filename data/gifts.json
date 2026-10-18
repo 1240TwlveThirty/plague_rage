@@ -5,5 +5,11 @@
 	{"id": "spoils", "name_key": "GIFT_SPOILS_NAME", "desc_key": "GIFT_SPOILS_DESC", "stat": "bounty", "target": "player", "op": "add_pct", "levels": [10, 20, 30], "req_sieges": [0, 1, 2]},
 	{"id": "mine", "name_key": "GIFT_MINE_NAME", "desc_key": "GIFT_MINE_DESC", "stat": "income", "target": "player", "op": "add_pct", "levels": [5, 10, 15], "req_sieges": [0, 1, 2]},
 	{"id": "fortress_walls", "name_key": "GIFT_FORTRESS_WALLS_NAME", "desc_key": "GIFT_FORTRESS_WALLS_DESC", "stat": "gate_hp", "target": "gate", "op": "add_pct", "levels": [15, 30, 45], "req_sieges": [0, 1, 2], "hidden": true},
-	{"id": "reserve", "name_key": "GIFT_RESERVE_NAME", "desc_key": "GIFT_RESERVE_DESC", "stat": "start_units", "target": "player", "op": "add_pct", "levels": [5, 10, 15], "req_sieges": [0, 1, 2], "prices": [90, 180, 360]}
+	{"id": "reserve", "name_key": "GIFT_RESERVE_NAME", "desc_key": "GIFT_RESERVE_DESC", "stat": "start_units", "target": "player", "op": "add_pct", "levels": [10, 20, 30], "req_sieges": [0, 1, 2]},
+	{"id": "armory", "name_key": "GIFT_ARMORY_NAME", "desc_key": "GIFT_ARMORY_DESC", "stat": "unit_cost", "target": "player", "op": "add_pct", "levels": [-5, -10, -15], "req_sieges": [0, 1, 2]},
+	{"id": "smith_thomas", "name_key": "GIFT_SMITH_THOMAS_NAME", "desc_key": "GIFT_SMITH_THOMAS_DESC", "stat": "weapon_cost", "target": "player", "op": "add_pct", "levels": [-5, -10, -15], "req_sieges": [0, 1, 2]},
+	{"id": "repairers", "name_key": "GIFT_REPAIRERS_NAME", "desc_key": "GIFT_REPAIRERS_DESC", "stat": "repair_cost", "target": "player", "op": "add_pct", "levels": [-15, -30, -45], "req_sieges": [0, 1, 2]},
+	{"id": "watch", "name_key": "GIFT_WATCH_NAME", "desc_key": "GIFT_WATCH_DESC", "stat": "signal_window", "target": "player", "op": "add_flat", "levels": [0.25, 0.5, 0.75], "req_sieges": [0, 1, 2]},
+	{"id": "discipline", "name_key": "GIFT_DISCIPLINE_NAME", "desc_key": "GIFT_DISCIPLINE_DESC", "stat": "spread", "target": "archer", "op": "add_pct", "levels": [-10, -20, -30], "req_sieges": [0, 1, 2]},
+	{"id": "radiance_reserve", "name_key": "GIFT_RADIANCE_RESERVE_NAME", "desc_key": "GIFT_RADIANCE_RESERVE_DESC", "stat": "radiance_pct", "target": "player", "op": "add_pct", "levels": [5, 10, 15], "req_sieges": [0, 1, 2]}
 ]

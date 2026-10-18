@@ -1,0 +1,8 @@
+[
+	{"id": "u50", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "unit_cost", "target": "player", "op": "add_pct", "levels": [-50]},
+	{"id": "u45", "name_key": "B", "desc_key": "GIFT_TEST_DESC", "stat": "unit_cost", "target": "player", "op": "add_pct", "levels": [-45]},
+	{"id": "w90", "name_key": "C", "desc_key": "GIFT_TEST_DESC", "stat": "weapon_cost", "target": "player", "op": "add_pct", "levels": [-90]},
+	{"id": "sp150", "name_key": "D", "desc_key": "GIFT_TEST_DESC", "stat": "spread", "target": "archer", "op": "add_pct", "levels": [-150]},
+	{"id": "sw10", "name_key": "E", "desc_key": "GIFT_TEST_DESC", "stat": "signal_window", "target": "player", "op": "add_flat", "levels": [-10]},
+	{"id": "zero", "name_key": "F", "desc_key": "GIFT_TEST_DESC", "stat": "repair_cost", "target": "player", "op": "add_pct", "levels": [0]}
+]

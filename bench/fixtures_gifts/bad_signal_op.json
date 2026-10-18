@@ -1,0 +1,1 @@
+[{"id": "g", "name_key": "Дар", "desc_key": "GIFT_TEST_DESC", "stat": "signal_window", "target": "player", "op": "add_pct", "levels": [10]}]

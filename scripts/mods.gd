@@ -4,20 +4,30 @@ extends RefCounted
 # Проценты одного ключа складываются (16% + 20% = x1.36), mult перемножаются (под редкие карточки, пока не используется).
 # Счётные статы (start_units) — get_count: целая прибавка к числу, процент от него округляется вниз, но не меньше +1.
 # Сцена боя спрашивает Mods один раз при старте забега (main.gd, _apply_mods) и кладёт итог в свои массивы; тик сюда не ходит.
-const STATS := ["damage", "hp", "bounty", "income", "gate_hp", "start_units"]
+# Статы «в момент использования» (цены магазина, окно сигнала, разброс, награда Сиянием) — value(stat, base): читаются при покупке,
+# при старте волны или в Game.run_reward и хранятся в переменной; горячие циклы симуляции value не вызывают.
+# Модификаторы собираются из списка источников (sources): сейчас один — дары забега (Game.active_gifts), позже — временные карточки.
+const STATS := ["damage", "hp", "bounty", "income", "gate_hp", "start_units", "unit_cost", "weapon_cost", "repair_cost", "signal_window", "spread", "radiance_pct"]
 const TARGETS := ["all_units", "infantry", "archer", "gate", "player"]
 const OPS := ["add_pct", "add_flat", "mult"]
 # Допустимые сочетания: stat -> его target. Пары вне таблицы сцена боя не читает, дар с такой парой молча не действовал бы.
 const PAIRS := {"damage": ["all_units", "infantry", "archer"], "hp": ["all_units", "infantry", "archer"], "bounty": ["player"], "income": ["player"],
-	"gate_hp": ["gate"], "start_units": ["player"]}
-# Допустимые op для stat: сцена боя читает множители (get_mult) или прибавку к числу (get_count); остальное не действовало бы.
+	"gate_hp": ["gate"], "start_units": ["player"], "unit_cost": ["player"], "weapon_cost": ["player"], "repair_cost": ["player"], "signal_window": ["player"],
+	"spread": ["archer"], "radiance_pct": ["player"]}
+# Допустимые op для stat: сцена боя читает множители (get_mult), прибавку к числу (get_count) или value; остальное не действовало бы.
 const STAT_OPS := {"damage": ["add_pct", "mult"], "hp": ["add_pct", "mult"], "bounty": ["add_pct", "mult"], "income": ["add_pct", "mult"],
-	"gate_hp": ["add_pct", "mult"], "start_units": ["add_pct", "add_flat"]}
+	"gate_hp": ["add_pct", "mult"], "start_units": ["add_pct", "add_flat"], "unit_cost": ["add_pct"], "weapon_cost": ["add_pct"], "repair_cost": ["add_pct"],
+	"signal_window": ["add_flat"], "spread": ["add_pct"], "radiance_pct": ["add_pct"]}
+# Цены в value: итог не ниже COST_FLOOR базовой (против накопления скидок), затем округление до целого, не меньше 1.
+const COSTS := ["unit_cost", "weapon_cost", "repair_cost"]
+const COST_FLOOR := 0.2
+const NON_NEGATIVE := ["signal_window", "spread"]   # в value не ниже 0
 
 var defs := {}       # id дара -> {name_key, desc_key, stat, target, op, levels, req_sieges, prices, hidden}
 var pct := {}        # ключ "stat|target" -> сумма add_pct, в процентах
 var mult := {}       # ключ -> произведение mult
 var flat := {}       # ключ -> сумма add_flat
+var sources: Array = []   # источники модификаторов: [{name, defs, levels}], levels — id -> уровень
 
 
 func _init(gift_defs := {}) -> void:
@@ -102,35 +112,49 @@ static func load_gifts(path: String) -> Dictionary:
 	return out
 
 
+# Источник «дары забега»: defs — дары из gifts.json, levels — id -> уровень (Game.active_gifts).
+static func gifts_source(gift_defs: Dictionary, levels: Dictionary) -> Dictionary:
+	return {"name": "gifts", "defs": gift_defs, "levels": levels}
+
+
 # Собрать суммы из активных даров: id -> уровень (целое от 1 до числа уровней дара). Пустой словарь — модификаторов нет.
-# Скрытый дар (hidden) пропускается молча, какой бы ни был уровень. Неизвестный id или уровень вне диапазона — push_error и false (суммы при этом пустые).
+# Это список источников из одного — даров с defs этого Mods.
 func build(active: Dictionary) -> bool:
+	return build_sources([gifts_source(defs, active)])
+
+
+# Собрать суммы по всем источникам списка; другой источник (карточки забега) — ещё один элемент с теми же полями.
+# Скрытый дар (hidden) пропускается молча, какой бы ни был уровень. Неизвестный id или уровень вне диапазона — push_error и false (суммы при этом пустые).
+func build_sources(list: Array) -> bool:
+	sources = list
 	pct = {}
 	mult = {}
 	flat = {}
 	var p := {}
 	var m := {}
 	var f := {}
-	for id in active:
-		if not defs.has(id):
-			push_error("Активный дар \"%s\": такого дара нет" % str(id))
-			return false
-		var d: Dictionary = defs[id]
-		if d.get("hidden", false):
-			continue
-		var lvl = active[id]
-		if not (lvl is float or lvl is int) or lvl != floorf(lvl) or lvl < 1 or lvl > d.levels.size():
-			push_error("Активный дар \"%s\": уровень %s вне 1..%d" % [id, str(lvl), d.levels.size()])
-			return false
-		var v: float = d.levels[int(lvl) - 1]
-		var key: String = d.stat + "|" + d.target
-		match d.op:
-			"add_pct":
-				p[key] = p.get(key, 0.0) + v
-			"mult":
-				m[key] = m.get(key, 1.0) * v
-			"add_flat":
-				f[key] = f.get(key, 0.0) + v
+	for src in list:
+		var src_defs: Dictionary = src.defs
+		for id in src.levels:
+			if not src_defs.has(id):
+				push_error("Активный дар \"%s\" (%s): такого нет" % [str(id), src.name])
+				return false
+			var d: Dictionary = src_defs[id]
+			if d.get("hidden", false):
+				continue
+			var lvl = src.levels[id]
+			if not (lvl is float or lvl is int) or lvl != floorf(lvl) or lvl < 1 or lvl > d.levels.size():
+				push_error("Активный дар \"%s\" (%s): уровень %s вне 1..%d" % [id, src.name, str(lvl), d.levels.size()])
+				return false
+			var v: float = d.levels[int(lvl) - 1]
+			var key: String = d.stat + "|" + d.target
+			match d.op:
+				"add_pct":
+					p[key] = p.get(key, 0.0) + v
+				"mult":
+					m[key] = m.get(key, 1.0) * v
+				"add_flat":
+					f[key] = f.get(key, 0.0) + v
 	pct = p
 	mult = m
 	flat = f
@@ -157,6 +181,23 @@ func get_count(stat: String, target: String, base: int) -> int:
 	if p > 0.0:
 		n = maxi(1, floori(base * p / 100.0 + 1e-9))   # 1e-9: 300 * 15 / 100 не уходит в 44.999...
 	return n + int(flat.get(key, 0.0))
+
+
+# Значение стата на лету: base * (1 + сумма add_pct / 100) * произведение mult + сумма add_flat — тот же порядок, что в _apply_mods
+# (множитель get_mult, затем прибавка get_flat). target по умолчанию — единственный допустимый у stat (PAIRS[stat][0]).
+# Модификаторов этого ключа нет — base как есть, без ограничений и округления (бит в бит с игрой без даров).
+# Есть: цены (COSTS) — не ниже COST_FLOOR * base, округление до целого, не меньше 1; NON_NEGATIVE — не ниже 0.
+func value(stat: String, base: float, target := "") -> float:
+	var t: String = target if target != "" else PAIRS[stat][0]
+	var key := stat + "|" + t
+	if not (pct.has(key) or mult.has(key) or flat.has(key)):
+		return base
+	var v := base * get_mult(stat, t) + get_flat(stat, t)
+	if stat in COSTS:
+		v = maxf(1.0, roundf(maxf(v, COST_FLOOR * base)))
+	elif stat in NON_NEGATIVE:
+		v = maxf(v, 0.0)
+	return v
 
 
 # Особые правила (дары с поведением, которого нет в числах): заготовка, пока ни одного.

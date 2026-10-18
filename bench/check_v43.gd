@@ -49,9 +49,9 @@ func wave(m: Node2D) -> void:
 func snap(m: Node2D) -> Dictionary:
 	var d := {}
 	for key in ["type_hp", "type_damage", "type_arrow_dmg", "type_bounty_mult", "type_cooldown", "type_speed", "type_range_sq", "type_block_mult", "type_range_far",
-			"type_volley_period", "type_draw_time", "type_spread", "shop_base", "shop_growth", "shop_param", "shop_cap"]:
+			"type_volley_period", "type_draw_time", "type_spread", "wave_spread", "shop_base", "shop_growth", "shop_param", "shop_cap"]:
 		d[key] = Array(m.get(key))
-	for key in ["gate_hp", "gate_hp_max", "gate_half", "gate_dmg_mult", "gold", "income_pct", "wave_income", "count", "zombie_alive", "wave_number", "wave_state", "wave_hp_mult"]:
+	for key in ["gate_hp", "gate_hp_max", "gate_half", "gate_dmg_mult", "gold", "income_pct", "wave_income", "count", "zombie_alive", "wave_number", "wave_state", "wave_hp_mult", "wave_signal_lead"]:
 		d[key] = m.get(key)
 	d["team_dmg_mult"] = Array(m.team_dmg_mult)
 	d["infantry"] = count_type(m, m.infantry_type)
@@ -134,11 +134,13 @@ func t_loader() -> void:
 	print("загрузчик gifts.json — ниже ожидаются строки ERROR от повреждённых файлов")
 	var defs: Dictionary = MODS.load_gifts(GIFTS)
 	var want := {"tempered_steel": ["damage", "infantry", "add_pct"], "sturdy_shields": ["hp", "all_units", "add_pct"], "marksmen": ["damage", "archer", "add_pct"],
-		"spoils": ["bounty", "player", "add_pct"], "mine": ["income", "player", "add_pct"], "fortress_walls": ["gate_hp", "gate", "add_pct"], "reserve": ["start_units", "player", "add_pct"]}
+		"spoils": ["bounty", "player", "add_pct"], "mine": ["income", "player", "add_pct"], "fortress_walls": ["gate_hp", "gate", "add_pct"], "reserve": ["start_units", "player", "add_pct"],
+		"armory": ["unit_cost", "player", "add_pct"], "smith_thomas": ["weapon_cost", "player", "add_pct"], "repairers": ["repair_cost", "player", "add_pct"],
+		"watch": ["signal_window", "player", "add_flat"], "discipline": ["spread", "archer", "add_pct"], "radiance_reserve": ["radiance_pct", "player", "add_pct"]}
 	var ok := defs.size() == want.size()
 	for id in want:
 		ok = ok and defs.has(id) and [defs[id].stat, defs[id].target, defs[id].op] == want[id] and defs[id].levels.size() == 3 and defs[id].name_key != "" and defs[id].desc_key != ""
-	check("data/gifts.json грузится: 7 даров, stat / target / op как в задании, по 3 уровня", ok, str(defs.keys()))
+	check("data/gifts.json грузится: 13 даров, stat / target / op как в задании, по 3 уровня", ok, str(defs.keys()))
 	var hidden := defs.keys().filter(func(id): return defs[id].hidden)
 	check("скрыт ровно fortress_walls", hidden == ["fortress_walls"], str(hidden))
 	for name in ["bad_stat", "bad_target", "bad_op", "bad_stat_op", "bad_hidden", "no_field", "bad_levels", "dup_id", "not_array", "missing_file"]:
@@ -169,8 +171,12 @@ func t_each_gift() -> void:
 			var k := 1.0 + v / 100.0
 			var want := base.duplicate(true)
 			match "hidden" if g.get("hidden", false) else g.stat:
-				"hidden":
-					pass   # скрытый дар не действует: снимок как без даров
+				"hidden", "unit_cost", "weapon_cost", "repair_cost", "radiance_pct":
+					pass   # скрытый дар не действует; цены и Сияние читаются на лету (check_v46): снимок как без даров
+				"spread":
+					want.wave_spread = scaled(base.wave_spread, units[g.target], k)
+				"signal_window":
+					want.wave_signal_lead = base.wave_signal_lead + v
 				"damage":
 					want.type_damage = scaled(base.type_damage, units[g.target], k)
 					want.type_arrow_dmg = scaled(base.type_arrow_dmg, units[g.target], k)
@@ -195,9 +201,9 @@ func t_each_gift() -> void:
 			var hp_ok := true
 			for i in m.count:
 				hp_ok = hp_ok and m.team[i] == 0 and m.hp[i] == m.type_hp[m.unit_type[i]]
-			var hid: bool = g.get("hidden", false)
+			var hid: bool = g.get("hidden", false) or g.stat in ["unit_cost", "weapon_cost", "repair_cost", "radiance_pct"]
 			check("%s, уровень %d (%s %s %s %s%s): меняется только своё — %s; юниты созданы с HP своего типа" % [g.id, lvl, g.stat, g.target, g.op, str(v),
-				", скрыт — не меняется ничего" if hid else "", ", ".join(changed)],
+				", скрыт или на лету — снимок прежний" if hid else "", ", ".join(changed)],
 				diff(got, want).is_empty() and changed.is_empty() == hid and hp_ok, "не как ожидалось: " + ", ".join(diff(got, want)) if not diff(got, want).is_empty() else "")
 			m.free()
 
@@ -271,7 +277,8 @@ func same(a: Node2D, b: Node2D) -> bool:
 
 func t_determinism() -> void:
 	print("(г) детерминизм")
-	var gifts := {"tempered_steel": 3, "sturdy_shields": 3, "marksmen": 3, "spoils": 3, "mine": 3, "fortress_walls": 3, "reserve": 3}
+	var gifts := {"tempered_steel": 3, "sturdy_shields": 3, "marksmen": 3, "spoils": 3, "mine": 3, "fortress_walls": 3, "reserve": 3,
+		"armory": 3, "smith_thomas": 3, "repairers": 3, "watch": 3, "discipline": 3, "radiance_reserve": 3}
 	var a := make(gifts, 6)
 	var b := make(gifts, 6)
 	var first := -1
@@ -287,7 +294,7 @@ func t_determinism() -> void:
 			ticks += 1
 			if first < 0 and not same(a, b):
 				first = ticks
-	check("все 7 даров уровня 3 (fortress_walls скрыт), волны 1-3 с покупками (seed 6, %d тиков, юнитов на старте %d): два прогона бит в бит на каждом тике" % [ticks, 460],
+	check("все 13 даров уровня 3 (fortress_walls скрыт), волны 1-3 с покупками (seed 6, %d тиков, юнитов на старте %d): два прогона бит в бит на каждом тике" % [ticks, 520],
 		first < 0 and a.wave_number == 3 and b.wave_number == 3 and ticks > 300, "" if first < 0 else "первое расхождение: тик %d" % first)
 	a.free()
 	b.free()
@@ -316,8 +323,8 @@ func t_game() -> void:
 	g.start_run(1)
 	await step(3)
 	m = current_scene as Node2D
-	check("забег с купленными fortress_walls 2 (скрыт) и reserve 1 (Game.active_gifts собран из gift_levels): ворота 1500, пехоты 315, лучников 105, в наборе только reserve",
-		m != null and m.gate_hp_max == 1500.0 and count_type(m, m.infantry_type) == 315 and count_type(m, m.archer_type) == 105 and g.active_gifts == {"reserve": 1},
+	check("забег с купленными fortress_walls 2 (скрыт) и reserve 1 (Game.active_gifts собран из gift_levels): ворота 1500, пехоты 330, лучников 110, в наборе только reserve",
+		m != null and m.gate_hp_max == 1500.0 and count_type(m, m.infantry_type) == 330 and count_type(m, m.archer_type) == 110 and g.active_gifts == {"reserve": 1},
 		"" if m == null else "ворота %.0f, пехоты %d, лучников %d" % [m.gate_hp_max, count_type(m, m.infantry_type), count_type(m, m.archer_type)])
 	g.end_run("loss", 2, 5)
 	var text := FileAccess.get_file_as_string(g.save_path)

@@ -385,7 +385,8 @@ func sieges_cleared() -> int:
 
 
 # Сияние за забег: за каждую пройденную волну w — wave_base + wave_step * w, за победу ещё win_bonus.
-# wave — волна, на которой забег кончился: при поражении она не пройдена.
+# wave — волна, на которой забег кончился: при поражении она не пройдена. Итог — через Mods.value (стат radiance_pct) по источникам
+# mod_sources(), округление до целого; без модификаторов — базовая сумма как есть.
 func run_reward(result: String, wave: int) -> int:
 	if radiance_cfg.is_empty():
 		return 0
@@ -393,7 +394,16 @@ func run_reward(result: String, wave: int) -> int:
 	var sum := 0
 	for w in range(1, passed + 1):
 		sum += radiance_cfg.wave_base + radiance_cfg.wave_step * w
-	return sum + (radiance_cfg.win_bonus if result == "win" else 0)
+	sum += radiance_cfg.win_bonus if result == "win" else 0
+	var mods = MODS.new(gift_defs)
+	if not mods.build_sources(mod_sources()):
+		return sum   # набор с ошибкой (она уже выведена): награда без модификаторов
+	return roundi(mods.value("radiance_pct", sum))
+
+
+# Источники модификаторов забега для Mods.build_sources: сейчас только дары (active_gifts); временные карточки — ещё один элемент.
+func mod_sources() -> Array:
+	return [MODS.gifts_source(gift_defs, active_gifts)]
 
 
 # Цена уровня дара (1..число уровней): prices дара или gift_prices из radiance.json; цены нет — -1.
