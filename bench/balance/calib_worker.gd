@@ -1,6 +1,8 @@
 extends SceneTree
 # Калибровка осады I: один забег бота. Аргументы: <бот B1..B6> <seed> [множитель численности, по умолчанию 1] [--gifts id:уровень,id:уровень]
-# [--cards id,id] [--pick random] [--variants путь] [--war-cry on|off] [--hp-spread s].
+# [--cards id,id] [--pick random] [--variants путь] [--war-cry on|off] [--hp-spread s] [--weapon-stat damage|attack_rate] [--weapons-free n].
+# --weapon-stat — что усиливает «Оружие» (x1.1 за покупку): урон или скорость боя; --weapons-free n — n покупок «Оружия» даром с начала забега
+# (как купленные: цена следующей выше).
 # --hp-spread — разброс HP зомби s (data/waves.json hp_spread заменяется в памяти; 0 — без разброса).
 # Рабочие scripts/main.gd и JSON из data/ (только чтение). Пример замера «потолка»: B5 1 --gifts tempered_steel:3,reserve:2
 # --cards — карточки с начала забега (разовые эффекты сразу; случайный результат карточки 30 — генератор забега бенча, seed = seed бота).
@@ -50,7 +52,7 @@ func _initialize() -> void:
 		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	var args := Array(OS.get_cmdline_user_args())
 	var opt := {}   # --gifts, --cards, --pick, --variants -> значение
-	for key in ["--gifts", "--cards", "--pick", "--variants", "--war-cry", "--hp-spread", "--army", "--hold"]:
+	for key in ["--gifts", "--cards", "--pick", "--variants", "--war-cry", "--hp-spread", "--army", "--hold", "--weapon-stat", "--weapons-free"]:
 		var at := args.find(key)
 		if at >= 0:
 			opt[key] = String(args[at + 1]) if at + 1 < args.size() else ""
@@ -88,6 +90,11 @@ func _initialize() -> void:
 	m._setup_data()
 	if opt.has("--variants"):
 		DirAccess.remove_absolute(m.cards_path)
+	if (opt.has("--weapon-stat") or opt.has("--weapons-free")) and not m.type_id.is_empty():
+		if opt.has("--weapon-stat"):
+			m.weapon_stat = opt["--weapon-stat"]   # damage | attack_rate: что усиливает «Оружие» (и покупки бота)
+		m.shop_bought[m.SHOP_ITEMS.find("weapons")] = int(opt.get("--weapons-free", "0"))   # покупки «Оружия» даром с начала забега (цена растёт как после них)
+		m._apply_wave_data()
 	if opt.has("--hp-spread") and not m.type_id.is_empty():
 		m.wave_cfg.hp_spread = float(opt["--hp-spread"])
 	var army_spear: bool = opt.get("--army", "inf") == "spear"

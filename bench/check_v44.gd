@@ -169,7 +169,7 @@ func t_validation() -> void:
 		"gate_hp": ["gate"], "start_units": ["player"], "unit_cost": ["player", "archer", "spearman"], "weapon_cost": ["player"], "repair_cost": ["player"], "signal_window": ["player"],
 		"spread": ["archer"], "radiance_pct": ["player"], "income_flat": ["player"], "heal": ["player"], "speed": ["all_units", "infantry", "archer", "spearman"],
 		"reload": ["archer"], "attack_speed": ["infantry"], "range": ["archer"], "enemy_hp": ["enemy"], "grant_units_free": ["player"],
-		"block": ["all_units", "infantry", "spearman"], "recover": ["player"]}
+		"block": ["all_units", "infantry", "spearman"], "recover": ["player"], "attack_rate": ["all_units", "infantry", "archer"]}
 	check("таблица MODS.PAIRS как в задании, покрывает все stat", MODS.PAIRS == want and MODS.PAIRS.size() == MODS.STATS.size(), str(MODS.PAIRS))
 	var wrong := PackedStringArray()
 	var allowed := 0
@@ -205,7 +205,7 @@ func t_validation() -> void:
 	var stat_ops := {"damage": ["add_pct", "mult"], "hp": ["add_pct", "mult"], "bounty": ["add_pct", "mult"], "income": ["add_pct", "mult"], "gate_hp": ["add_pct", "mult"],
 		"start_units": ["add_pct", "add_flat"], "unit_cost": ["add_pct"], "weapon_cost": ["add_pct"], "repair_cost": ["add_pct"], "signal_window": ["add_flat"],
 		"spread": ["add_pct"], "radiance_pct": ["add_pct"], "income_flat": ["add_flat"], "heal": ["add_pct"], "speed": ["add_pct"], "reload": ["add_pct"],
-		"attack_speed": ["add_pct"], "range": ["add_pct"], "enemy_hp": ["add_pct"], "grant_units_free": ["add_flat"], "block": ["add_flat"], "recover": ["add_pct"]}
+		"attack_speed": ["add_pct"], "range": ["add_pct"], "enemy_hp": ["add_pct"], "grant_units_free": ["add_flat"], "block": ["add_flat"], "recover": ["add_pct"], "attack_rate": ["add_pct"]}
 	check("таблица MODS.STAT_OPS как в задании, покрывает все stat", MODS.STAT_OPS == stat_ops and MODS.STAT_OPS.size() == MODS.STATS.size(), str(MODS.STAT_OPS))
 	var wrong_op := PackedStringArray()
 	var allowed_op := 0

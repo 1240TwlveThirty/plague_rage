@@ -594,7 +594,8 @@ var cond_cards: Array = []                     # условные карточк
 var vengeance := {}                            # карточка 24: {per_unit_pct, max_pct} или {}
 var squad_block_bonus := PackedFloat32Array()   # бонус шанса блока отряда по условиям (карточка №9, навык «Стена щитов»); без них 0.0
 var squad_skill_on := PackedByteArray()          # 1 — навык «Стена щитов» отряда сейчас действует (для HUD)
-var squad_atk_speed_mult := PackedFloat32Array()   # множитель скорости ударов и стрельбы отряда (Клич Благодати); без него ровно 1.0
+var squad_atk_speed_mult := PackedFloat32Array()   # множитель скорости ударов и стрельбы отряда: Клич Благодати x скорость боя по условиям карточек; без них ровно 1.0
+var squad_rate_mult := PackedFloat32Array()   # множитель скорости боя отряда по условиям карточек (стат attack_rate); без них ровно 1.0
 # Клич Благодати (дар war_cry, способность): состояние в тиках симуляции — пауза и ускорение работают сами.
 # Активация — команда с меткой тика: request_war_cry ставит запрос, он исполняется в начале следующего тика (_tick_war_cry);
 # war_cry_log — тики активаций, war_cry_plan — тики, на которых активировать (воспроизведение записанного прогона, бенчи).
@@ -713,6 +714,7 @@ var shop_base := PackedFloat64Array()   # float64: цены вида 100·1.2 б
 var shop_growth := PackedFloat64Array()
 var shop_param := PackedFloat64Array()        # amount / dmg_mult / gate_max_gain
 var shop_bought := PackedInt32Array()
+var weapon_stat := "damage"                # что усиливает «Оружие» (shop.json weapons.stat): damage — урон, attack_rate — скорость боя; x dmg_mult за покупку
 var shop_cap := PackedInt32Array()          # inf_pack / archer_pack: максимум живых юнитов этого типа
 var hud_label: Label
 var shop_panel: VBoxContainer
@@ -1460,6 +1462,11 @@ func _load_shop() -> bool:
 		shop_growth[k] = e.growth
 		shop_param[k] = e[param_key[id]]
 		shop_cap[k] = e.get("cap", 0)   # только у отрядов; у остальных не используется
+		if id == "weapons":
+			weapon_stat = String(e.get("stat", "damage"))
+			if not weapon_stat in ["damage", "attack_rate"]:
+				push_error("%s: товар weapons, stat %s — нужен damage или attack_rate" % [SHOP_PATH, weapon_stat])
+				return false
 	return true
 
 
@@ -1567,7 +1574,7 @@ func _tick_war_cry() -> void:
 			war_cry_ready = tick_counter + war_cry_cd
 			war_cry_log.append(tick_counter)
 			war_cry_uses += 1
-			squad_atk_speed_mult.fill(war_cry_mult)
+			_sync_atk_mult()
 	if war_cry_until >= 0:
 		if tick_counter >= war_cry_until:
 			_end_war_cry()
@@ -1577,7 +1584,14 @@ func _tick_war_cry() -> void:
 
 func _end_war_cry() -> void:
 	war_cry_until = -1
-	squad_atk_speed_mult.fill(1.0)
+	_sync_atk_mult()
+
+
+# Множитель скорости ударов и стрельбы отряда = скорость боя по условиям карточек x Клич Благодати (пока действует).
+func _sync_atk_mult() -> void:
+	var cry := war_cry_mult if war_cry_until >= 0 else 1.0
+	for sq in SQUAD_MAX:
+		squad_atk_speed_mult[sq] = squad_rate_mult[sq] * cry
 
 
 # Новая волна: клич готов сразу (перезарядка между волнами сбрасывается).
@@ -1642,7 +1656,11 @@ func _apply_wave_data() -> void:
 		hp_new[t] *= mods.get_mult("hp", "all_units") * mods.get_mult("hp", names[t])
 		speed_new[t] *= mods.get_mult("speed", "all_units") * mods.get_mult("speed", names[t])
 	var wk := SHOP_ITEMS.find("weapons")
-	for n in shop_bought[wk]:   # покупки оружия — после модификаторов, как в _buy
+	var wrate := 1.0   # «Оружие» на скорости боя: x dmg_mult за покупку пехоте, копейщикам и лучникам
+	if weapon_stat == "attack_rate":
+		for n in shop_bought[wk]:
+			wrate *= shop_param[wk]
+	for n in (shop_bought[wk] if weapon_stat == "damage" else 0):   # покупки оружия — после модификаторов, как в _buy
 		dmg_new[infantry_type] *= shop_param[wk]
 		dmg_new[spearman_type] *= shop_param[wk]
 		arrow_new[archer_type] *= shop_param[wk]
@@ -1650,15 +1668,28 @@ func _apply_wave_data() -> void:
 	for t in hp_new.size():
 		if not names.has(t):
 			hp_new[t] *= enemy
-	if mods.has_key("attack_speed", "infantry"):
-		cd_new[infantry_type] = _cd_actual(base_type_cooldown[infantry_type]) / mods.get_mult("attack_speed", "infantry")
-	var reload: float = mods.get_mult("reload", "archer")
-	if mods.has_key("reload", "archer"):
+	# Скорость боя: проценты складываются — пехота: attack_speed + attack_rate (все, пехота); копейщики: attack_rate (все, пехота);
+	# лучники: reload + attack_rate (все, лучники). Интервал удара = фактический / множитель, остаток переносится (type_cd_floor).
+	var ar_all: bool = mods.has_key("attack_rate", "all_units")
+	var rate_all: float = mods.get_mult("attack_rate", "all_units") - 1.0
+	var w_on := wrate != 1.0
+	var inf_on: bool = mods.has_key("attack_speed", "infantry") or ar_all or mods.has_key("attack_rate", "infantry") or w_on
+	var inf_rate: float = (mods.get_mult("attack_speed", "infantry") + rate_all + (mods.get_mult("attack_rate", "infantry") - 1.0)) * wrate
+	var spear_on: bool = ar_all or mods.has_key("attack_rate", "infantry") or w_on
+	var spear_rate: float = (1.0 + rate_all + (mods.get_mult("attack_rate", "infantry") - 1.0)) * wrate
+	var arch_on: bool = mods.has_key("reload", "archer") or ar_all or mods.has_key("attack_rate", "archer") or w_on
+	var reload: float = (mods.get_mult("reload", "archer") + rate_all + (mods.get_mult("attack_rate", "archer") - 1.0)) * wrate
+	if inf_on:
+		cd_new[infantry_type] = _cd_actual(base_type_cooldown[infantry_type]) / inf_rate
+	if spear_on:
+		cd_new[spearman_type] = _cd_actual(base_type_cooldown[spearman_type]) / spear_rate
+	if arch_on:
 		cd_new[archer_type] = _cd_actual(base_type_cooldown[archer_type]) / reload
 	volley_new[archer_type] /= reload
 	range_new[archer_type] *= mods.get_mult("range", "archer")
-	type_cd_floor[infantry_type] = -CD_CARRY if mods.has_key("attack_speed", "infantry") else 0.0
-	type_cd_floor[archer_type] = -CD_CARRY if mods.has_key("reload", "archer") else 0.0
+	type_cd_floor[infantry_type] = -CD_CARRY if inf_on else 0.0
+	type_cd_floor[spearman_type] = -CD_CARRY if spear_on else 0.0
+	type_cd_floor[archer_type] = -CD_CARRY if arch_on else 0.0
 	var bounty: float = mods.get_mult("bounty", "player")
 	for t in bounty_new.size():
 		bounty_new[t] *= bounty
@@ -1755,6 +1786,8 @@ func _prepare_cards() -> void:
 	squad_dmg_mult.fill(1.0)
 	squad_taken_mult.fill(1.0)
 	squad_speed_mult.fill(1.0)
+	squad_rate_mult.fill(1.0)
+	_sync_atk_mult()
 
 
 # Индикаторы карточек: условия и особые — выключены, бонус 0 (начало пересчёта, начало волны, передышка).
@@ -1778,6 +1811,7 @@ func _update_card_conditions() -> void:
 		var h := 0.0
 		var sp := 0.0
 		var bl := 0.0
+		var ar := 0.0
 		var skill := 0
 		if squad_used[sq] == 1 and squad_n[sq] > 0 and squad_team[sq] == 0:
 			if squad_start_n[sq] == 0:
@@ -1792,11 +1826,14 @@ func _update_card_conditions() -> void:
 					continue
 				var st: Dictionary = card_state[c.id]
 				st.on = true
-				for e in c.mods:   # индикатор: бонус урона этой карточки в отряде (для ступеней — с их числом), наибольший по отрядам
-					if e.stat == "damage" and (e.target == "all_units" or e.target == tname):
+				for e in c.mods:   # индикатор: бонус урона или скорости боя этой карточки в отряде (для ступеней — с их числом), наибольший по отрядам
+					if (e.stat == "damage" and (e.target == "all_units" or e.target == tname)) or (e.stat == "attack_rate" and _rate_hits(e.target, tname)):
 						st.pct = maxf(st.pct, e.value * k)
 				for e in c.mods:
-					if e.target == "all_units" or e.target == tname:
+					if e.stat == "attack_rate":
+						if _rate_hits(e.target, tname):
+							ar += e.value * k
+					elif e.target == "all_units" or e.target == tname:
 						match e.stat:
 							"damage":
 								d += e.value * k
@@ -1815,6 +1852,13 @@ func _update_card_conditions() -> void:
 		squad_speed_mult[sq] = 1.0 + sp / 100.0
 		squad_block_bonus[sq] = bl
 		squad_skill_on[sq] = skill
+		squad_rate_mult[sq] = 1.0 + ar / 100.0
+	_sync_atk_mult()
+
+
+# Цель стата attack_rate для отряда типа tname: all_units — все; infantry — пехота и копейщики (удар ближнего боя); archer — лучники.
+static func _rate_hits(target: String, tname: String) -> bool:
+	return target == "all_units" or target == tname or (target == "infantry" and tname == "spearman")
 
 
 # Есть ли отряд, у типа которого навык на «держать» (копейщики, «Стена щитов»): тогда условия считаются и без карточек.
@@ -2666,9 +2710,12 @@ func _buy(k: int) -> bool:
 		"spear_pack":
 			_squad_add_units(spear_sq, spearman_type, int(shop_param[k]))
 		"weapons":
-			type_damage[infantry_type] *= shop_param[k]
-			type_damage[spearman_type] *= shop_param[k]   # оружие и копейщикам (удар ближнего боя)
-			type_arrow_dmg[archer_type] *= shop_param[k]
+			if weapon_stat == "attack_rate":
+				_apply_wave_data()   # скорость боя: интервалы удара и стрельбы заново от базы (с этой покупкой)
+			else:
+				type_damage[infantry_type] *= shop_param[k]
+				type_damage[spearman_type] *= shop_param[k]   # оружие и копейщикам (удар ближнего боя)
+				type_arrow_dmg[archer_type] *= shop_param[k]
 		"gate":
 			gate_hp_max += shop_param[k]   # фиксированная прибавка gate_max_gain
 			gate_hp = gate_hp_max
@@ -3402,6 +3449,8 @@ func _setup_data() -> void:
 		arr.fill(1.0)
 	squad_atk_speed_mult.resize(SQUAD_MAX)
 	squad_atk_speed_mult.fill(1.0)
+	squad_rate_mult.resize(SQUAD_MAX)
+	squad_rate_mult.fill(1.0)
 	squad_block_bonus.resize(SQUAD_MAX)
 	squad_block_bonus.fill(0.0)
 	squad_skill_on.resize(SQUAD_MAX)

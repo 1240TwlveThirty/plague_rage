@@ -77,6 +77,7 @@ func head(script: String, runs: int, secs: int) -> Array[String]:
 func _initialize() -> void:
 	if root.has_node("Game"):
 		root.get_node("Game").free()
+	TranslationServer.set_locale("ru")
 	var args := OS.get_cmdline_user_args()
 	var ver: String = args[0] if args.size() > 0 else "v8"
 	var secs := int(args[1]) if args.size() > 1 else 0
@@ -84,6 +85,8 @@ func _initialize() -> void:
 	match ver:
 		"v8":
 			v8(secs)
+		"v9":
+			v9(secs)
 	quit()
 
 # Этап A: «Лазарет» 1-3 (recover +10/20/30%) и карточка №40 «Полевой госпиталь» (recover +20%).
@@ -119,3 +122,54 @@ func v8(secs: int) -> void:
 	C.append(verdict)
 	write("res://bench/gift_ablation_v8.txt", G)
 	write("res://bench/card_ablation_v4.txt", C)
+
+# Строка «оригинал и вариант рядом» для одного бота: сдвиги медиан от «none» и разница вариант минус оригинал.
+func pair_line(label: String, orig: String, alt: String, bot: String) -> String:
+	var a := shift(orig, bot)
+	var b := shift(alt, bot)
+	return "  %-40s | %s | damage %s | attack_rate %s | разница %s" % [label, bot, fmt(a), fmt(b), fmt(b - a)]
+
+# Средняя разница (вариант минус оригинал) по B2, B5, B7 — для выбора в этапе D.
+func pair_mean(orig: String, alt: String) -> float:
+	var sum := 0.0
+	for bot in ["B2", "B5", "B7"]:
+		sum += shift(alt, bot) - shift(orig, bot)
+	return sum / 3.0
+
+func pair_block(L: Array[String], label: String, orig: String, alt: String) -> void:
+	for bot in BOTS:
+		L.append(pair_line(label, orig, alt, bot))
+	var d := pair_mean(orig, alt)
+	L.append("  %-40s | среднее B2, B5, B7: разница %s -> %s" % ["", fmt(d), "attack_rate" if d >= 0.1 else ("damage" if d <= -0.1 else "разница < 0.1")])
+	L.append("")
+
+# Этап C: оригинал (damage) и вариант (attack_rate с теми же процентами и целями) рядом.
+func v9(secs: int) -> void:
+	var H := head("ablation_v9_run.sh", 840, secs)
+	var C: Array[String] = ["card_ablation_v5: карточки — damage (оригинал) против attack_rate (вариант, те же проценты и цели); для издержек №7, 31, 33 — сдвиг карточки целиком (задача 6d, этап C). Только измерения."]
+	C.append_array(H)
+	for bot in BOTS:
+		C.append("  без карточек | %s | медиана %.2f" % [bot, median("none", bot)[0]])
+	C.append("")
+	var cards := [[1, "meteor_blades", "пехота +12"], [2, "silver_vs_dead", "все +10"], [3, "serrated_arrows", "лучники +15"],
+		[17, "last_stand", "C, все +25"], [25, "desperate_charge", "C, все +25"], [27, "long_spears", "все +15"], [36, "reserve_fund", "C, все +10"],
+		[37, "blood_for_blood", "C, все +5 за ступень"], [7, "long_shot", "издержка: лучники −5"], [31, "iron_wall", "издержка: пехота −10"],
+		[33, "shield_cover", "издержка: пехота −5"]]
+	for c in cards:
+		pair_block(C, "№%d %s (%s)" % [c[0], tr("CARD_%s_NAME" % c[1].to_upper()), c[2]], "card_" + c[1], "card_%s_ar" % c[1])
+	write("res://bench/card_ablation_v5.txt", C)
+	var G: Array[String] = ["gift_ablation_v9: дары и «Оружие» — damage (оригинал) против attack_rate (вариант, те же проценты и цели) (задача 6d, этап C). Только измерения."]
+	G.append_array(H)
+	for bot in BOTS:
+		G.append("  без даров | %s | медиана %.2f" % [bot, median("none", bot)[0]])
+	G.append("")
+	for lvl in [1, 2, 3]:
+		pair_block(G, "«Закалённая сталь» %d (пехота +%d)" % [lvl, lvl * 6], "ts_%d" % lvl, "ts_rate_%d" % lvl)
+	for lvl in [1, 2, 3]:
+		pair_block(G, "«Меткие стрелки» %d (лучники +%d)" % [lvl, lvl * 8], "mk_%d" % lvl, "mk_rate_%d" % lvl)
+	for n in [1, 2, 3]:
+		pair_block(G, "«Оружие +10%%»: %d покупк%s даром" % [n, "а" if n == 1 else "и"], "w_dmg_%d" % n, "w_rate_%d" % n)
+	G.append("  «Оружие» на скорости боя без даровых покупок (меняются только покупки бота; B2 покупает оружие, B5, B7, B8 — нет):")
+	for bot in BOTS:
+		G.append(line("«Оружие» attack_rate, 0 даром", "w_rate_0", bot))
+	write("res://bench/gift_ablation_v9.txt", G)
