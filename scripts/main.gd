@@ -7,8 +7,10 @@ const MAX_UNITS := 4000       # ёмкость всех массивов юни�
 const WAVES_ENABLED := true   # false: как bak21 (300 зомби на старте, без волн) — для старых бенчей
 const WAVES_PATH := "res://data/waves.json"
 const SHOP_PATH := "res://data/shop.json"
-const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate"]   # порядок = действия buy_1..buy_4 (по умолчанию Z X C V)
-const SHOP_COST_STATS := ["unit_cost", "unit_cost", "weapon_cost", "repair_cost"]   # стат цены товара для Mods.value, порядок SHOP_ITEMS
+const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate", "spear_pack"]   # товары магазина передышки
+const SHOP_ACTIONS := ["buy_1", "buy_2", "buy_3", "buy_4", "buy_spear"]   # действие покупки товара k (по умолчанию Z X C V B)
+const SHOP_COST_STATS := ["unit_cost", "unit_cost", "weapon_cost", "repair_cost", "unit_cost"]   # стат цены товара для Mods.value, порядок SHOP_ITEMS
+const SHOP_COST_TARGET := ["", "archer", "", "", "spearman"]   # дополнительная цель стата цены (unit_cost / archer, unit_cost / spearman)
 const WAR_CRY_GLOW := Color(1.0, 0.82, 0.3, 0.3)   # подсветка краёв экрана, пока действует Клич Благодати
 const WAR_CRY_GLOW_PX := 10.0
 const SPLIT_NAMES := {"infantry": "UI_SPLIT_INFANTRY", "archer": "UI_SPLIT_ARCHER"}   # «Жертва ради победы»: кому выпало
@@ -25,7 +27,7 @@ const ACTION_KEYS := ["squad_new", "squad_split", "squad_merge"]
 const KEY_ACTIONS := ["select_all", "debug_restart", "squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4",
 	"squad_select_5", "squad_select_6", "squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side",
 	"wave_start", "buy_1", "buy_2", "buy_3", "buy_4", "order_attack", "order_hold", "order_retreat", "about_face", "banner_toggle",
-	"auto_width", "pause", "post_left", "post_top", "post_right", "post_back", "war_cry"]
+	"auto_width", "pause", "post_left", "post_top", "post_right", "post_back", "war_cry", "buy_spear"]
 const ROWS_MAX := 20       # строй не глубже: при большом отряде растёт ширина
 const WIDTH_MAX := 100     # и не шире
 const WAVE_DMG_TO_UNITS := true   # урон зомби по юнитам растёт с волной (team_dmg_mult[1])
@@ -652,6 +654,7 @@ var gold := 0.0
 var unit_rng := RandomNumberGenerator.new()   # unit_rand, джиттер спавна, точки выхода из ворот
 var infantry_type := -1
 var archer_type := -1
+var spearman_type := -1   # копейщики: свой товар (spear_pack) и свои отряды, создаются при первой покупке
 var zombie_type := -1
 var runner_type := -1
 var knight_type := -1
@@ -1419,7 +1422,7 @@ func _load_shop() -> bool:
 	if not d is Dictionary:
 		push_error("%s: ожидается JSON-объект" % SHOP_PATH)
 		return false
-	var param_key := {"inf_pack": "amount", "archer_pack": "amount", "weapons": "dmg_mult", "gate": "gate_max_gain"}
+	var param_key := {"inf_pack": "amount", "archer_pack": "amount", "weapons": "dmg_mult", "gate": "gate_max_gain", "spear_pack": "amount"}
 	var n := SHOP_ITEMS.size()
 	shop_label.resize(n)
 	shop_base.resize(n)
@@ -1435,7 +1438,7 @@ func _load_shop() -> bool:
 			push_error("%s: нет товара %s" % [SHOP_PATH, id])
 			return false
 		var keys := ["base", "growth", param_key[id]]
-		if id in ["inf_pack", "archer_pack"]:
+		if id in ["inf_pack", "archer_pack", "spear_pack"]:
 			keys.append("cap")
 		if not _require_numbers(e, keys, "%s, товар %s" % [SHOP_PATH, id]):   # tr-skip: отладка или контекст лога
 			return false
@@ -1613,7 +1616,7 @@ func _apply_mods() -> void:
 # изменилась скорость — скорость строя отряда этого типа меняется в той же пропорции. Без модификаторов все множители ровно 1.0
 # и числа те же бит в бит. Вызывается при старте забега и в начале каждой волны (_prepare_wave).
 func _apply_wave_data() -> void:
-	var names := {infantry_type: "infantry", archer_type: "archer"}
+	var names := {infantry_type: "infantry", archer_type: "archer", spearman_type: "spearman"}
 	var hp_new := base_type_hp.duplicate()
 	var dmg_new := base_type_damage.duplicate()
 	var arrow_new := base_type_arrow_dmg.duplicate()
@@ -1631,6 +1634,7 @@ func _apply_wave_data() -> void:
 	var wk := SHOP_ITEMS.find("weapons")
 	for n in shop_bought[wk]:   # покупки оружия — после модификаторов, как в _buy
 		dmg_new[infantry_type] *= shop_param[wk]
+		dmg_new[spearman_type] *= shop_param[wk]
 		arrow_new[archer_type] *= shop_param[wk]
 	var enemy: float = mods.get_mult("enemy_hp", "enemy")
 	for t in hp_new.size():
@@ -2546,7 +2550,7 @@ func _wave_cleared() -> void:
 
 # Цена товара k: база с ростом за купленные, затем Mods.value по стату товара (SHOP_COST_STATS); без модификаторов — как есть.
 func _price(k: int) -> float:
-	return mods.value(SHOP_COST_STATS[k], shop_base[k] * (1.0 + shop_growth[k] * shop_bought[k]), "archer" if SHOP_ITEMS[k] == "archer_pack" else "")
+	return mods.value(SHOP_COST_STATS[k], shop_base[k] * (1.0 + shop_growth[k] * shop_bought[k]), SHOP_COST_TARGET[k])
 
 
 # Отряд упёрся в cap: живых этого типа плюс покупка больше предела.
@@ -2557,6 +2561,8 @@ func _at_cap(k: int) -> bool:
 			type = infantry_type
 		"archer_pack":
 			type = archer_type
+		"spear_pack":
+			type = spearman_type
 	if type < 0:
 		return false
 	var alive := 0
@@ -2570,6 +2576,14 @@ func _at_cap(k: int) -> bool:
 func _buy(k: int) -> bool:
 	if wave_state != WS_RESPITE or gold < _price(k) or _at_cap(k):
 		return false
+	var spear_sq := -1
+	if SHOP_ITEMS[k] == "spear_pack":   # отряд копейщиков: выбранный или первый; нет — новый у ворот; нет свободного индекса — отказ
+		spear_sq = _buy_target(spearman_type)
+		if squad_type[spear_sq] != spearman_type or squad_used[spear_sq] == 0:
+			spear_sq = _squad_create(0, spearman_type)
+			if spear_sq < 0:
+				_say(tr("MSG_NO_SQUAD_FOR_SPEARMEN"))
+				return false
 	gold -= _price(k)
 	shop_bought[k] += 1
 	match SHOP_ITEMS[k]:
@@ -2577,8 +2591,11 @@ func _buy(k: int) -> bool:
 			_squad_add_units(_buy_target(infantry_type), infantry_type, int(shop_param[k]))
 		"archer_pack":
 			_squad_add_units(_buy_target(archer_type), archer_type, int(shop_param[k]))
+		"spear_pack":
+			_squad_add_units(spear_sq, spearman_type, int(shop_param[k]))
 		"weapons":
 			type_damage[infantry_type] *= shop_param[k]
+			type_damage[spearman_type] *= shop_param[k]   # оружие и копейщикам (удар ближнего боя)
 			type_arrow_dmg[archer_type] *= shop_param[k]
 		"gate":
 			gate_hp_max += shop_param[k]   # фиксированная прибавка gate_max_gain
@@ -2632,7 +2649,7 @@ func _squad_add_units(s: int, type: int, n: int) -> void:
 	squad_dir_angle[s] = NAN
 	_reflow_squad(s)
 	if at_gate:
-		squad_pos[s] = Vector2(GATE_POS.x, WALL_Y - 40.0)
+		squad_pos[s] = gate_spot(s)
 		squad_target[s] = squad_pos[s]
 
 
@@ -2671,8 +2688,9 @@ func _squad_reset(s: int) -> void:
 
 
 # Новый пустой отряд по образцу отряда src (тип, команда, пропорция строя) в первом свободном индексе
-# >= START_SQUADS. Стоит у ворот лицом вверх, приказ «атака». Возвращает индекс или -1, если все заняты.
-func _squad_create(src: int) -> int:
+# >= START_SQUADS; type >= 0 — другой тип юнитов (копейщики по образцу пехоты). Стоит у своей точки у ворот (gate_spot) лицом вверх,
+# приказ «атака». Возвращает индекс или -1, если все заняты.
+func _squad_create(src: int, type := -1) -> int:
 	for s in range(START_SQUADS, SQUAD_MAX):
 		if squad_used[s] == 1:
 			continue
@@ -2682,9 +2700,11 @@ func _squad_create(src: int) -> int:
 		squad_team[s] = squad_team[src]
 		squad_ranged[s] = squad_ranged[src]
 		squad_aspect[s] = squad_aspect[src]
-		squad_speed[s] = 0.75 * type_speed[squad_type[src]]
+		if type >= 0:
+			squad_type[s] = type
+		squad_speed[s] = 0.75 * type_speed[squad_type[s]]
 		squad_width[s] = maxi(int(squad_aspect[src].x), 1)
-		squad_pos[s] = Vector2(GATE_POS.x, WALL_Y - 40.0)
+		squad_pos[s] = gate_spot(s)
 		squad_target[s] = squad_pos[s]
 		return s
 	return -1
@@ -3223,7 +3243,8 @@ func _setup_data() -> void:
 	var peasant := _type_of("peasant")     # орда зомби
 	var runner := _type_of("runner")
 	var knight := _type_of("fallen_knight")
-	if infantry == -1 or archer == -1 or peasant == -1 or runner == -1 or knight == -1 or not _load_castle() or not _load_waves() or not _load_shop() or not _load_run() or not _load_story() 			or not _load_mods():
+	var spearman := _type_of("spearman")   # копейщики
+	if infantry == -1 or archer == -1 or peasant == -1 or runner == -1 or knight == -1 or spearman == -1 or not _load_castle() or not _load_waves() or not _load_shop() or not _load_run() or not _load_story() 			or not _load_mods():
 		type_id = {}
 		set_physics_process(false)
 		set_process(false)
@@ -3233,6 +3254,7 @@ func _setup_data() -> void:
 	zombie_type = peasant
 	runner_type = runner
 	knight_type = knight
+	spearman_type = spearman
 	_apply_mods()
 	_read_wave_mods()
 	# Все массивы юнитов — один раз на MAX_UNITS; живые юниты всегда в [0, count).
@@ -3902,9 +3924,9 @@ func _set_order(o: int) -> void:
 
 
 # Точка отряда s у ворот: отход и появление нового отряда. Точки разнесены по номеру отряда (GATE_SPOTS, шаг GATE_SPOT_DX),
-# чтобы отряды не сходились в одну.
+# чтобы отряды не сходились в одну; центр строя выше стены на 40 px и на половину глубины строя (большой отряд не упирается в стену).
 func gate_spot(s: int) -> Vector2:
-	return Vector2(GATE_POS.x + GATE_SPOTS[s % GATE_SPOTS.size()] * GATE_SPOT_DX, WALL_Y - 40.0)
+	return Vector2(GATE_POS.x + GATE_SPOTS[s % GATE_SPOTS.size()] * GATE_SPOT_DX, WALL_Y - 40.0 - squad_depth[s] * 0.5)
 
 
 # Название отряда для панели и магазина: label типа, а если отрядов этого типа несколько — с номером по порядку.
@@ -4035,12 +4057,15 @@ func _update_ui() -> void:
 	for k in shop_buttons.size():
 		var price := _price(k)
 		var capped := _at_cap(k)
-		shop_buttons[k].text = tr("HUD_SHOP_ROW") % [SETTINGS.key_label("buy_%d" % (k + 1)), _shop_title(k), tr("HUD_SHOP_MAX") if capped else tr("HUD_SHOP_PRICE") % ceili(price), shop_bought[k]]
-		# Юниты идут в выбранный отряд своего типа, иначе в первый отряд типа.
-		var pack_type := infantry_type if SHOP_ITEMS[k] == "inf_pack" else (archer_type if SHOP_ITEMS[k] == "archer_pack" else -1)
+		shop_buttons[k].text = tr("HUD_SHOP_ROW") % [SETTINGS.key_label(SHOP_ACTIONS[k]), _shop_title(k), tr("HUD_SHOP_MAX") if capped else tr("HUD_SHOP_PRICE") % ceili(price), shop_bought[k]]
+		# Юниты идут в выбранный отряд своего типа, иначе в первый отряд типа (копейщиков без отряда — в новый).
+		var pack_type: int = {"inf_pack": infantry_type, "archer_pack": archer_type, "spear_pack": spearman_type}.get(SHOP_ITEMS[k], -1)
 		if pack_type >= 0:
 			var target := _buy_target(pack_type)
-			shop_buttons[k].text += "\n" + tr("HUD_SHOP_TARGET") % [target + 1, _squad_label(target)]
+			if squad_used[target] == 1 and squad_type[target] == pack_type:
+				shop_buttons[k].text += "\n" + tr("HUD_SHOP_TARGET") % [target + 1, _squad_label(target)]
+			else:
+				shop_buttons[k].text += "\n" + tr("HUD_SHOP_NEW_SQUAD")
 		shop_buttons[k].disabled = capped or gold < price   # серая при нехватке золота или на пределе
 
 
@@ -5539,8 +5564,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_toggle_sel(s)
 			else:
 				_select_only(s)
-		elif act.begins_with("buy_"):
-			_buy(int(act.trim_prefix("buy_")) - 1)
+		elif act in SHOP_ACTIONS:
+			_buy(SHOP_ACTIONS.find(act))
 		match act:
 			"about_face":
 				if drag_active:

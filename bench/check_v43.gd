@@ -160,7 +160,7 @@ func t_each_gift() -> void:
 	var raw: Array = JSON.parse_string(FileAccess.get_file_as_string(GIFTS))
 	var b := make({})
 	var base := snap(b)
-	var units := {"all_units": [b.infantry_type, b.archer_type], "infantry": [b.infantry_type], "archer": [b.archer_type]}
+	var units := {"all_units": [b.infantry_type, b.archer_type, b.spearman_type], "infantry": [b.infantry_type], "archer": [b.archer_type], "spearman": [b.spearman_type]}
 	var all_types := range(b.type_hp.size())
 	b.free()
 	var none := make({})

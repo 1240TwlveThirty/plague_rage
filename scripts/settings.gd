@@ -145,10 +145,10 @@ func _input(event: InputEvent) -> void:
 # Переназначаемые действия в порядке списка на вкладке «Управление» (подпись — action_title).
 const REBINDABLE := ["squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4", "squad_select_5", "squad_select_6",
 	"squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side", "wave_start", "buy_1", "buy_2",
-	"buy_3", "buy_4", "war_cry"]
+	"buy_3", "buy_4", "buy_spear", "war_cry"]
 # Действия, которых нет в [input] project.godot: клавиша по умолчанию задаётся здесь, действие добавляется после каждой загрузки InputMap
 # (war_cry — «Клич Благодати»; R занята возвратом в хаб, T — авто-шириной строя, ближайшая свободная — D).
-const CODE_DEFAULTS := {"war_cry": KEY_D}
+const CODE_DEFAULTS := {"war_cry": KEY_D, "buy_spear": KEY_B}   # buy_spear — пакет копейщиков (B свободна)
 # Остальные действия игры: клавиши фиксированы (их нельзя занять переназначением).
 const FIXED_ACTIONS := ["order_attack", "order_hold", "order_retreat", "about_face", "banner_toggle", "auto_width", "pause",
 	"post_left", "post_top", "post_right", "post_back", "select_all", "to_hub", "debug_restart"]

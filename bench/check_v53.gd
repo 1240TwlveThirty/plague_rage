@@ -77,9 +77,13 @@ func _initialize() -> void:
 	var dc: float = c.squad_pos[0].distance_to(c.GATE_POS)
 	c._select_only(0)
 	c._set_order(c.ORDER_RETREAT)
-	ticks(c, 30)
+	var mult_seen := 0.0
+	for i in 30:   # множитель — на тике пересчёта условий (раз в 15), пока отряд ещё отходит
+		c._physics_process(DT)
+		if c.squad_order[0] == c.ORDER_RETREAT and c.tick_counter % c.COND_EVERY == 0:
+			mult_seen = c.squad_speed_mult[0]
 	check("в бою после контакта: отряд отходит к воротам (%.0f -> %.0f)" % [dc, c.squad_pos[0].distance_to(c.GATE_POS)], c.squad_pos[0].distance_to(c.GATE_POS) < dc - 10.0)
-	check("«Подвижный резерв» (№11): пока отряд отходит — скорость x1.2", c.squad_order[0] == c.ORDER_RETREAT and is_equal_approx(c.squad_speed_mult[0], 1.2)
+	check("«Подвижный резерв» (№11): пока отряд отходит — скорость x1.2", is_equal_approx(mult_seen, 1.2)
 		and not c.card_defs.mobile_reserve.get("disabled", false))
 	c.free()
 	print("CHECK: провалов %d" % fails)

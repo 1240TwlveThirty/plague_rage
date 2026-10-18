@@ -10,13 +10,13 @@ extends RefCounted
 # Данные юнитов волны (урон, HP, скорость, перезарядка, дальность, HP зомби, награда) main.gd пересчитывает от базы в начале каждой волны.
 const STATS := ["damage", "hp", "bounty", "income", "gate_hp", "start_units", "unit_cost", "weapon_cost", "repair_cost", "signal_window", "spread", "radiance_pct",
 	"income_flat", "heal", "speed", "reload", "attack_speed", "range", "enemy_hp", "grant_units_free"]
-const TARGETS := ["all_units", "infantry", "archer", "gate", "player", "enemy", "knight"]
+const TARGETS := ["all_units", "infantry", "archer", "gate", "player", "enemy", "knight", "spearman"]
 const OPS := ["add_pct", "add_flat", "mult"]
 # Допустимые сочетания: stat -> его target. Пары вне таблицы сцена боя не читает, дар с такой парой молча не действовал бы.
 # Первый target в списке — по умолчанию (value без target); bounty / knight и unit_cost / archer — добавка к общему ключу.
-const PAIRS := {"damage": ["all_units", "infantry", "archer"], "hp": ["all_units", "infantry", "archer"], "bounty": ["player", "knight"], "income": ["player"],
-	"gate_hp": ["gate"], "start_units": ["player"], "unit_cost": ["player", "archer"], "weapon_cost": ["player"], "repair_cost": ["player"], "signal_window": ["player"],
-	"spread": ["archer"], "radiance_pct": ["player"], "income_flat": ["player"], "heal": ["player"], "speed": ["all_units", "infantry", "archer"],
+const PAIRS := {"damage": ["all_units", "infantry", "archer", "spearman"], "hp": ["all_units", "infantry", "archer", "spearman"], "bounty": ["player", "knight"],
+	"income": ["player"], "gate_hp": ["gate"], "start_units": ["player"], "unit_cost": ["player", "archer", "spearman"], "weapon_cost": ["player"], "repair_cost": ["player"], "signal_window": ["player"],
+	"spread": ["archer"], "radiance_pct": ["player"], "income_flat": ["player"], "heal": ["player"], "speed": ["all_units", "infantry", "archer", "spearman"],
 	"reload": ["archer"], "attack_speed": ["infantry"], "range": ["archer"], "enemy_hp": ["enemy"], "grant_units_free": ["player"]}
 # Допустимые op для stat: сцена боя читает множители (get_mult), прибавку к числу (get_count) или value; остальное не действовало бы.
 const STAT_OPS := {"damage": ["add_pct", "mult"], "hp": ["add_pct", "mult"], "bounty": ["add_pct", "mult"], "income": ["add_pct", "mult"],

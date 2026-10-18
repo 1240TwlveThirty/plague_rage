@@ -165,9 +165,9 @@ func t_regress() -> void:
 # (е) таблица допустимых пар stat / target.
 func t_validation() -> void:
 	print("(е) валидация пар stat / target — ниже ожидаются строки ERROR от недопустимых пар")
-	var want := {"damage": ["all_units", "infantry", "archer"], "hp": ["all_units", "infantry", "archer"], "bounty": ["player", "knight"], "income": ["player"],
-		"gate_hp": ["gate"], "start_units": ["player"], "unit_cost": ["player", "archer"], "weapon_cost": ["player"], "repair_cost": ["player"], "signal_window": ["player"],
-		"spread": ["archer"], "radiance_pct": ["player"], "income_flat": ["player"], "heal": ["player"], "speed": ["all_units", "infantry", "archer"],
+	var want := {"damage": ["all_units", "infantry", "archer", "spearman"], "hp": ["all_units", "infantry", "archer", "spearman"], "bounty": ["player", "knight"], "income": ["player"],
+		"gate_hp": ["gate"], "start_units": ["player"], "unit_cost": ["player", "archer", "spearman"], "weapon_cost": ["player"], "repair_cost": ["player"], "signal_window": ["player"],
+		"spread": ["archer"], "radiance_pct": ["player"], "income_flat": ["player"], "heal": ["player"], "speed": ["all_units", "infantry", "archer", "spearman"],
 		"reload": ["archer"], "attack_speed": ["infantry"], "range": ["archer"], "enemy_hp": ["enemy"], "grant_units_free": ["player"]}
 	check("таблица MODS.PAIRS как в задании, покрывает все stat", MODS.PAIRS == want and MODS.PAIRS.size() == MODS.STATS.size(), str(MODS.PAIRS))
 	var wrong := PackedStringArray()

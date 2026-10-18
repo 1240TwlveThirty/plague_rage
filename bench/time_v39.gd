@@ -1,5 +1,6 @@
 extends SceneTree
-# Тик на 3000 юнитов, синтетика (v39): <main_*_3000.gd>. Без волн, 600 тиков; медиана и среднее тика, мс.
+# Тик на 3000 юнитов, синтетика (v39): <main_*_3000.gd> [spear]. Без волн, 600 тиков; медиана и среднее тика, мс.
+# spear (задача 8) — пехотный отряд 0 превращается в копейщиков той же численности (дальность удара больше).
 func _initialize() -> void:
 	if root.has_node("Game"):
 		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
@@ -8,6 +9,12 @@ func _initialize() -> void:
 	m.waves_enabled = false
 	m.record_path = "user://record_bench.json"
 	m._setup_data()
+	var spear := OS.get_cmdline_user_args().size() > 1 and OS.get_cmdline_user_args()[1] == "spear"
+	if spear:
+		m.squad_type[0] = m.spearman_type
+		for i in m.count:
+			if m.unit_squad[i] == 0:
+				m.unit_type[i] = m.spearman_type
 	var n: int = m.count
 	var ms := PackedFloat64Array()
 	var sum := 0.0
@@ -17,6 +24,6 @@ func _initialize() -> void:
 		ms.append((Time.get_ticks_usec() - t0) / 1000.0)
 		sum += ms[t]
 	ms.sort()
-	print("SYN|%d|%d|%.3f|%.3f" % [n, m.count, ms[300], sum / 600.0])
+	print("SYN|%d|%d|%.3f|%.3f%s" % [n, m.count, ms[300], sum / 600.0, "|spear" if spear else ""])
 	m.free()
 	quit()

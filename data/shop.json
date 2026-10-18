@@ -2,5 +2,6 @@
 	"inf_pack": {"label": "SHOP_INF_PACK", "base": 100, "growth": 0.2, "amount": 50, "cap": 1200},
 	"archer_pack": {"label": "SHOP_ARCHER_PACK", "base": 100, "growth": 0.2, "amount": 25, "cap": 300},
 	"weapons": {"label": "SHOP_WEAPONS", "base": 150, "growth": 0.5, "dmg_mult": 1.1},
-	"gate": {"label": "SHOP_GATE", "base": 120, "growth": 0.3, "gate_max_gain": 300}
+	"gate": {"label": "SHOP_GATE", "base": 120, "growth": 0.3, "gate_max_gain": 300},
+	"spear_pack": {"label": "SHOP_SPEAR_PACK", "base": 90, "growth": 0.2, "amount": 30, "cap": 600}
 }

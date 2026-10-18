@@ -274,7 +274,7 @@ func t_rerun() -> void:
 	var a := await one_run(true)
 	var b := await one_run(false)
 	check("оба забега кончились поражением и хабом", a[2] and b[2])
-	check("тик 0: tick_counter 0, покупок нет, золото стартовое", a[0].tick == 0 and b[0].tick == 0 and a[0].wave == 0 and Array(a[0].bought) == [0, 0, 0, 0] and a[0].kills == 0)
+	check("тик 0: tick_counter 0, покупок нет, золото стартовое", a[0].tick == 0 and b[0].tick == 0 and a[0].wave == 0 and Array(a[0].bought) == [0, 0, 0, 0, 0] and a[0].kills == 0)
 	check("тик 0 второго забега как у первого (pos, hp, count, gold, цены, множитель оружия)", same(a[0], b[0]) == "", "расходится: " + same(a[0], b[0]))
 	check("тик 600: покупки сделаны, бой шёл (есть убитые)", a[1].tick == 600 and a[1].bought[2] == 1 and a[1].bought[0] == 1 and a[1].dmg > a[0].dmg and a[1].prices[2] > a[0].prices[2] and a[1].kills > 0,
 		"убито %d, куплено %s" % [a[1].kills, str(a[1].bought)])

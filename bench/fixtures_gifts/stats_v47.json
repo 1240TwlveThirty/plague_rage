@@ -10,6 +10,7 @@
 	{"id": "ehp10", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "enemy_hp", "target": "enemy", "op": "add_pct", "levels": [10]},
 	{"id": "bk100", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "bounty", "target": "knight", "op": "add_pct", "levels": [100]},
 	{"id": "uca25", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "unit_cost", "target": "archer", "op": "add_pct", "levels": [25]},
+	{"id": "ucs50", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "unit_cost", "target": "spearman", "op": "add_pct", "levels": [-50]},
 	{"id": "uc15", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "unit_cost", "target": "player", "op": "add_pct", "levels": [-15]},
 	{"id": "grant10", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "grant_units_free", "target": "player", "op": "add_flat", "levels": [10]},
 	{"id": "hp12", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "hp", "target": "infantry", "op": "add_pct", "levels": [12, 50]},

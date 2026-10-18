@@ -75,6 +75,7 @@ Godot "карточки в HUD: индикаторы (v51)" "res://bench/check_v
 Godot "разброс HP зомби (v52)" "res://bench/check_v52.gd" "CHECK: провалов 0"
 Godot "иконки карточек и даров (v56)" "res://bench/check_v56.gd" "CHECK: провалов 0"
 Godot "приказ «отход» (v53)" "res://bench/check_v53.gd" "CHECK: провалов 0"
+Godot "копейщики (v54)" "res://bench/check_v54.gd" "CHECK: провалов 0"
 Godot "меню, хаб, пауза по Esc (v45)" "res://bench/check_v45.gd" "CHECK: провалов 0"
 Godot "подгонка слоя замка (v48)" "res://bench/check_v48.gd" "CHECK: провалов 0"
 Godot "настройки, полный экран (v49)" "res://bench/check_v49.gd" "CHECK: провалов 0"
@@ -98,6 +99,7 @@ if (-not $Quick) {
 	Godot "серия 50 боёв" "res://bench/series.gd" "SERIES\|"
 	Godot "тик: волна 20 слоя 1" "res://bench/time_v35.gd" "TIME\|" @("1", "20", "0", "caps", "1", "res://scripts/main.gd")
 	Godot "тик: 3000 юнитов, синтетика" "res://bench/time_v39.gd" "SYN\|" @("res://bench/main_v39_3000.gd")
+	Godot "тик: 3000 юнитов с копейщиками" "res://bench/time_v39.gd" "SYN\|" @("res://bench/main_v39_3000.gd", "spear")
 }
 $total.Stop()
 if ($hungSteps.Count -gt 0) {
