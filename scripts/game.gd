@@ -6,6 +6,9 @@ const STORY_PATH := "res://data/story.json"
 const RADIANCE_PATH := "res://data/radiance.json"
 const GIFTS_PATH := "res://data/gifts.json"
 const MODS := preload("res://scripts/mods.gd")   # общий загрузчик gifts.json
+const CARDS := preload("res://scripts/cards.gd")   # карточки забега: data/cards.json, data/cards_rules.json
+const CARDS_PATH := "res://data/cards.json"
+const CARD_RULES_PATH := "res://data/cards_rules.json"
 const SAVE_PATH := "user://save.json"
 const SAVE_VERSION := 1
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -47,6 +50,12 @@ var gift_levels := {}          # id дара -> купленный уровен�
 var gift_defs := {}            # дары из gifts.json (MODS.load_gifts) или {} при ошибке
 var radiance_cfg := {}         # radiance.json (load_radiance_cfg) или {} при ошибке: тогда наград и покупок нет
 var gifts_override = null      # набор из параметра --gifts (id -> уровень) или null: заменяет купленные дары в start_run
+var cards_path := CARDS_PATH   # тесты подменяют
+var card_defs := {}            # карточки из cards.json (CARDS.load_cards) или {} при ошибке
+var card_rules := {}           # cards_rules.json (CARDS.load_rules) или {} при ошибке: тогда выбора карточек нет
+var run_cards: Array = []      # выбранные карточки забега: записи {id[, result]}; очищается в start_run; в сохранение не пишется (сохранения посреди забега нет)
+var run_rng := RandomNumberGenerator.new()   # генератор забега: подбор тройки и случайные эффекты карточек; не ГСЧ симуляции
+var run_seed := -1             # seed генератора забега: -1 — случайный в start_run; бенчи и тесты задают
 
 
 func _ready() -> void:
@@ -216,6 +225,8 @@ func _setup() -> void:
 	siege_count = cfg.siege_count if cfg_ok else 0
 	radiance_cfg = load_radiance_cfg(radiance_path)
 	gift_defs = MODS.load_gifts(gifts_path)
+	card_defs = CARDS.load_cards(cards_path)
+	card_rules = CARDS.load_rules(CARD_RULES_PATH)
 	gifts_override = parse_gifts_arg(OS.get_cmdline_user_args())
 	_clean_state()
 	if not cfg_ok:
@@ -401,9 +412,26 @@ func run_reward(result: String, wave: int) -> int:
 	return roundi(mods.value("radiance_pct", sum))
 
 
-# Источники модификаторов забега для Mods.build_sources: сейчас только дары (active_gifts); временные карточки — ещё один элемент.
+# Источники модификаторов забега для Mods.build_sources: дары (active_gifts) и карточки забега (run_cards).
 func mod_sources() -> Array:
-	return [MODS.gifts_source(gift_defs, active_gifts)]
+	return [MODS.gifts_source(gift_defs, active_gifts), CARDS.source(card_defs, run_cards)]
+
+
+# Выбрать карточку id: запись (со случайным результатом от генератора забега, если он нужен) добавляется в run_cards.
+# Неизвестная, disabled или уже выбранная — {} и ничего не меняется.
+func pick_card(id: String) -> Dictionary:
+	if not card_defs.has(id) or card_defs[id].get("disabled", false) or run_cards.any(func(r): return r.id == id):
+		return {}
+	var r := CARDS.make_record(card_defs[id], run_rng)
+	run_cards.append(r)
+	return r
+
+
+# Тройка для экрана выбора (генератор забега).
+func card_offer() -> Array:
+	if card_defs.is_empty() or card_rules.is_empty():
+		return []
+	return CARDS.offer(card_defs, run_cards, card_rules, run_rng)
 
 
 # Цена уровня дара (1..число уровней): prices дара или gift_prices из radiance.json; цены нет — -1.
@@ -466,6 +494,8 @@ func start_run(s: int) -> void:
 	last_siege = siege
 	run_index += 1
 	active_gifts = owned_gifts() if gifts_override == null else gifts_override.duplicate()
+	run_cards = []
+	run_rng.seed = run_seed if run_seed >= 0 else randi()
 	_clear_last_run()
 	get_tree().change_scene_to_file(MAIN_SCENE)
 

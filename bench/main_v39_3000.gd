@@ -50,6 +50,7 @@ const GAME_SCRIPT := preload("res://scripts/game.gd")   # общий загру�
 const STORY_PATH := "res://data/story.json"   # дневник: тексты баннеров (на механику не влияет)
 const GIFTS_PATH := "res://data/gifts.json"   # дары: модификаторы забега
 const MODS := preload("res://scripts/mods.gd")
+const CARDS := preload("res://scripts/cards.gd")
 const ESC_MENU := preload("res://scripts/esc_menu.gd")   # меню паузы по Esc: «Продолжить», «Выйти в меню», «Выход из игры»
 const ESC_NOTE := "UI_PAUSE_NOTE_LOSS"   # ключ перевода
 const BANNER_WIDTH := 700.0                   # ширина баннера, px: длинный текст переносится по словам
@@ -557,6 +558,9 @@ var story_path := STORY_PATH           # тесты подменяют
 var gifts_path := GIFTS_PATH           # тесты подменяют
 var active_gifts := {}                 # активные дары забега, id -> уровень: с синглтоном берутся из Game.active_gifts, бенчи задают до _setup_data
 var gift_defs := {}                    # дары из gifts_path (MODS.load_gifts)
+var cards_path := "res://data/cards.json"   # бенчи и тесты подменяют
+var card_defs := {}                    # карточки из cards_path (CARDS.load_cards)
+var active_cards: Array = []           # карточки забега без синглтона (бенчи): записи {id[, result]}; с Game — Game.run_cards
 var mods: RefCounted = null            # MODS: собирается при старте забега и в начале каждой волны (_prepare_wave), тик его не вызывает
 var income_pct := 0.0                  # стат income: эта доля дохода волны начисляется в конце волны (до магазина передышки)
 var income_flat := 0.0                 # стат income_flat: столько золота начисляется в конце волны вместе с доходом
@@ -1437,6 +1441,9 @@ func _load_mods() -> bool:
 	gift_defs = MODS.load_gifts(gifts_path)
 	if gift_defs.is_empty():
 		return false
+	card_defs = CARDS.load_cards(cards_path)
+	if card_defs.is_empty():
+		return false
 	if game != null:
 		active_gifts = game.active_gifts.duplicate()
 	mods = MODS.new(gift_defs)
@@ -1449,7 +1456,12 @@ func _load_mods_sources() -> bool:
 
 
 func _mod_sources() -> Array:
-	return [MODS.gifts_source(gift_defs, active_gifts)]
+	return [MODS.gifts_source(gift_defs, active_gifts), CARDS.source(card_defs, _cards())]
+
+
+# Выбранные карточки забега: Game.run_cards или active_cards бенча.
+func _cards() -> Array:
+	return game.run_cards if game != null else active_cards
 
 
 # Старт забега, до создания юнитов: запомнить базу типов и ворот, посчитать эффективные данные (_apply_wave_data), ворота полные.

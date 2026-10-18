@@ -178,3 +178,83 @@ STORY_END_10,День {wave}. Я больше не боюсь. В окне тё�
 STORY_VICTORY_1,"День десятый. Последний из них упал у ворот, и боль короля стихла. Я записал это, как записываю всё. Это не конец: Благодать умеет возвращаться.","Day ten. The last of them fell at the gate, and the King's pain subsided. I wrote it down, as I write down everything. This isn't the end: Grace knows how to return."
 STORY_VICTORY_2,"Снова десять дней, и снова ворота стоят. Свет над лесом стал ярче. Он красивый. Я перестал отводить глаза.","Ten days again, and again the gate holds. The light over the forest has grown brighter. It's beautiful. I've stopped looking away."
 STORY_VICTORY_3,"Ворота стоят, но я больше не держу их. Благодать вошла не как захватчик, а как та, кого я ждал. Я принимаю.","The gate still stands, but I no longer hold it. Grace came in not as a conqueror, but as the one I had been waiting for. I accept."
+CARD_METEOR_BLADES_NAME,Клинки из метеоритного железа,Meteor Iron Blades
+CARD_METEOR_BLADES_DESC,+12% к урону пехоты,+12% infantry damage
+CARD_SILVER_VS_DEAD_NAME,Серебро против мёртвых,Silver Against the Dead
+CARD_SILVER_VS_DEAD_DESC,+10% к урону всех воинов,+10% damage for all troops
+CARD_SERRATED_ARROWS_NAME,Зазубренные стрелы,Serrated Arrows
+CARD_SERRATED_ARROWS_DESC,+15% к урону лучников,+15% archer damage
+CARD_INFANTRY_TEMPER_NAME,Закалка пехоты,Hardened Infantry
+CARD_INFANTRY_TEMPER_DESC,+12% к здоровью пехоты,+12% infantry health
+CARD_HEAVY_SHIELDS_NAME,Тяжёлые щиты,Heavy Shields
+CARD_HEAVY_SHIELDS_DESC,+20% к здоровью всех воинов; −10% к скорости,+20% health for all troops; −10% speed
+CARD_LIGHT_INFANTRY_NAME,Лёгкая пехота,Light Infantry
+CARD_LIGHT_INFANTRY_DESC,+15% к скорости пехоты; −8% к её здоровью,+15% infantry speed; −8% infantry health
+CARD_LONG_SHOT_NAME,Дальний бой,Long Shot
+CARD_LONG_SHOT_DESC,+15% к дальности лучников; −5% к их урону,+15% archer range; −5% archer damage
+CARD_QUICK_RELOAD_NAME,Быстрая перезарядка,Quick Reload
+CARD_QUICK_RELOAD_DESC,+20% к скорострельности лучников; −10% к их здоровью,+20% archer fire rate; −10% archer health
+CARD_SHIELD_WALL_NAME,Строй щитов,Shield Wall
+CARD_SHIELD_WALL_DESC,+15 п. п. к блоку щитом при приказе «Держать»,+15 pp shield block while holding
+CARD_STEADFAST_NAME,Стойкость,Steadfast
+CARD_STEADFAST_DESC,+15% к здоровью всех воинов при приказе «Держать»,+15% health for all troops while holding
+CARD_MOBILE_RESERVE_NAME,Подвижный резерв,Mobile Reserve
+CARD_MOBILE_RESERVE_DESC,+20% к скорости при отходе,+20% speed while retreating
+CARD_SENTRIES_NAME,Дозорные,Sentries
+CARD_SENTRIES_DESC,+1 с к окну сигнала всплеска,+1 s burst warning time
+CARD_BOILING_PITCH_NAME,Кипящая смола,Boiling Pitch
+CARD_BOILING_PITCH_DESC,Ворота обжигают врагов у стены,The gate scalds enemies at the wall
+CARD_STONE_PARAPETS_NAME,Каменные брустверы,Stone Parapets
+CARD_STONE_PARAPETS_DESC,+25% к прочности ворот; ремонт дороже на 20%,+25% gate durability; repairs cost 20% more
+CARD_STRONG_GATES_NAME,Крепкие ворота,Strong Gates
+CARD_STRONG_GATES_DESC,+40% к прочности ворот,+40% gate durability
+CARD_QUICK_REPAIR_NAME,Быстрый ремонт,Quick Repair
+CARD_QUICK_REPAIR_DESC,Ремонт ворот дешевле на 30%,Gate repairs cost 30% less
+CARD_LAST_STAND_NAME,Последний рубеж,Last Stand
+CARD_LAST_STAND_DESC,"+25% к урону всех, пока ворота ниже 30%",+25% damage for all while the gate is below 30%
+CARD_BLOOD_HARVEST_NAME,Кровавая жатва,Blood Harvest
+CARD_BLOOD_HARVEST_DESC,+20% золота за убитых; −8% к здоровью всех,+20% gold per kill; −8% health for all
+CARD_MARAUDERS_NAME,Мародёры,Marauders
+CARD_MARAUDERS_DESC,+12% золота за убитых,+12% gold per kill
+CARD_PURSE_NAME,Кошель,Purse
+CARD_PURSE_DESC,+60 золота после каждой волны,+60 gold after each wave
+CARD_ARMORER_DISCOUNT_NAME,Скидка оружейника,Armorer's Discount
+CARD_ARMORER_DISCOUNT_DESC,Воины и оружие дешевле на 15%,Troops and weapons cost 15% less
+CARD_RECRUITMENT_NAME,Вербовка,Recruitment
+CARD_RECRUITMENT_DESC,+10 пехотинцев бесплатно в начале каждой волны,+10 free infantry at the start of each wave
+CARD_TROPHY_SHARE_NAME,Доля трофеев,Trophy Share
+CARD_TROPHY_SHARE_DESC,Вдвое больше золота за павших рыцарей,Double gold for fallen knights
+CARD_VOW_OF_VENGEANCE_NAME,Обет мести,Vow of Vengeance
+CARD_VOW_OF_VENGEANCE_DESC,"+0.3% к урону всех за каждого павшего в волне, до +50%","+0.3% damage for all per fallen soldier this wave, up to +50%"
+CARD_DESPERATE_CHARGE_NAME,Отчаянный натиск,Desperate Charge
+CARD_DESPERATE_CHARGE_DESC,"+25% к урону отряда, пока в нём меньше половины",+25% squad damage while below half strength
+CARD_HUNGER_RATION_NAME,Голодный паёк,Hunger Ration
+CARD_HUNGER_RATION_DESC,+30% к доходу; −10% к здоровью всех,+30% income; −10% health for all
+CARD_LONG_SPEARS_NAME,Длинные копья,Long Spears
+CARD_LONG_SPEARS_DESC,+15% к урону всех; враги крепче на 10%,+15% damage for all; enemies 10% tougher
+CARD_BET_ON_BRAVE_NAME,Ставка на смелых,Bet on the Brave
+CARD_BET_ON_BRAVE_DESC,+25% золота за убитых; ворота слабее на 20%,+25% gold per kill; gate 20% weaker
+CARD_HEAVY_BAGGAGE_NAME,Тяжёлый обоз,Heavy Baggage
+CARD_HEAVY_BAGGAGE_DESC,+20 пехотинцев сразу; −10% к скорости,+20 infantry at once; −10% speed
+CARD_VICTORY_SACRIFICE_NAME,Жертва ради победы,Sacrifice for Victory
+CARD_VICTORY_SACRIFICE_DESC,"Случайно: одним урон ×1.5, другим ×0.85","Random: one troop type ×1.5 damage, the other ×0.85"
+CARD_IRON_WALL_NAME,Железная стена,Iron Wall
+CARD_IRON_WALL_DESC,+30% к здоровью пехоты при «Держать»; −10% к её урону,+30% infantry health while holding; −10% infantry damage
+CARD_FIRST_VOLLEY_NAME,Первый залп,First Volley
+CARD_FIRST_VOLLEY_DESC,+30% к урону лучников первые 10 секунд волны,+30% archer damage for the first 10 seconds of a wave
+CARD_SHIELD_COVER_NAME,Укрытие за щитами,Shield Cover
+CARD_SHIELD_COVER_DESC,+20% к здоровью лучников; −5% к урону пехоты,+20% archer health; −5% infantry damage
+CARD_ARROW_RAIN_NAME,Дождь стрел,Rain of Arrows
+CARD_ARROW_RAIN_DESC,+25% к скорострельности лучников; лучники дороже на 25%,+25% archer fire rate; archers cost 25% more
+CARD_RICH_VEIN_NAME,Богатая жила,Rich Vein
+CARD_RICH_VEIN_DESC,+40% к доходу; −15% золота за убитых,+40% income; −15% gold per kill
+CARD_RESERVE_FUND_NAME,Резервный фонд,Reserve Fund
+CARD_RESERVE_FUND_DESC,"+10% к урону всех, если в начале волны золота от 300",+10% damage for all if you start a wave with 300+ gold
+CARD_BLOOD_FOR_BLOOD_NAME,Кровь за кровь,Blood for Blood
+CARD_BLOOD_FOR_BLOOD_DESC,"+5% к урону отряда за каждые 10% потерь, до +50%","+5% squad damage per 10% losses, up to +50%"
+CARD_DARK_VOW_NAME,Тёмный обет,Dark Vow
+CARD_DARK_VOW_DESC,+40% золота за убитых; враги крепче на 15%,+40% gold per kill; enemies 15% tougher
+CARD_GRACE_BLESSING_NAME,Благословение Благодати,Blessing of Grace
+CARD_GRACE_BLESSING_DESC,+10% Сияния за забег,+10% Radiance per run
+CARD_FIELD_KITCHEN_NAME,Полевая кухня,Field Kitchen
+CARD_FIELD_KITCHEN_DESC,+50% к лечению между волнами,+50% healing between waves

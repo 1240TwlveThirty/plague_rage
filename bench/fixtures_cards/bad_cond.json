@@ -1,0 +1,1 @@
+[{"id": "x", "name_key": "CARD_MARAUDERS_NAME", "desc_key": "CARD_MARAUDERS_DESC", "builds": ["gold"], "kind": "C", "mods": [{"stat": "damage", "target": "all_units", "op": "add_pct", "value": 5}], "when": {"cond": "moon"}}]

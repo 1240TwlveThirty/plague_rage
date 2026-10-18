@@ -67,6 +67,7 @@ Godot "модификаторы: дары (v43)" "res://bench/check_v43.gd" "CHE
 Godot "Сияние, магазин даров (v44)" "res://bench/check_v44.gd" "CHECK: провалов 0"
 Godot "статы на лету, Mods.value (v46)" "res://bench/check_v46.gd" "CHECK: провалов 0"
 Godot "статы волны, доход, скорость удара (v47)" "res://bench/check_v47.gd" "CHECK: провалов 0"
+Godot "карточки: данные, валидатор (v48c)" "res://bench/check_v48_cards.gd" "CHECK: провалов 0"
 Godot "меню, хаб, пауза по Esc (v45)" "res://bench/check_v45.gd" "CHECK: провалов 0"
 Godot "подгонка слоя замка (v48)" "res://bench/check_v48.gd" "CHECK: провалов 0"
 Godot "настройки, полный экран (v49)" "res://bench/check_v49.gd" "CHECK: провалов 0"
