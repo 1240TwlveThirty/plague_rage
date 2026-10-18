@@ -169,7 +169,7 @@ func t_validation() -> void:
 		"gate_hp": ["gate"], "start_units": ["player"], "unit_cost": ["player", "archer", "spearman"], "weapon_cost": ["player"], "repair_cost": ["player"], "signal_window": ["player"],
 		"spread": ["archer"], "radiance_pct": ["player"], "income_flat": ["player"], "heal": ["player"], "speed": ["all_units", "infantry", "archer", "spearman"],
 		"reload": ["archer"], "attack_speed": ["infantry"], "range": ["archer"], "enemy_hp": ["enemy"], "grant_units_free": ["player"],
-		"block": ["all_units", "infantry", "spearman"]}
+		"block": ["all_units", "infantry", "spearman"], "recover": ["player"]}
 	check("таблица MODS.PAIRS как в задании, покрывает все stat", MODS.PAIRS == want and MODS.PAIRS.size() == MODS.STATS.size(), str(MODS.PAIRS))
 	var wrong := PackedStringArray()
 	var allowed := 0
@@ -205,7 +205,7 @@ func t_validation() -> void:
 	var stat_ops := {"damage": ["add_pct", "mult"], "hp": ["add_pct", "mult"], "bounty": ["add_pct", "mult"], "income": ["add_pct", "mult"], "gate_hp": ["add_pct", "mult"],
 		"start_units": ["add_pct", "add_flat"], "unit_cost": ["add_pct"], "weapon_cost": ["add_pct"], "repair_cost": ["add_pct"], "signal_window": ["add_flat"],
 		"spread": ["add_pct"], "radiance_pct": ["add_pct"], "income_flat": ["add_flat"], "heal": ["add_pct"], "speed": ["add_pct"], "reload": ["add_pct"],
-		"attack_speed": ["add_pct"], "range": ["add_pct"], "enemy_hp": ["add_pct"], "grant_units_free": ["add_flat"], "block": ["add_flat"]}
+		"attack_speed": ["add_pct"], "range": ["add_pct"], "enemy_hp": ["add_pct"], "grant_units_free": ["add_flat"], "block": ["add_flat"], "recover": ["add_pct"]}
 	check("таблица MODS.STAT_OPS как в задании, покрывает все stat", MODS.STAT_OPS == stat_ops and MODS.STAT_OPS.size() == MODS.STATS.size(), str(MODS.STAT_OPS))
 	var wrong_op := PackedStringArray()
 	var allowed_op := 0
@@ -410,7 +410,7 @@ func t_hub() -> void:
 		texts.append(h.gift_rows[id].effect.text)
 	check("эффекты одной строкой у всех даров", Array(texts) == ["+6% к урону пехоты", "+6% к здоровью всех воинов", "+8% к урону лучников", "+10% золота за убитых",
 		"+5% к доходу волны в конце каждой волны", "+10% воинов в каждом стартовом отряде (не меньше +1)", "-5% к цене наборов пехоты и лучников",
-		"-5% к цене улучшения оружия", "-15% к цене ремонта ворот", "+0.25 с к окну сигнала всплеска", "-10% к разбросу стрел", "+5% Сияния за забег", "+10% к лечению между волнами",
+		"-5% к цене улучшения оружия", "-15% к цене ремонта ворот", "+0.25 с к окну сигнала всплеска", "-10% к разбросу стрел", "+5% Сияния за забег", "После волны возвращает 10% павших",
 		"Кнопка в бою: всем +30% скорости ударов на 8 с, перезарядка 60 с", "+5 п. п. к шансу блока у копейщиков"], " | ".join(texts))
 	check("цена «Резерва» в строке — общая: 60", tr(h.gift_rows["reserve"].price.text) == "60")
 	row.button.pressed.emit()

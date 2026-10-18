@@ -9,7 +9,7 @@ extends RefCounted
 # Модификаторы собираются из списка источников (sources): дары забега (Game.active_gifts) и карточки забега (Game.run_cards).
 # Данные юнитов волны (урон, HP, скорость, перезарядка, дальность, HP зомби, награда) main.gd пересчитывает от базы в начале каждой волны.
 const STATS := ["damage", "hp", "bounty", "income", "gate_hp", "start_units", "unit_cost", "weapon_cost", "repair_cost", "signal_window", "spread", "radiance_pct",
-	"income_flat", "heal", "speed", "reload", "attack_speed", "range", "enemy_hp", "grant_units_free", "block"]
+	"income_flat", "heal", "speed", "reload", "attack_speed", "range", "enemy_hp", "grant_units_free", "block", "recover"]
 const TARGETS := ["all_units", "infantry", "archer", "gate", "player", "enemy", "knight", "spearman"]
 const OPS := ["add_pct", "add_flat", "mult"]
 # Допустимые сочетания: stat -> его target. Пары вне таблицы сцена боя не читает, дар с такой парой молча не действовал бы.
@@ -18,13 +18,13 @@ const PAIRS := {"damage": ["all_units", "infantry", "archer", "spearman"], "hp":
 	"income": ["player"], "gate_hp": ["gate"], "start_units": ["player"], "unit_cost": ["player", "archer", "spearman"], "weapon_cost": ["player"], "repair_cost": ["player"], "signal_window": ["player"],
 	"spread": ["archer"], "radiance_pct": ["player"], "income_flat": ["player"], "heal": ["player"], "speed": ["all_units", "infantry", "archer", "spearman"],
 	"reload": ["archer"], "attack_speed": ["infantry"], "range": ["archer"], "enemy_hp": ["enemy"], "grant_units_free": ["player"],
-	"block": ["all_units", "infantry", "spearman"]}
+	"block": ["all_units", "infantry", "spearman"], "recover": ["player"]}
 # Допустимые op для stat: сцена боя читает множители (get_mult), прибавку к числу (get_count) или value; остальное не действовало бы.
 const STAT_OPS := {"damage": ["add_pct", "mult"], "hp": ["add_pct", "mult"], "bounty": ["add_pct", "mult"], "income": ["add_pct", "mult"],
 	"gate_hp": ["add_pct", "mult"], "start_units": ["add_pct", "add_flat"], "unit_cost": ["add_pct"], "weapon_cost": ["add_pct"], "repair_cost": ["add_pct"],
 	"signal_window": ["add_flat"], "spread": ["add_pct"], "radiance_pct": ["add_pct"], "income_flat": ["add_flat"], "heal": ["add_pct"], "speed": ["add_pct"],
 	"reload": ["add_pct"], "attack_speed": ["add_pct"], "range": ["add_pct"], "enemy_hp": ["add_pct"], "grant_units_free": ["add_flat"],
-	"block": ["add_flat"]}   # block — прибавка к шансу блока щитом в долях (0.15 = +15 п. п.)
+	"block": ["add_flat"], "recover": ["add_pct"]}   # recover — доля павших за волну, что возвращаются после неё (+10 — это 10%); block — прибавка к шансу блока щитом в долях (0.15 = +15 п. п.)
 # Цены в value: итог не ниже COST_FLOOR базовой (против накопления скидок), затем округление до целого, не меньше 1.
 const COSTS := ["unit_cost", "weapon_cost", "repair_cost"]
 const GIFT_TYPES := ["mods", "ability"]

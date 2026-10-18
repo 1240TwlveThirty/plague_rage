@@ -137,7 +137,7 @@ func t_loader() -> void:
 		"spoils": ["bounty", "player", "add_pct"], "mine": ["income", "player", "add_pct"], "fortress_walls": ["gate_hp", "gate", "add_pct"], "reserve": ["start_units", "player", "add_pct"],
 		"armory": ["unit_cost", "player", "add_pct"], "smith_thomas": ["weapon_cost", "player", "add_pct"], "repairers": ["repair_cost", "player", "add_pct"],
 		"watch": ["signal_window", "player", "add_flat"], "discipline": ["spread", "archer", "add_pct"], "radiance_reserve": ["radiance_pct", "player", "add_pct"],
-		"infirmary": ["heal", "player", "add_pct"], "war_cry": ["", "", ""], "spear_wall": ["block", "spearman", "add_flat"]}
+		"infirmary": ["recover", "player", "add_pct"], "war_cry": ["", "", ""], "spear_wall": ["block", "spearman", "add_flat"]}
 	var ok := defs.size() == want.size()
 	for id in want:
 		ok = ok and defs.has(id) and [defs[id].stat, defs[id].target, defs[id].op] == want[id] and defs[id].levels.size() == 3 and defs[id].name_key != "" and defs[id].desc_key != ""
@@ -204,7 +204,7 @@ func t_each_gift() -> void:
 			var hp_ok := true
 			for i in m.count:
 				hp_ok = hp_ok and m.team[i] == 0 and m.hp[i] == m.type_hp[m.unit_type[i]]
-			var hid: bool = g.get("hidden", false) or g.stat in ["unit_cost", "weapon_cost", "repair_cost", "radiance_pct", "heal", "block"]
+			var hid: bool = g.get("hidden", false) or g.stat in ["unit_cost", "weapon_cost", "repair_cost", "radiance_pct", "heal", "block", "recover"]
 			check("%s, уровень %d (%s %s %s %s%s): меняется только своё — %s; юниты созданы с HP своего типа" % [g.id, lvl, g.stat, g.target, g.op, str(v),
 				", скрыт или на лету — снимок прежний" if hid else "", ", ".join(changed)],
 				diff(got, want).is_empty() and changed.is_empty() == hid and hp_ok, "не как ожидалось: " + ", ".join(diff(got, want)) if not diff(got, want).is_empty() else "")

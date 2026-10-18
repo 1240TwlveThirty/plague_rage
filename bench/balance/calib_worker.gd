@@ -188,5 +188,6 @@ func _initialize() -> void:
 	print("RUN,%s,%d,%d,%d,%d" % [bot, seed, defeat, full, floori(m.gold)])
 	print("WARCRY,%d,%d,%d" % [m.war_cry_uses, m.war_cry_active_ticks, battle_ticks])   # последнее поле — золото, не потраченное к концу забега
 	print("CARDS," + ",".join(m.active_cards.map(func(r): return r.id + ("" if not r.has("result") else ":" + r.result.good))))   # выбранные карточки (30 — с целью x1.5)
+	print("RECOVER,%d" % m.run_recovered)   # своих юнитов вернулось после волн за забег (стат recover, задача 6d)
 	m.free()
 	quit()

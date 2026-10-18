@@ -153,7 +153,7 @@ GIFT_DISCIPLINE_DESC,%s%% к разбросу стрел,%s%% arrow spread
 GIFT_RADIANCE_RESERVE_NAME,Резерв Сияния,Radiance Reserve
 GIFT_RADIANCE_RESERVE_DESC,+%s%% Сияния за забег,+%s%% Radiance per run
 GIFT_INFIRMARY_NAME,Лазарет,Infirmary
-GIFT_INFIRMARY_DESC,+%s%% к лечению между волнами,+%s%% healing between waves
+GIFT_INFIRMARY_DESC,После волны возвращает %s%% павших,Returns %s%% of the fallen after each wave
 DEBUG_FPS_LINE,FPS: %d | юнитов: %d | сим. сред.: %.1f пик: %.1f | сетка: %.1f мс | цвет: F%d | ворота: %.0f | стрелы за волну: %d/%d,FPS: %d | units: %d | sim avg: %.1f peak: %.1f | grid: %.1f ms | color: F%d | gate: %.0f | arrows this wave: %d/%d
 DEBUG_FPS_PHASES,"фазы, мс/тик: %s | появилось за 10 с, максимум: %d","phases, ms/tick: %s | spawned per 10 s, max: %d"
 STORY_INTRO,"Король говорил со мной сегодня. Не голосом, болью. Одно слово: держись. Он верит, что снизу идёт тот, кто всё закончит. Мне нужно лишь дожить. Жена не вернулась от барона, Мира вернулась одна и не сказала ни слова. Ради неё я буду держаться и записывать, как мы это делали.","The King spoke to me today. Not with a voice, with pain. One word: hold. He believes someone is coming from below who will put an end to all of this. I only have to live that long. My wife never came back from the baron's. Mira came back alone and hasn't said a word. For her sake I will hold, and write down how we did it."
@@ -256,8 +256,8 @@ CARD_DARK_VOW_NAME,Тёмный обет,Dark Vow
 CARD_DARK_VOW_DESC,+40% золота за убитых; враги крепче на 15%,+40% gold per kill; enemies 15% tougher
 CARD_GRACE_BLESSING_NAME,Благословение Благодати,Blessing of Grace
 CARD_GRACE_BLESSING_DESC,+10% Сияния за забег,+10% Radiance per run
-CARD_FIELD_KITCHEN_NAME,Полевая кухня,Field Kitchen
-CARD_FIELD_KITCHEN_DESC,+50% к лечению между волнами,+50% healing between waves
+CARD_FIELD_KITCHEN_NAME,Полевой госпиталь,Field Hospital
+CARD_FIELD_KITCHEN_DESC,После волны возвращает 20% павших,Returns 20% of the fallen after each wave
 UI_CARDS_TITLE,Выберите карточку,Choose a card
 UI_CARDS_HINT,Клавиши 1 / 2 / 3 или мышь. Пропустить нельзя.,Keys 1 / 2 / 3 or mouse. You can't skip.
 UI_CARDS_OWNED,Уже выбрано: %s,Already chosen: %s

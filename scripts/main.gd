@@ -584,7 +584,11 @@ var active_cards: Array = []           # карточки забега без с
 var squad_dmg_mult := PackedFloat32Array()     # множитель урона отряда (удар и стрелы)
 var squad_taken_mult := PackedFloat32Array()   # множитель получаемого отрядом урона
 var squad_speed_mult := PackedFloat32Array()   # множитель скорости отряда (строй и юниты)
+var squad_fallen := PackedInt32Array()         # своих павших отряда за волну (стат recover)
+var squad_recover_carry := PackedFloat64Array()   # дробный остаток возврата павших отряда (переносится на следующие волны забега)
 var squad_start_n := PackedInt32Array()        # численность отряда на начало волны (squad_low, lost_steps); 0 — отряд создан в бою, берётся при первой проверке
+var wave_recovered := 0                        # своих юнитов вернулось после последней волны (стат recover), всего за забег — run_recovered
+var run_recovered := 0
 var wave_fallen := 0                           # своих юнитов пало за волну (карточка 24, vengeance)
 var cond_cards: Array = []                     # условные карточки забега на эту волну: [{cond, when, mods [{stat, target, value}]}]
 var vengeance := {}                            # карточка 24: {per_unit_pct, max_pct} или {}
@@ -1746,6 +1750,7 @@ func _prepare_cards() -> void:
 	for sq in SQUAD_MAX:
 		squad_start_n[sq] = squad_n[sq] if squad_used[sq] == 1 else 0
 	wave_fallen = 0
+	squad_fallen.fill(0)
 	_cards_off()
 	squad_dmg_mult.fill(1.0)
 	squad_taken_mult.fill(1.0)
@@ -1857,6 +1862,33 @@ func cond_factor(cond: String, w: Dictionary, sq: int) -> float:
 # процентными пунктами (+10 — это +0.10 доли, а не умножение базы), не больше 1.0 и не меньше 0.
 func heal_fraction() -> float:
 	return clampf(wave_cfg.heal_base + (mods.get_mult("heal", "player") - 1.0), 0.0, 1.0)
+
+
+# Доля павших за волну, что возвращаются после неё: стат recover (+10 — 0.10), не меньше 0.
+func recover_fraction() -> float:
+	return maxf(mods.get_mult("recover", "player") - 1.0, 0.0)
+
+
+# Конец побеждённой волны (до магазина): каждый свой отряд получает назад floor(павшие x доля + остаток) юнитов своего типа
+# бесплатно с полным HP (выходят из ворот); дробный остаток копится в отряде на следующие волны. Отряд не больше, чем в начале
+# волны. Отряд, погибший целиком (0 юнитов), не получает никого: созданный удаляется в начале передышки, его остаток пропадает.
+func _recover_fallen() -> void:
+	var frac := recover_fraction()
+	if frac <= 0.0:
+		return
+	for s in SQUAD_MAX:
+		if squad_used[s] == 0 or squad_team[s] != 0 or squad_fallen[s] == 0:
+			continue
+		if squad_n[s] == 0:
+			squad_recover_carry[s] = 0.0
+			continue
+		squad_recover_carry[s] += squad_fallen[s] * frac
+		var back := floori(squad_recover_carry[s] + 1e-9)   # 1e-9: 0.3 x 10 не должно дать 2
+		squad_recover_carry[s] = maxf(squad_recover_carry[s] - back, 0.0)
+		back = mini(back, squad_start_n[s] - squad_n[s])
+		if back > 0:
+			_squad_add_units(s, squad_type[s], back)
+			wave_recovered += back
 
 
 # Начало передышки после волны из pick_after_waves: тройка карточек (генератор забега), с интерфейсом — экран выбора.
@@ -2573,6 +2605,9 @@ func _wave_cleared() -> void:
 				hp[i] = type_hp[unit_type[i]]   # полное лечение
 			else:
 				hp[i] += (type_hp[unit_type[i]] - hp[i]) * heal   # возвращается доля heal потерянного HP
+	wave_recovered = 0
+	_recover_fallen()
+	run_recovered += wave_recovered
 	wave_state = WS_RESPITE
 	_set_paused(false)
 	_free_empty_squads()
@@ -2722,6 +2757,8 @@ func _squad_reset(s: int) -> void:
 	squad_aspect[s] = Vector2.ONE
 	squad_order[s] = ORDER_ATTACK
 	squad_dir_angle[s] = NAN
+	squad_fallen[s] = 0
+	squad_recover_carry[s] = 0.0
 
 
 # Новый пустой отряд по образцу отряда src (тип, команда, пропорция строя) в первом свободном индексе
@@ -3371,6 +3408,10 @@ func _setup_data() -> void:
 	squad_skill_on.fill(0)
 	squad_start_n.resize(SQUAD_MAX)
 	squad_start_n.fill(0)
+	squad_fallen.resize(SQUAD_MAX)
+	squad_fallen.fill(0)
+	squad_recover_carry.resize(SQUAD_MAX)
+	squad_recover_carry.fill(0.0)
 	squad_center_off.resize(SQUAD_MAX)
 	squad_reflow_n.resize(SQUAD_MAX)
 	squad_front_row.resize(SQUAD_MAX)
@@ -4600,6 +4641,8 @@ func _remove_dead() -> void:
 				wave_kills_by_type[unit_type[i]] += 1
 			elif team[i] == 0:
 				wave_fallen += 1   # пал свой (карточка 24)
+				if unit_squad[i] >= 0:
+					squad_fallen[unit_squad[i]] += 1   # павшие отряда (стат recover)
 			if unit_squad[i] >= 0:
 				squad_dirty[unit_squad[i]] = 1
 				squad_n[unit_squad[i]] -= 1
