@@ -14,6 +14,7 @@
 	"wave_bonus_gold": 20,
 	"gold_per_kill": 1.5,
 	"start_gold": 100,
+	"heal_base": 0.5,
 	"runner_from_wave": 3,
 	"runner_share_early": 0.10,
 	"runner_share": 0.20,

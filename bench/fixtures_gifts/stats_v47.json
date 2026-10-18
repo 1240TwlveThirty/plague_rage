@@ -1,5 +1,6 @@
 [
 	{"id": "flat60", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "income_flat", "target": "player", "op": "add_flat", "levels": [60]},
+	{"id": "heal10", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "heal", "target": "player", "op": "add_pct", "levels": [10]},
 	{"id": "heal50", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "heal", "target": "player", "op": "add_pct", "levels": [50]},
 	{"id": "spd_inf15", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "speed", "target": "infantry", "op": "add_pct", "levels": [15]},
 	{"id": "spd_all_m10", "name_key": "A", "desc_key": "GIFT_TEST_DESC", "stat": "speed", "target": "all_units", "op": "add_pct", "levels": [-10]},

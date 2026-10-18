@@ -61,20 +61,28 @@ func t_income() -> void:
 	var g0: float = c.gold
 	c._start_wave()
 	check("в начале волны 2 золото не меняется (доход уже начислен)", c.gold == g0)
-	var h := make({"heal50": 1})
-	h._start_wave()
-	var t := 0
-	while h.wave_state == h.WS_BATTLE and t < 30 * 600:
-		h._physics_process(DT)
-		t += 1
-	var full := true
-	for i in h.count:
-		if h.team[i] == 0:
-			full = full and h.hp[i] == h.type_hp[h.unit_type[i]]
-	check("heal +50%%: база лечения полная (HEAL_BASE %.1f), после волны HP всех своих — максимум (прибавка лечения ничего не меняет)" % h.HEAL_BASE,
-		h.wave_state == h.WS_RESPITE and full and h.mods.value("heal", h.HEAL_BASE) == 1.5)
-	for x in [a, b, c, h]:
+	for x in [a, b, c]:
 		x.free()
+	# лечение между волнами: доля потерянного HP = heal_base (0.5) + стат heal процентными пунктами, не больше 1
+	var shown := PackedStringArray()
+	var ok := true
+	for pair in [[{}, 0.5], [{"heal10": 1}, 0.6], [{"heal50": 1}, 1.0], [{"heal50": 1, "heal10": 1}, 1.0]]:
+		var h := make(pair[0])
+		h._start_wave()
+		var inf := -1
+		for i in h.count:
+			if h.unit_type[i] == h.infantry_type:
+				inf = i
+				break
+		var mx: float = h.type_hp[h.infantry_type]
+		h.hp[inf] = mx - 2.0   # потеряно 2 HP
+		h._wave_cleared()
+		var want: float = mx - 2.0 + 2.0 * pair[1]
+		ok = ok and is_equal_approx(h.heal_fraction(), pair[1]) and is_equal_approx(h.hp[inf], want)
+		shown.append("%s: доля %.2f, HP %.2f из %.2f" % [str(pair[0].keys()), h.heal_fraction(), h.hp[inf], mx])
+		h.free()
+	check("лечение между волнами: база 0.5, +10 -> 0.6, +50 -> 1.0 (полное), +60 -> не больше 1.0; раненый на 2 HP получает 2 x долю", ok, " | ".join(shown))
+
 
 # Статы данных волны.
 func t_unit_stats() -> void:

@@ -251,12 +251,12 @@ func t_battle() -> void:
 	wave(d)
 	var healed := true
 	var zombie_types := true
-	for i in d.count:
-		healed = healed and d.team[i] == 0 and d.hp[i] == d.type_hp[d.unit_type[i]]
+	for i in d.count:   # лечение между волнами возвращает половину потерянного HP (heal_base 0.5): HP от половины до максимума типа
+		healed = healed and d.team[i] == 0 and d.hp[i] <= d.type_hp[d.unit_type[i]] and d.hp[i] >= 0.5 * d.type_hp[d.unit_type[i]]
 	var plain := make({})
 	for t2 in [plain.zombie_type, plain.runner_type, plain.knight_type]:
 		zombie_types = zombie_types and d.type_hp[t2] == plain.type_hp[t2] and d.type_damage[t2] == plain.type_damage[t2]
-	check("sturdy_shields 2: купленная пехота создаётся с HP x1.12 (%.2f), лечение после волны — до него же; HP и урон зомби прежние" % hp_inf,
+	check("sturdy_shields 2: купленная пехота создаётся с HP x1.12 (%.2f), лечение после волны — не выше него (половина потерянного); HP и урон зомби прежние" % hp_inf,
 		bought_ok and healed and zombie_types and is_equal_approx(hp_inf, plain.type_hp[plain.infantry_type] * 1.12))
 	var e := make({"tempered_steel": 1})
 	var dmg0: float = e.type_damage[e.infantry_type]

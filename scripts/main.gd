@@ -9,7 +9,6 @@ const WAVES_PATH := "res://data/waves.json"
 const SHOP_PATH := "res://data/shop.json"
 const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate"]   # порядок = действия buy_1..buy_4 (по умолчанию Z X C V)
 const SHOP_COST_STATS := ["unit_cost", "unit_cost", "weapon_cost", "repair_cost"]   # стат цены товара для Mods.value, порядок SHOP_ITEMS
-const HEAL_BASE := 1.0    # лечение между волнами: доля потерянного HP, база — полное; стат heal прибавляет проценты (выше 1.0 ничего не меняет)
 const WAR_CRY_GLOW := Color(1.0, 0.82, 0.3, 0.3)   # подсветка краёв экрана, пока действует Клич Благодати
 const WAR_CRY_GLOW_PX := 10.0
 const SPLIT_NAMES := {"infantry": "UI_SPLIT_INFANTRY", "archer": "UI_SPLIT_ARCHER"}   # «Жертва ради победы»: кому выпало
@@ -1380,7 +1379,10 @@ func _load_waves() -> bool:
 			"subwave_interval", "max_alive", "spawn_center_x", "spawn_front_y", "spawn_columns", "spawn_spacing",
 			"wave_bonus_gold", "gold_per_kill", "start_gold", "runner_from_wave", "runner_share_early", "runner_share", "sides_from_wave",
 			"side_prob", "knight_from_wave", "knight_per_wave", "knight_cap", "spawn_left_x", "spawn_left_y", "spawn_right_x", "spawn_right_y",
-			"burst_target_size", "burst_gap", "burst_gap_jitter", "burst_signal_lead", "burst_chunk", "burst_chunk_interval"], WAVES_PATH):
+			"burst_target_size", "burst_gap", "burst_gap_jitter", "burst_signal_lead", "burst_chunk", "burst_chunk_interval", "heal_base"], WAVES_PATH):
+		return false
+	if d.heal_base < 0.0 or d.heal_base > 1.0:
+		push_error("%s: heal_base — доля потерянного HP от 0 до 1" % WAVES_PATH)
 		return false
 	if not d.get("layers") is Array or d.layers.size() != 3:
 		push_error("%s: нет массива layers из трёх слоёв" % WAVES_PATH)
@@ -1787,6 +1789,12 @@ func cond_factor(cond: String, w: Dictionary, sq: int) -> float:
 			var lost_pct := (squad_start_n[sq] - squad_n[sq]) * 100.0 / squad_start_n[sq]
 			return float(clampi(floori(lost_pct / w.step_pct + 1e-9), 0, int(w.max_steps)))
 	return 0.0
+
+
+# Доля потерянного HP, которую свои юниты восстанавливают между волнами: heal_base из waves.json плюс стат heal (дары, карточки)
+# процентными пунктами (+10 — это +0.10 доли, а не умножение базы), не больше 1.0 и не меньше 0.
+func heal_fraction() -> float:
+	return clampf(wave_cfg.heal_base + (mods.get_mult("heal", "player") - 1.0), 0.0, 1.0)
 
 
 # Начало передышки после волны из pick_after_waves: тройка карточек (генератор забега), с интерфейсом — экран выбора.
@@ -2485,13 +2493,13 @@ func _wave_cleared() -> void:
 		gold += wave_income * income_pct   # доход (стат income) — в конце волны, до магазина передышки
 	if income_flat != 0.0:
 		gold += income_flat
-	var heal: float = mods.value("heal", HEAL_BASE)
+	var heal := heal_fraction()
 	for i in count:
 		if team[i] == 0:
 			if heal >= 1.0:
-				hp[i] = type_hp[unit_type[i]]   # бесплатное лечение армии
+				hp[i] = type_hp[unit_type[i]]   # полное лечение
 			else:
-				hp[i] = minf(type_hp[unit_type[i]], hp[i] + (type_hp[unit_type[i]] - hp[i]) * heal)
+				hp[i] += (type_hp[unit_type[i]] - hp[i]) * heal   # возвращается доля heal потерянного HP
 	wave_state = WS_RESPITE
 	_set_paused(false)
 	_free_empty_squads()

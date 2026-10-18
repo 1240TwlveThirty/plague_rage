@@ -17,6 +17,7 @@ var gifts := []   # из data/gifts.json, в порядке файла, без �
 var singles := [] # дары для наборов «по одному» (аргумент или все видимые)
 var game: Node    # узел Game вне дерева: только run_reward по data/radiance.json и дарам набора (radiance_pct)
 var ver := "v4"
+const CARD_V6 := "card_field_kitchen"   # v6: набор с карточкой №40 (calib_worker --cards field_kitchen)
 var DIR := ""
 var waves_per_run := 0
 
@@ -100,7 +101,7 @@ func mean_gold(rs: Array) -> float:
 # Дары набора: id -> уровень (как --gifts в ablation_run.sh).
 func gifts_of(cfg: String) -> Dictionary:
 	var out := {}
-	if cfg == "none":
+	if cfg == "none" or cfg == CARD_V6:
 		return out
 	var lvl := int(cfg.right(1))
 	if cfg.begins_with("all_") or cfg.begins_with("allno_"):
@@ -127,6 +128,8 @@ func label(cfg: String) -> String:
 		return "все дары (%d), уровень %s" % [gifts.size(), cfg.right(1)]
 	if cfg.begins_with("allno_"):
 		return "все дары без клича (%d), уровень %s" % [gifts.size() - 1, cfg.right(1)]
+	if cfg == CARD_V6:
+		return "карточка №40 Полевая кухня (heal +50)"
 	for g in gifts:
 		if cfg == "%s_%s" % [g.id, cfg.right(1)] and g.get("type", "mods") == "ability":
 			var lv: Dictionary = g.levels[int(cfg.right(1)) - 1]
@@ -158,8 +161,11 @@ func _initialize() -> void:
 	for lvl in [1, 2, 3]:
 		for g in singles:
 			cfgs.append("%s_%d" % [g.id, lvl])
-	for lvl in [1, 2, 3]:
-		cfgs.append("all_%d" % lvl)
+	if ver == "v6":   # лечение между волнами (6b, этап 2): «Лазарет» по уровням и карточка №40, без наборов «все дары»
+		cfgs.append(CARD_V6)
+	else:
+		for lvl in [1, 2, 3]:
+			cfgs.append("all_%d" % lvl)
 	if ver == "v5":   # Клич Благодати: «все дары» и с ним, и без него
 		for lvl in [1, 2, 3]:
 			cfgs.append("allno_%d" % lvl)
@@ -175,7 +181,7 @@ func _initialize() -> void:
 	L.append("gift_ablation_%s: абляция даров с непрерывной волной смерти, только измерения. Дары по одному: %s; «все дары» — все %d видимых в gifts.json (скрытые не входят)." % [
 		ver, ", ".join(ids), gifts.size()])
 	L.append("Рабочие scripts/main.gd и data/*.json, осада I (слой 1), волны без предела до поражения.")
-	L.append("Пересчёт (из корня проекта):  sh bench/balance/%s \"<путь к godot.exe>\"" % ("ablation_v5_run.sh" if ver == "v5" else "ablation_run.sh"))
+	L.append("Пересчёт (из корня проекта):  sh bench/balance/%s \"<путь к godot.exe>\"" % ("ablation_%s_run.sh" % ver if ver in ["v5", "v6"] else "ablation_run.sh"))
 	L.append("Время этого прогона: %s (%d забегов, до 10 процессов сразу, %d потоков процессора)." % ["%d мин %02d с" % [secs / 60, secs % 60] if secs > 0 else "не измерялось (сборщик запущен отдельно)",
 		total, OS.get_processor_count()])
 	L.append("Боты B2 (%s) и B5 (%s), seed 1-5; отряды стоят на старте, приказ «атака», всё золото тратится в передышке." % [DESC.B2, DESC.B5])
@@ -215,7 +221,7 @@ func _initialize() -> void:
 		for bot in BOTS:
 			shifts.append(median(runs_of(cfg, bot)) - median(runs_of("none", bot)))
 		var price := 0
-		if not cfg.begins_with("all"):
+		if not cfg.begins_with("all") and cfg != CARD_V6:
 			var lvl := int(cfg.right(1))
 			var id: String = cfg.left(cfg.length() - 2)
 			for g in gifts:
