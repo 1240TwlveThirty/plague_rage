@@ -96,6 +96,7 @@ Godot "смоук с окном: F11 (v49)" "res://bench/smoke_v49.gd" "SMOKE: �
 Godot "смоук с окном: языки (v51)" "res://bench/smoke_v51.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: звук (v52)" "res://bench/smoke_v52.gd" "SMOKE: провалов 0" @() -Window
 Godot "смоук с окном: выбор карточки (v53)" "res://bench/smoke_v53_cards.gd" "SMOKE: провалов 0" @("$tmp") -Window
+Godot "смоук с окном: возврат павших, «Оружие: скорость атаки» (6d)" "res://bench/smoke_6d.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: Клич Благодати (v54)" "res://bench/smoke_v54_warcry.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: карточки в HUD (v51h)" "res://bench/smoke_v51_cardhud.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: иконки в хабе (v56)" "res://bench/smoke_v56_icons.gd" "SMOKE: провалов 0" @("$tmp") -Window
