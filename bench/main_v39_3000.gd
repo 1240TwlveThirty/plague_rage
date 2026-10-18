@@ -10,6 +10,7 @@ const SHOP_PATH := "res://data/shop.json"
 const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate"]   # порядок = действия buy_1..buy_4 (по умолчанию Z X C V)
 const SHOP_COST_STATS := ["unit_cost", "unit_cost", "weapon_cost", "repair_cost"]   # стат цены товара для Mods.value, порядок SHOP_ITEMS
 const HEAL_BASE := 1.0    # лечение между волнами: доля потерянного HP, база — полное; стат heal прибавляет проценты (выше 1.0 ничего не меняет)
+const COND_EVERY := 15   # условия карточек пересчитываются раз в столько тиков симуляции
 const CD_CARRY := 2.0 / 30.0   # перенос остатка перезарядки: не больше одного шага решения юнита (2 тика при 30 Гц)
 const SETTINGS := preload("res://scripts/settings.gd")   # key_label(действие): клавиша для подсказок
 # Действия клавиатуры в порядке проверки (_key_action): с модификаторами раньше, чтобы Ctrl+A не ушло в действие на A
@@ -561,6 +562,15 @@ var gift_defs := {}                    # дары из gifts_path (MODS.load_gif
 var cards_path := "res://data/cards.json"   # бенчи и тесты подменяют
 var card_defs := {}                    # карточки из cards_path (CARDS.load_cards)
 var active_cards: Array = []           # карточки забега без синглтона (бенчи): записи {id[, result]}; с Game — Game.run_cards
+# Условия карточек (тип C) и особые (K): пересчёт по отрядам раз в COND_EVERY тиков (_update_card_conditions), горячий цикл умножает на готовое.
+# Без карточек все множители ровно 1.0.
+var squad_dmg_mult := PackedFloat32Array()     # множитель урона отряда (удар и стрелы)
+var squad_taken_mult := PackedFloat32Array()   # множитель получаемого отрядом урона
+var squad_speed_mult := PackedFloat32Array()   # множитель скорости отряда (строй и юниты)
+var squad_start_n := PackedInt32Array()        # численность отряда на начало волны (squad_low, lost_steps); 0 — отряд создан в бою, берётся при первой проверке
+var wave_fallen := 0                           # своих юнитов пало за волну (карточка 24, vengeance)
+var cond_cards: Array = []                     # условные карточки забега на эту волну: [{cond, when, mods [{stat, target, value}]}]
+var vengeance := {}                            # карточка 24: {per_unit_pct, max_pct} или {}
 var mods: RefCounted = null            # MODS: собирается при старте забега и в начале каждой волны (_prepare_wave), тик его не вызывает
 var income_pct := 0.0                  # стат income: эта доля дохода волны начисляется в конце волны (до магазина передышки)
 var income_flat := 0.0                 # стат income_flat: столько золота начисляется в конце волны вместе с доходом
@@ -1578,6 +1588,91 @@ func _prepare_wave() -> void:
 	var free := int(mods.value("grant_units_free", 0.0))
 	if free > 0:
 		_squad_add_units(_first_squad_of(infantry_type), infantry_type, free)
+	_prepare_cards()
+
+
+# Условные (C) и особые (K vengeance) карточки на волну: список условий, численность отрядов на начало волны, павшие — с нуля.
+func _prepare_cards() -> void:
+	cond_cards = []
+	vengeance = {}
+	for r in _cards():
+		var d: Dictionary = card_defs.get(r.id, {})
+		if d.is_empty() or d.get("disabled", false):
+			continue
+		if d.kind == "C":
+			cond_cards.append({"cond": d.when.cond, "when": d.when, "mods": d.mods.filter(func(e): return not e.get("cost", false))})
+		elif d.get("special", "") == "vengeance":
+			vengeance = {"per_unit_pct": float(d.per_unit_pct), "max_pct": float(d.max_pct)}
+	for sq in SQUAD_MAX:
+		squad_start_n[sq] = squad_n[sq] if squad_used[sq] == 1 else 0
+	wave_fallen = 0
+	squad_dmg_mult.fill(1.0)
+	squad_taken_mult.fill(1.0)
+	squad_speed_mult.fill(1.0)
+
+
+# Множители отрядов по условиям карточек (раз в COND_EVERY тиков боя и в начале волны; по тикам и состоянию симуляции, без ГСЧ).
+# Проценты условий складываются; урон — 1 + сумма / 100 (и vengeance: +per_unit_pct за павшего, не больше max_pct), скорость — так же.
+# Бонус к HP по условию — снижение получаемого урона 1 / (1 + x): HP юнитов на лету не переписывается.
+func _update_card_conditions() -> void:
+	if cond_cards.is_empty() and vengeance.is_empty():
+		return
+	for sq in SQUAD_MAX:
+		var d := 0.0
+		var h := 0.0
+		var sp := 0.0
+		if squad_used[sq] == 1 and squad_n[sq] > 0 and squad_team[sq] == 0:
+			if squad_start_n[sq] == 0:
+				squad_start_n[sq] = squad_n[sq]
+			var tname := "infantry" if squad_type[sq] == infantry_type else ("archer" if squad_type[sq] == archer_type else "")
+			for c in cond_cards:
+				var k := cond_factor(c.cond, c.when, sq)
+				if k == 0.0:
+					continue
+				for e in c.mods:
+					if e.target == "all_units" or e.target == tname:
+						match e.stat:
+							"damage":
+								d += e.value * k
+							"hp":
+								h += e.value * k
+							"speed":
+								sp += e.value * k
+			if not vengeance.is_empty():
+				d += minf(vengeance.per_unit_pct * wave_fallen, vengeance.max_pct)
+		squad_dmg_mult[sq] = 1.0 + d / 100.0
+		squad_taken_mult[sq] = 1.0 / (1.0 + h / 100.0)
+		squad_speed_mult[sq] = 1.0 + sp / 100.0
+
+
+# Условие карточки для отряда sq: 0 — не выполнено, 1 — выполнено; lost_steps — число ступеней (0..max_steps).
+func cond_factor(cond: String, w: Dictionary, sq: int) -> float:
+	match cond:
+		"hold":
+			return 1.0 if squad_order[sq] == ORDER_HOLD else 0.0
+		"retreat":
+			return 1.0 if squad_order[sq] == ORDER_RETREAT else 0.0
+		"gate_low":
+			return 1.0 if gate_hp < w.frac * gate_hp_max else 0.0
+		"squad_low":
+			return 1.0 if squad_n[sq] < w.frac * squad_start_n[sq] else 0.0
+		"wave_time":
+			return 1.0 if wave_state == WS_BATTLE and wave_t < w.seconds else 0.0
+		"gold_high":
+			return 1.0 if gold_wave_start >= w.gold else 0.0
+		"lost_steps":
+			if squad_start_n[sq] <= 0:
+				return 0.0
+			var lost_pct := (squad_start_n[sq] - squad_n[sq]) * 100.0 / squad_start_n[sq]
+			return float(clampi(floori(lost_pct / w.step_pct + 1e-9), 0, int(w.max_steps)))
+	return 0.0
+
+
+# Разовый эффект выбранной карточки (on_pick): grant_units — столько пехоты в первый отряд пехоты сразу.
+func apply_on_pick(r: Dictionary) -> void:
+	var d: Dictionary = card_defs.get(r.id, {})
+	if d.has("on_pick") and d.on_pick.has("grant_units"):
+		_squad_add_units(_first_squad_of(infantry_type), infantry_type, int(d.on_pick.grant_units))
 
 
 # Первый занятый отряд типа type (пехота — всегда есть отряд 0).
@@ -2016,6 +2111,7 @@ func _start_wave() -> void:
 	kills_by_arrows = 0
 	subwave_timer = 0.0
 	wave_t = 0.0
+	_update_card_conditions()   # условия карточек — с первого тика волны
 	burst_idx = 0
 	burst_signal_n = 0
 	burst_active = false
@@ -2916,6 +3012,11 @@ func _setup_data() -> void:
 	squad_rows.resize(SQUAD_MAX)
 	squad_dirty.resize(SQUAD_MAX)
 	squad_speed.resize(SQUAD_MAX)
+	for arr in [squad_dmg_mult, squad_taken_mult, squad_speed_mult]:
+		arr.resize(SQUAD_MAX)
+		arr.fill(1.0)
+	squad_start_n.resize(SQUAD_MAX)
+	squad_start_n.fill(0)
 	squad_center_off.resize(SQUAD_MAX)
 	squad_reflow_n.resize(SQUAD_MAX)
 	squad_front_row.resize(SQUAD_MAX)
@@ -3022,6 +3123,9 @@ func _setup_data() -> void:
 				min_speed = minf(min_speed, type_speed[unit_type[i]])
 		squad_speed[s] = 0.75 * min_speed
 	_add_start_units()
+	for r in _cards():   # карточки, заданные до старта (бенчи): разовые эффекты сразу
+		apply_on_pick(r)
+	_prepare_cards()
 
 
 func _setup_rendering() -> void:
@@ -3573,6 +3677,8 @@ func _physics_process(delta: float) -> void:
 	var t := Time.get_ticks_usec()
 	prev_pos = pos.duplicate()   # для интерполяции в _process
 	tick_counter += 1
+	if wave_state == WS_BATTLE and tick_counter % COND_EVERY == 0:
+		_update_card_conditions()
 	_update_waves(delta)
 	_update_squads(delta)
 	_update_unit_dirs()
@@ -3925,25 +4031,27 @@ func _update_unit(i: int, delta: float) -> void:
 				var l0 := type_leash_start[t]
 				var l1 := type_leash_end[t]
 				leash_w = 1.0 if l1 <= l0 else smoothstep(l0, l1, sqrt(ds2))
-				slot_vel = ((slot_world - p) * SLOT_GAIN).limit_length(type_speed[t] * 1.3)
+				slot_vel = ((slot_world - p) * SLOT_GAIN).limit_length(type_speed[t] * squad_speed_mult[sq] * 1.3)
 				if leash_w > 0.5:
 					leash_ticks += 2   # решение действует 2 тика (юнит обновляется раз в 2 тика)
 		if best_d > type_range_sq[t] and order == ORDER_HOLD:
 			# Держать: к врагу не идём, остаёмся (возвращаемся) в слот; бьём только того, кто в дальности атаки.
 			var hold_slot := squad_pos[sq] + unit_slot[i].rotated(squad_angle[sq])
-			v = ((hold_slot - p) * SLOT_GAIN).limit_length(type_speed[t] * 1.3)
+			v = ((hold_slot - p) * SLOT_GAIN).limit_length(type_speed[t] * squad_speed_mult[sq] * 1.3)
 			unit_state[i] = ST_RETURN if p.distance_squared_to(hold_slot) > SLOT_NEAR_SQ else ST_IDLE
 		elif best_d > type_range_sq[t]:
 			var dir := (pos[best] - p).normalized()
 			if unit_squad[i] == -1:
 				# Зомби подходит к врагу, качаясь вбок; фаза своя у каждого (unit_rand).
 				dir += dir.orthogonal() * HORDE_CHAOS * sin(tick_counter * 0.15 + unit_rand[i] * TAU)
-			v = dir * type_speed[t]
+			v = dir * (type_speed[t] * (squad_speed_mult[unit_squad[i]] if unit_squad[i] >= 0 else 1.0))
 			unit_state[i] = ST_CHASE
 		else:
 			unit_state[i] = ST_ATTACK
 		if best_d <= type_range_sq[t] and cooldown[i] <= 0.0:
 			var dmg := type_damage[t]
+			if unit_squad[i] >= 0:
+				dmg *= squad_dmg_mult[unit_squad[i]]   # условия карточек (без карточек 1.0)
 			if WAVE_DMG_TO_UNITS and my_team == 1:
 				dmg *= team_dmg_mult[1]   # сила зомби растёт с волной; без волн множитель 1.0
 			var m := type_block_mult[unit_type[best]]
@@ -3957,6 +4065,8 @@ func _update_unit(i: int, delta: float) -> void:
 					if a.dot(Vector2.from_angle(squad_angle[sj])) > BLOCK_COS * a.length():
 						dmg *= m
 						blocked_hits += 1
+			if unit_squad[best] >= 0:
+				dmg *= squad_taken_mult[unit_squad[best]]   # бонус к HP по условию — меньше получаемого урона
 			hp[best] -= dmg
 			if my_team == 1 and contact_tick < 0:
 				contact_tick = tick_counter
@@ -3970,7 +4080,7 @@ func _update_unit(i: int, delta: float) -> void:
 		var s := unit_squad[i]
 		if s >= 0:
 			var slot_world := squad_pos[s] + unit_slot[i].rotated(squad_angle[s])
-			var lim := type_speed[t] * 1.3 * (RETREAT_SPEED_MULT if order == ORDER_RETREAT else 1.0)
+			var lim := type_speed[t] * squad_speed_mult[s] * 1.3 * (RETREAT_SPEED_MULT if order == ORDER_RETREAT else 1.0)
 			v = ((slot_world - p) * SLOT_GAIN).limit_length(lim)
 			# дальше полуслота от своего места — «возвращается», иначе «стоит»
 			unit_state[i] = ST_RETURN if p.distance_squared_to(slot_world) > SLOT_NEAR_SQ else ST_IDLE
@@ -4015,6 +4125,8 @@ func _remove_dead() -> void:
 				run_kills += 1
 				gold += wave_cfg.gold_per_kill * type_bounty_mult[unit_type[i]]
 				wave_kills_by_type[unit_type[i]] += 1
+			elif team[i] == 0:
+				wave_fallen += 1   # пал свой (карточка 24)
 			if unit_squad[i] >= 0:
 				squad_dirty[unit_squad[i]] = 1
 				squad_n[unit_squad[i]] -= 1
@@ -4644,7 +4756,7 @@ func _update_squads(delta: float) -> void:
 			var to_f := squad_target[s] - squad_pos[s]
 			var dist_f := to_f.length()
 			if dist_f > maxf(squad_stop_dist[s], 1.0):
-				squad_pos[s] += to_f / dist_f * minf(squad_speed[s] * delta, dist_f)
+				squad_pos[s] += to_f / dist_f * minf(squad_speed[s] * squad_speed_mult[s] * delta, dist_f)
 			continue
 		var to := squad_target[s] - squad_pos[s]
 		var dist := to.length()
@@ -4660,7 +4772,7 @@ func _update_squads(delta: float) -> void:
 				diff = angle_difference(squad_angle[s], to.angle())
 			squad_angle[s] += clampf(diff, -TURN_SPEED * delta, TURN_SPEED * delta)
 		if absf(diff) < MOVE_ANGLE:
-			var spd := squad_speed[s] * (RETREAT_SPEED_MULT if squad_order[s] == ORDER_RETREAT else 1.0)
+			var spd := squad_speed[s] * squad_speed_mult[s] * (RETREAT_SPEED_MULT if squad_order[s] == ORDER_RETREAT else 1.0)
 			squad_pos[s] += to / dist * minf(spd * delta, dist)
 
 
@@ -4903,7 +5015,7 @@ func _fire_arrow(i: int, aim: Vector2, delay: float, own_range := false, release
 	var ticks := roundi((delay + pos[i].distance_to(land) / ARROW_SPEED) * Engine.physics_ticks_per_second)
 	arrow_land[arrow_count] = land
 	arrow_tick[arrow_count] = tick_counter + maxi(ticks, 1)
-	arrow_dmg[arrow_count] = type_arrow_dmg[t]
+	arrow_dmg[arrow_count] = type_arrow_dmg[t] * squad_dmg_mult[unit_squad[i]]
 	arrow_count += 1
 	arrows_fired += 1
 	if contact_tick < 0:
