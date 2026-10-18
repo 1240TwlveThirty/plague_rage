@@ -7,8 +7,25 @@ const MAX_UNITS := 4000       # ёмкость всех массивов юни�
 const WAVES_ENABLED := true   # false: как bak21 (300 зомби на старте, без волн) — для старых бенчей
 const WAVES_PATH := "res://data/waves.json"
 const SHOP_PATH := "res://data/shop.json"
-const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate"]   # порядок = клавиши Z X C V
-const SHOP_KEYS := [KEY_Z, KEY_X, KEY_C, KEY_V]
+const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate"]   # порядок = действия buy_1..buy_4 (по умолчанию Z X C V)
+const SHOP_COST_STATS := ["unit_cost", "unit_cost", "weapon_cost", "repair_cost"]   # стат цены товара для Mods.value, порядок SHOP_ITEMS
+const WAR_CRY_GLOW := Color(1.0, 0.82, 0.3, 0.3)   # подсветка краёв экрана, пока действует Клич Благодати
+const WAR_CRY_GLOW_PX := 10.0
+const SPLIT_NAMES := {"infantry": "UI_SPLIT_INFANTRY", "archer": "UI_SPLIT_ARCHER"}   # «Жертва ради победы»: кому выпало
+const COND_KEYS := {"hold": "COND_HOLD", "retreat": "COND_RETREAT", "gate_low": "COND_GATE_LOW", "squad_low": "COND_SQUAD_LOW",
+	"wave_time": "COND_WAVE_TIME", "gold_high": "COND_GOLD_HIGH", "lost_steps": "COND_LOST_STEPS"}
+const CARD_ON := Color(1.0, 0.82, 0.3)          # строка карточки: условие выполнено
+const CARD_IDLE := Color(1.0, 1.0, 1.0, 0.55)   # условная карточка, условие не выполнено
+const COND_EVERY := 15   # условия карточек пересчитываются раз в столько тиков симуляции
+const CD_CARRY := 2.0 / 30.0   # перенос остатка перезарядки: не больше одного шага решения юнита (2 тика при 30 Гц)
+const SETTINGS := preload("res://scripts/settings.gd")   # key_label(действие): клавиша для подсказок
+# Действия клавиатуры в порядке проверки (_key_action): с модификаторами раньше, чтобы Ctrl+A не ушло в действие на A
+const ACTION_TEXTS := ["HUD_SQUAD_NEW", "HUD_SQUAD_SPLIT", "HUD_SQUAD_MERGE"]   # кнопки под панелью отрядов (ключи, %s — клавиша)
+const ACTION_KEYS := ["squad_new", "squad_split", "squad_merge"]
+const KEY_ACTIONS := ["select_all", "debug_restart", "squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4",
+	"squad_select_5", "squad_select_6", "squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side",
+	"wave_start", "buy_1", "buy_2", "buy_3", "buy_4", "order_attack", "order_hold", "order_retreat", "about_face", "banner_toggle",
+	"auto_width", "pause", "post_left", "post_top", "post_right", "post_back", "war_cry"]
 const ROWS_MAX := 20       # строй не глубже: при большом отряде растёт ширина
 const WIDTH_MAX := 100     # и не шире
 const WAVE_DMG_TO_UNITS := true   # урон зомби по юнитам растёт с волной (team_dmg_mult[1])
@@ -31,7 +48,7 @@ const ORDER_ATTACK := 0   # как раньше: юниты идут на вра
 const ORDER_HOLD := 1     # держать: к врагу не идут, бьют только в дальности атаки
 const ORDER_RETREAT := 2  # отход: врага не ищут, не бьют, лучники не стреляют; скорость x1.5 до прихода
 const RETREAT_SPEED_MULT := 1.5
-const ORDER_NAMES := ["атака", "держать", "отход"]
+const ORDER_NAMES := ["ORDER_ATTACK", "ORDER_HOLD", "ORDER_RETREAT"]   # ключи перевода
 const UNIT_TYPES_PATH := "res://data/unit_types.json"
 const CASTLE_PATH := "res://data/castle.json"
 const RECORD_PATH := "user://record.json"   # прежний рекорд best_wave: в игре не читается и не пишется (рекорды в Game)
@@ -40,8 +57,14 @@ const GAME_SCRIPT := preload("res://scripts/game.gd")   # общий загру�
 const STORY_PATH := "res://bench/ref/story_ref.json"   # дневник: тексты баннеров (на механику не влияет)
 const GIFTS_PATH := "res://data/gifts.json"   # дары: модификаторы забега
 const MODS := preload("res://scripts/mods.gd")
+const CARDS := preload("res://scripts/cards.gd")
+const CARD_PICK := preload("res://scripts/card_pick.gd")   # экран выбора карточки
+const CARD_RULES_PATH := "res://data/cards_rules.json"
+const ESC_MENU := preload("res://scripts/esc_menu.gd")   # меню паузы по Esc: «Продолжить», «Выйти в меню», «Выход из игры»
+const ESC_NOTE := "UI_PAUSE_NOTE_LOSS"   # ключ перевода
 const BANNER_WIDTH := 700.0                   # ширина баннера, px: длинный текст переносится по словам
 const STORY_COLOR := Color(1.0, 0.88, 0.6)    # цвет текста дневника в баннере
+const RADIANCE_COLOR := Color(0.6, 0.9, 1.0)  # цвет строки «+N Сияния» на экране итога
 const SQUAD_MAX := 8                          # ёмкость всех массивов отрядов (выделяются один раз)
 const START_SQUADS := 2                       # отряды 0 (пехота) и 1 (лучники) есть всегда и не освобождаются
 const ROTATE_STEP := PI / 12.0                # Shift + колесо: поворот отряда на месте, 15°
@@ -53,7 +76,7 @@ const FORM_MARGIN := 12.0                     # строй при расстан
 const PAUSE_ENABLED := true                   # активная пауза в бою (Space, P); false — паузы нет, как раньше
 const SIDE_POST_T := 0.45                     # стрелки: пост на отрезке ворота -> точка появления стороны, доля пути
 const GATE_POST_BACK := 90.0                  # стрелка вниз: пост у ворот, на столько выше стены
-const SPLIT_MODE_NAMES := ["правые", "левые", "задние", "передние"]
+const SPLIT_MODE_NAMES := ["SPLIT_MODE_RIGHT", "SPLIT_MODE_LEFT", "SPLIT_MODE_BACK", "SPLIT_MODE_FRONT"]   # ключи перевода
 const PICK_RADIUS := 1.5 * SLOT_SPACING       # ЛКМ мимо блоков: выбирается отряд ближайшего юнита игрока не дальше этого
 const BOX_SELECT_FRAC := 0.25                 # рамка выбирает отряд, если в ней его центр или не меньше этой доли живых
 const SORT_OFFSET := 1 << 20                  # сдвиг ключа сортировки _place_formation: координата * 16 всегда > 0
@@ -73,6 +96,14 @@ const FLOATS_PER_UNIT := 16   # 8 (трансформ 2D) + 4 (цвет) + 4 (cu
 # кадров может быть меньше — состояние зажимается до последнего кадра.
 const SPRITE_PX := 16            # сторона кадра и размер спрайта в мире, px
 const SPRITE_FRAMES_MAX := 3     # состояний анимации: 0 стоит, 1 замах, 2 атака
+# Зомби (юниты без отряда) рисуются теми же листами и тем же способом. В бою кадры по состоянию, как у пехоты (замах, атака);
+# на ходу — шаг по времени отрисовки: кадры ZOMBIE_WALK_SEQ, смена кадра раз в ZOMBIE_WALK_FRAME_T. На бой не влияет.
+const ZOMBIE_WALK_FRAME_T := 0.15   # секунд на кадр шага: как кадры «замах» и «атака» пехоты; 0 — на ходу стоит кадр 0
+const ZOMBIE_WALK_SEQ: Array[int] = [0, 1, 0, 2]
+const RUNNER_ANIM_SPEED := 1.6      # во сколько раз быстрее шаг бегуна
+const KNIGHT_SPRITE_SCALE := 1.5    # павший рыцарь на экране крупнее остальных (только спрайт: размеры в бою те же)
+const ZOMBIE_TURN_MIN := 1.0        # px за тик: медленнее этого зомби спрайт не поворачивает
+const ZOMBIE_TURN_HYST := 1.43      # поворот, когда одна ось движения больше другой во столько раз (tg 55°, как DIR_HYST)
 const UNIT_QUAD := roundf(5.33 * SCALE_REL * 100.0) / 100.0   # сторона цветного квадрата юнита, px
 const WINDUP_T := 0.15           # кадр «замах» столько секунд до удара
 const UPDATE_TICKS := 2          # юнит принимает решение (и бьёт) раз в столько физических тиков
@@ -91,7 +122,234 @@ const MIN_DIST := roundf(6.67 * SCALE_REL * 100.0) / 100.0   # ближе это
 const PUSH_K := 0.5          # доля перекрытия, которую снимаем за тик
 const VIEW_RANGE := CELL_SIZE   # равен CELL_SIZE: окно 3x3 его гарантированно покрывает
 # --- Карта замка (вертикальная, 1920x1080; игрок внизу, зомби сверху) ---
-const BG_PATH := "res://art/castle_bg.jpg"   # 1500x704, рисуется с масштабом 1.5
+const BG_PATH := "res://art/castle_map.png"   # 1831x859, пиксель-арт
+const TREES_LAYER_PATH := "res://art/trees_lay.png"        # слой леса: кроны по краям поля, прозрачный PNG 1823x863
+const CASTLE_LAYER_PATH := "res://art/castle_lay_two.png"  # слой замка: стены, башни с факелами, крыши; двор и вода прозрачные, 1831x859
+const BG_SCALE := 1056.0 / 859.0   # фон по высоте ровно на поле (1056 px), как прежний castle_bg.jpg 1500x704 с масштабом 1.5
+const BG_OFFSET := Vector2(-21, 0)
+# Слои в текселях фона: тексель слоя (u, v) ложится на тексель фона *_TX_OFFSET + *_TX_SCALE * (u, v). Найдено перебором
+# масштаба и сдвига по цвету фона, где лес и прежний замок уже нарисованы (bench/align_layers.py).
+const TREES_TX_OFFSET := Vector2(-2, 5)
+const TREES_TX_SCALE := 1.004
+# Замок — значения по умолчанию: при старте их заменяет data/layer_tuning.json (castle_offset, castle_scale_x, castle_scale_y),
+# если файл есть; подгонка вручную — F3 в debug-сборке (_tune_key), F4 сохраняет файл.
+const CASTLE_TX_OFFSET := Vector2(455, 519)
+const CASTLE_TX_SCALE := 0.448
+const LAYER_TUNING_PATH := "res://data/layer_tuning.json"
+const TUNE_STEP := 1.0             # сдвиг замка за нажатие стрелки, текселей фона (с Shift — TUNE_STEP_FINE)
+const TUNE_STEP_FINE := 0.25
+const TUNE_SCALE_STEP := 0.005     # масштаб замка за нажатие Q/E, Z/X, C/V: x (1 ± шаг) (с Shift — TUNE_SCALE_STEP_FINE)
+const TUNE_SCALE_STEP_FINE := 0.001
+# Фильтр слоя замка: "nearest" или "linear_mipmap" (mipmaps включены в импорте castle_lay_two.png; с эффектами на экран
+# идёт текстура вьюпорта без mip-уровней — тогда фактически linear)
+const CASTLE_FILTER := "nearest"
+const TREES_ALPHA := 1.0           # прозрачность слоя леса
+const CASTLE_ALPHA := 1.0          # прозрачность слоя замка
+const FG_Z := 1                    # слои леса и замка (замок поверх леса) выше юнитов, снарядов и полос HP ворот (всё на z 0), ниже интерфейса (CanvasLayer)
+# Мягкие пиксельные эффекты: сдвиги только на целый тексель, без интерполяции; всё по времени отрисовки (TIME шейдера,
+# delta кадра), без тиков и генераторов боя. false — картинка как без них (этап А).
+const FX_ENABLED := true
+const FX_RATE := 15.0           # кадров анимации слоёв леса и замка в секунду (деревья, факелы)
+# Деревья (слой леса): любой непрозрачный пиксель слоя. Сдвиг по x на 0 или ±1 тексель по знаку низкочастотного шума
+# n в [-1, 1]: гладкий по x (TREE_NOISE_SCALE.x текселей на ячейку) и времени (TREE_NOISE_SPEED ячеек в секунду), свой
+# в каждой полосе из TREE_NOISE_SCALE.y рядов; |n| <= порога — на месте. Ряды внутри кроны шевелятся вразнобой, соседние
+# кроны тоже. Берётся сосед, только если он тоже непрозрачный: силуэт кроны не меняется.
+const TREE_NOISE_SCALE := Vector2(40.0, 3.0)   # текселей на ячейку шума по x, рядов в полосе по y
+const TREE_NOISE_SPEED := 0.5   # ячеек шума в секунду
+const TREE_CALM := 0.6          # порог |n| без ветра: сдвинуто около 18% рядов (0.5 — 28%, 0.4 — 40%)
+const TREE_GUST_CALM := 0.25    # порог в порыв: около 61% рядов (0.15 — 76%)
+const GUST_EVERY_MIN := 8.0     # с между порывами (в диапазоне по хэшу номера порыва)
+const GUST_EVERY_MAX := 15.0
+const GUST_LEN_MIN := 1.0       # с, длительность порыва
+const GUST_LEN_MAX := 2.0
+const GUST_RAMP := 0.3          # с на нарастание и спад
+# Факелы (слой замка): оранжево-жёлтые пиксели (r >= FIRE_R_MIN, g >= FIRE_G_MIN, b <= FIRE_B_MAX, r - g >= FIRE_RG_GAP),
+# связные области (8 соседей) не меньше FIRE_MIN_PIXELS и не уже FIRE_MIN_SPAN текселей по обеим осям — отдельные
+# факелы, у каждого своя фаза. Остальной слой замка не меняется. Яркость пикселя
+# (границы FIRE_LUM) задаёт один из трёх оттенков FIRE_SHADES, оттенок идёт по кругу FIRE_CYCLE_SPEED шагов в секунду.
+# Верхние FIRE_TOP_ROWS рядов пламени долю FIRE_FLICK_DUTY времени выше на 1 тексель (FIRE_FLICK_RATE циклов в секунду).
+const FIRE_R_MIN := 0.85
+const FIRE_G_MIN := 0.35
+const FIRE_B_MAX := 0.35
+const FIRE_RG_GAP := 0.15
+const FIRE_MIN_PIXELS := 300    # мельче — не факел (у факела 550-620)
+const FIRE_MIN_SPAN := 20       # уже — не факел: золотая отделка крыш — полосы в 3-5 текселей (у факела 32x47)
+const FIRE_LUM := Vector2(0.55, 0.75)   # границы тёмного, среднего и светлого оттенка
+const FIRE_SHADES: Array[Color] = [Color(0.85, 0.32, 0.08), Color(0.98, 0.58, 0.12), Color(1.0, 0.86, 0.35)]
+const FIRE_CYCLE_SPEED := 6.0
+const FIRE_TOP_ROWS := 4
+const FIRE_FLICK_RATE := 1.3
+const FIRE_FLICK_DUTY := 0.25
+# Вода (фон): синий канал больше красного и зелёного на WATER_MARGIN. Ряд сдвигается на round(WATER_AMP * sin(y * WATER_FREQ_Y
+# + t * WATER_SPEED)) тексель (сосед — тоже вода, берег не тянется); блики — доля WATER_GLINT_DENSITY пикселей воды,
+# новые места WATER_GLINT_RATE раз в секунду, светлее на WATER_GLINT_LIGHT.
+const WATER_MARGIN := 0.03
+const WATER_AMP := 0.7          # не больше 1; меньше 1 — меньше рядов сдвинуто в каждый момент
+const WATER_SPEED := 0.6        # рад/с, медленный ритм
+const WATER_FREQ_Y := 0.7       # рад на ряд
+const WATER_GLINT_DENSITY := 0.0015
+const WATER_GLINT_RATE := 3.0
+const WATER_GLINT_LIGHT := 0.45
+# Отладка масок (F2 в debug-сборке, вместе с раскраской юнитов по ряду): факелы и вода — своими цветами, пиксели цвета
+# огня, отсеянные по размеру области, — FX_DEBUG_FIRE_REJECTED; остальное (и лес) затемнено.
+const FX_DEBUG_FIRE := Color(1.0, 1.0, 1.0)
+const FX_DEBUG_FIRE_REJECTED := Color(1.0, 0.0, 0.0)
+const FX_DEBUG_WATER := Color(0.0, 1.0, 1.0)
+const FX_DEBUG_DIM := 0.3
+# Листва: частицы от левого края поля вправо, выше юнитов и слоёв леса и замка, ниже интерфейса
+const LEAF_AMOUNT := 36         # слотов; с разбросом жизни одновременно летит около 30
+const LEAF_LIFE_MIN := 10.0     # с
+const LEAF_LIFE_MAX := 15.0
+const LEAF_SPEED_MIN := 225.0   # px/с: даже самый медленный и короткоживущий успевает вылететь за правый край
+const LEAF_SPEED_MAX := 260.0
+const LEAF_SPREAD := 4.0        # градусов
+const LEAF_PX_MIN := 2.0        # размер, px
+const LEAF_PX_MAX := 3.0
+const LEAF_ALPHA := 0.7
+const LEAF_SWAY_AMP := 2.5      # покачивание по вертикали в размерах листа: шейдер сдвигает вершины до масштаба частицы, на экране 5-7.5 px
+const LEAF_SWAY_FREQ := 2.2     # рад/с
+const LEAF_COLORS: Array[Color] = [Color(0.36, 0.62, 0.22), Color(0.25, 0.48, 0.16), Color(0.78, 0.66, 0.24), Color(0.6, 0.42, 0.18)]
+const LEAF_Z := 2
+const FX_NOISE_GLSL := """
+float hash3(vec3 p) {
+	p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+	p += dot(p, p.yxz + 33.33);
+	return fract((p.x + p.y) * p.z);
+}
+// шум, гладкий по p.x и p.y (время), без интерполяции между полосами band: 4 хэша на пиксель
+float vnoise_band(vec2 p, float band) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash3(vec3(i, band)), hash3(vec3(i + vec2(1, 0), band)), f.x),
+		mix(hash3(vec3(i + vec2(0, 1), band)), hash3(vec3(i + vec2(1, 1), band)), f.x), f.y);
+}
+"""
+# Слой леса: ряды непрозрачных пикселей сдвигаются на 0 или ±1 тексель.
+const TREES_SHADER := """shader_type canvas_item;
+uniform vec2 tree_noise_scale;
+uniform float tree_noise_speed;
+uniform float tree_calm;
+uniform bool debug_masks = false;
+uniform float debug_dim;
+varying vec4 vcol;
+NOISE
+void vertex() {
+	vcol = COLOR;
+}
+void fragment() {
+	vec2 tp = TEXTURE_PIXEL_SIZE;
+	vec2 px = floor(UV / tp);
+	vec4 c = texture(TEXTURE, UV);
+	vec4 res = c;
+	if (debug_masks) {
+		res = vec4(c.rgb * debug_dim, c.a);
+	} else if (c.a > 0.5) {
+		float n = vnoise_band(vec2(px.x / tree_noise_scale.x, TIME * tree_noise_speed), floor(px.y / tree_noise_scale.y)) * 2.0 - 1.0;
+		float off = abs(n) > tree_calm ? sign(n) : 0.0;
+		if (off != 0.0) {
+			vec4 s = texture(TEXTURE, UV + vec2(off * tp.x, 0.0));
+			res = s.a > 0.5 ? s : c;
+		}
+	}
+	COLOR = vcol * res;
+}
+"""
+# Слой замка: факелы. fire_map (по текселю): r — факел, g — верхние ряды пламени, b — фаза факела.
+const CASTLE_SHADER := """shader_type canvas_item;
+uniform sampler2D fire_map : filter_nearest;
+uniform vec4 fire_test;    // r_min, g_min, b_max, rg_gap
+uniform vec2 fire_lum;
+uniform vec4 fire_shade0 : source_color;
+uniform vec4 fire_shade1 : source_color;
+uniform vec4 fire_shade2 : source_color;
+uniform float fire_cycle_speed;
+uniform float fire_flick_rate;
+uniform float fire_flick_duty;
+uniform bool debug_masks = false;
+uniform vec4 debug_fire : source_color;
+uniform vec4 debug_fire_rejected : source_color;
+uniform float debug_dim;
+varying vec4 vcol;
+bool is_fire_color(vec4 c) {
+	return c.a > 0.5 && c.r >= fire_test.x && c.g >= fire_test.y && c.b <= fire_test.z && c.r - c.g >= fire_test.w;
+}
+vec4 fire_shade(vec4 c, float phase) {
+	float lum = dot(c.rgb, vec3(0.3, 0.59, 0.11));
+	float i = lum < fire_lum.x ? 0.0 : (lum < fire_lum.y ? 1.0 : 2.0);
+	float k = mod(i + floor(TIME * fire_cycle_speed + phase * 3.0), 3.0);
+	vec4 s = k < 0.5 ? fire_shade0 : (k < 1.5 ? fire_shade1 : fire_shade2);
+	return vec4(s.rgb, c.a);
+}
+void vertex() {
+	vcol = COLOR;
+}
+void fragment() {
+	vec2 tp = TEXTURE_PIXEL_SIZE;
+	vec4 c = texture(TEXTURE, UV);
+	vec4 res = c;
+	if (debug_masks) {
+		vec4 m = texture(fire_map, UV);
+		res = m.r > 0.5 ? debug_fire : (is_fire_color(c) ? debug_fire_rejected : vec4(c.rgb * debug_dim, c.a));
+	} else {
+		vec4 below = texture(fire_map, UV + vec2(0.0, tp.y));
+		if (below.g > 0.5 && fract(TIME * fire_flick_rate + below.b * 7.13) < fire_flick_duty) {
+			res = fire_shade(texture(TEXTURE, UV + vec2(0.0, tp.y)), below.b);   // верх пламени на тексель выше
+		} else if (c.a > 0.5) {
+			vec4 m = texture(fire_map, UV);   // факелы только среди непрозрачных пикселей
+			if (m.r > 0.5) {
+				res = fire_shade(c, m.b);
+			}
+		}
+	}
+	COLOR = vcol * res;
+}
+"""
+# Фон: вода — сдвиг рядов и блики.
+const BG_SHADER := """shader_type canvas_item;
+uniform float water_margin;
+uniform float water_amp;
+uniform float water_speed;
+uniform float water_freq_y;
+uniform float glint_density;
+uniform float glint_rate;
+uniform float glint_light;
+uniform bool debug_masks = false;
+uniform vec4 debug_water : source_color;
+uniform float debug_dim;
+varying vec4 vcol;
+NOISE
+bool is_water(vec4 c) {
+	return c.b > max(c.r, c.g) + water_margin;
+}
+void vertex() {
+	vcol = COLOR;
+}
+void fragment() {
+	vec2 tp = TEXTURE_PIXEL_SIZE;
+	vec2 px = floor(UV / tp);
+	vec4 c = texture(TEXTURE, UV);
+	vec4 res = c;
+	if (debug_masks) {
+		res = is_water(c) ? debug_water : vec4(c.rgb * debug_dim, c.a);
+	} else if (is_water(c)) {
+		float off = round(water_amp * sin(px.y * water_freq_y + TIME * water_speed));
+		vec4 s = texture(TEXTURE, UV + vec2(off * tp.x, 0.0));
+		res = is_water(s) ? s : c;
+		if (hash3(vec3(px, floor(TIME * glint_rate))) < glint_density) {
+			res.rgb = mix(res.rgb, vec3(1.0), glint_light);
+		}
+	}
+	COLOR = vcol * res;
+}
+"""
+const LEAF_SHADER := """shader_type canvas_item;
+uniform float amp;
+uniform float freq;
+void vertex() {
+	VERTEX.y += amp * sin(TIME * freq + float(INSTANCE_ID) * 2.4);
+}
+"""
 const ROAD_X := 970.0                  # ось дороги, по которой идёт орда
 const GATE_POS := Vector2(1010, 745)   # ворота замка
 const WALL_Y := 745.0                  # временный пол: ниже не заходит ни один юнит, пока нет стен
@@ -139,7 +397,7 @@ const VOLLEY_JITTER := 0.15            # залп: индивидуальная 
 const ARROW_SPEED := roundf(266.67 * SPEED_REL * 100.0) / 100.0   # px/с, задаёт задержку падения стрелы
 const ARROW_HIT_R := roundf(10.67 * SCALE_REL * 100.0) / 100.0   # стрела попадает в ближайшего зомби в этом радиусе от точки падения
 const ARROW_CAP := 2048                # ёмкость очереди стрел (с запасом)
-const DEBUG_COLORS := true            # F2–F4: отладочная раскраска; false в релизе (остаётся только F1)
+const DEBUG_COLORS := true            # F2, Shift+F3 (F3 в release-сборке), F4: отладочная раскраска; false в релизе (остаётся только F1)
 # Состояние юнита для раскраски F3 (пишется там, где принимается решение)
 const ST_IDLE := 0     # стоит в слоте / идёт с ордой
 const ST_CHASE := 1    # идёт на врага
@@ -198,11 +456,14 @@ var type_sprite := PackedStringArray()        # путь листа спрайт
 var type_recoil := PackedFloat32Array()       # отдача при «атаке», px (только отрисовка)
 var type_sprite_frames := PackedInt32Array()  # кадров в листе типа; 0 = рисуется квадратом (нет листа или он не подошёл)
 var type_sprite_base := PackedInt32Array()    # первая ячейка типа в атласе
+var type_sprite_scale := PackedFloat32Array() # множитель размера спрайта типа на экране (1, у рыцаря KNIGHT_SPRITE_SCALE)
+var type_walk_rate := PackedFloat32Array()    # кадров шага в секунду у типа-зомби; 0 — шага нет (рыцарь: его лист — замах и удар мечом)
+var anim_clock := 0.0                         # секунды отрисовки для шага зомби: идёт в _process, на паузе стоит
 var cell_white := 0                           # ячейка атласа после всех кадров: белая, для цветных квадратов
 var atlas_cells := 1                          # всего ячеек в атласе
 var windup_cd := 0.0                          # порог cooldown для кадра «замах», см. _unit_frame
 var unit_slot_changed_t := PackedFloat32Array()   # время (с) последней смены slot_idx (для F4)
-var color_mode := 0                           # 0 = F1 по типу, 1 = F2 по ряду, 2 = F3 по состоянию, 3 = F4 смена слота
+var color_mode := 0                           # 0 = F1 по типу, 1 = F2 по ряду, 2 = Shift+F3 по состоянию, 3 = F4 смена слота
 var squad_front_row := PackedInt32Array()     # scratch для F2: передний занятый ряд отряда
 
 # --- Типы юнитов (data/unit_types.json): плоские массивы по номеру типа ---
@@ -222,6 +483,7 @@ var type_range_far := PackedFloat32Array()      # дальность стрел�
 var type_volley_period := PackedFloat32Array()  # период цикла залпа, с
 var type_draw_time := PackedFloat32Array()      # натяжение перед залпом, с
 var type_spread := PackedFloat32Array()         # разброс: радиус = spread * дистанция
+var wave_spread := PackedFloat32Array()         # разброс на эту волну: type_spread через Mods.value (стат spread), _read_wave_mods
 var type_arrow_dmg := PackedFloat32Array()
 var type_bounty_mult := PackedFloat32Array()   # золото за убитого = gold_per_kill * это
 var type_chase := PackedByteArray()            # орда: 1 = идёт к врагу в VIEW_RANGE; 0 = идёт мимо, бьёт только в дальности атаки
@@ -291,7 +553,11 @@ var banner: PanelContainer             # полупрозрачный фон, в
 var banner_any := false                # в баннере есть текст
 var banner_hidden := false             # скрыт клавишей H (до следующего текста)
 var banner_labels: Array[Label] = []   # заголовок, текст, дневник, подсказка
+var banner_build := Callable()        # собирает текущий баннер заново при смене языка (_set_banner) или пусто
 var banner_parts := PackedStringArray(["", "", "", ""])   # что сейчас в баннере (тесты читают и без интерфейса)
+var esc_menu: CanvasLayer = null       # меню паузы по Esc; null без интерфейса (бенчи)
+var radiance_label: Label              # «+N Сияния» на экране итога, между дневником и подсказкой
+var banner_radiance := ""              # её текст или "" (тесты читают и без интерфейса)
 var squad_user_width := PackedInt32Array()   # ширина строя, заданная перетаскиванием; 0 = авто (squad_aspect)
 var drag_active := false               # идёт протяжка ПКМ по карте (приказ: клик — цель, протяжка — строй)
 var drag_start := Vector2.ZERO         # мировые координаты нажатия
@@ -300,8 +566,66 @@ var drag_flip := false                 # F во время протяжки: л�
 var story_path := STORY_PATH           # тесты подменяют
 var gifts_path := GIFTS_PATH           # тесты подменяют
 var active_gifts := {}                 # активные дары забега, id -> уровень: с синглтоном берутся из Game.active_gifts, бенчи задают до _setup_data
-var mods: RefCounted = null            # MODS: спрашивается один раз в _apply_mods, тик его не вызывает
-var income_pct := 0.0                  # дар на доход: эта доля дохода прошлой волны начисляется в начале волны
+var gift_defs := {}                    # дары из gifts_path (MODS.load_gifts)
+var cards_path := "res://data/cards.json"   # бенчи и тесты подменяют
+var card_defs := {}                    # карточки из cards_path (CARDS.load_cards)
+var active_cards: Array = []           # карточки забега без синглтона (бенчи): записи {id[, result]}; с Game — Game.run_cards
+# Условия карточек (тип C) и особые (K): пересчёт по отрядам раз в COND_EVERY тиков (_update_card_conditions), горячий цикл умножает на готовое.
+# Без карточек все множители ровно 1.0.
+var squad_dmg_mult := PackedFloat32Array()     # множитель урона отряда (удар и стрелы)
+var squad_taken_mult := PackedFloat32Array()   # множитель получаемого отрядом урона
+var squad_speed_mult := PackedFloat32Array()   # множитель скорости отряда (строй и юниты)
+var squad_start_n := PackedInt32Array()        # численность отряда на начало волны (squad_low, lost_steps); 0 — отряд создан в бою, берётся при первой проверке
+var wave_fallen := 0                           # своих юнитов пало за волну (карточка 24, vengeance)
+var cond_cards: Array = []                     # условные карточки забега на эту волну: [{cond, when, mods [{stat, target, value}]}]
+var vengeance := {}                            # карточка 24: {per_unit_pct, max_pct} или {}
+var squad_atk_speed_mult := PackedFloat32Array()   # множитель скорости ударов и стрельбы отряда (Клич Благодати); без него ровно 1.0
+# Клич Благодати (дар war_cry, способность): состояние в тиках симуляции — пауза и ускорение работают сами.
+# Активация — команда с меткой тика: request_war_cry ставит запрос, он исполняется в начале следующего тика (_tick_war_cry);
+# war_cry_log — тики активаций, war_cry_plan — тики, на которых активировать (воспроизведение записанного прогона, бенчи).
+var war_cry_level := 0          # уровень купленного дара; 0 — способности нет
+var war_cry_mult := 1.0         # 1 + бонус / 100
+var war_cry_dur := 0            # длительность, тиков
+var war_cry_cd := 0             # перезарядка от активации, тиков
+var war_cry_until := -1         # действует на тиках [активация, war_cry_until); -1 — не действует
+var war_cry_ready := 0          # с этого тика можно активировать
+var war_cry_request := false
+var war_cry_log: Array = []
+var war_cry_plan: Array = []
+var war_cry_uses := 0           # активаций за забег (статистика бенчей)
+var war_cry_active_ticks := 0   # тиков с действующим бонусом за забег
+var war_cry_box: VBoxContainer = null   # кнопка в HUD (только с интерфейсом)
+var war_cry_button: Button = null
+var war_cry_bar: ProgressBar = null
+var war_cry_glow: Array = []    # золотистая подсветка краёв экрана, пока клич действует
+# Выбор карточек: в начале передышки после волн card_rules.pick_after_waves — тройка (pending_offer). С Game — правила и генератор забега Game;
+# без Game выбора нет, если бенч не задал card_pick_auto ("random": бенч выбирает сам через choose_card) и bench_card_rng.
+var card_rules := {}
+var pending_offer: Array = []          # тройка, ждущая выбора; пока не пуста, волну не начать
+var card_pick_auto := ""               # бенчи: "random" — выбор без экрана
+var bench_card_rng: RandomNumberGenerator = null
+var card_screen: CanvasLayer = null    # экран выбора (только с интерфейсом)
+var cards_label: Label = null          # заголовок списка выбранных карточек в HUD («Карточки:»)
+var cards_box: VBoxContainer = null    # список: строка на карточку (подсветка условия, подсказка при наведении)
+var cards_rows: Array = []             # Label на каждую выбранную карточку, порядок _cards()
+# Индикаторы карточек для HUD: id -> {on: условие выполнено хотя бы в одном отряде, pct: текущий бонус урона %} — пишет
+# _update_card_conditions (раз в COND_EVERY тиков), HUD только читает; в передышке все выключены.
+var card_state := {}
+var mods: RefCounted = null            # MODS: собирается при старте забега и в начале каждой волны (_prepare_wave), тик его не вызывает
+var income_pct := 0.0                  # стат income: эта доля дохода волны начисляется в конце волны (до магазина передышки)
+var income_flat := 0.0                 # стат income_flat: столько золота начисляется в конце волны вместе с доходом
+# База данных типов (из unit_types.json, castle.json) — от неё в начале каждой волны считаются эффективные массивы type_* (_apply_wave_data)
+var base_type_hp := PackedFloat32Array()
+var base_type_damage := PackedFloat32Array()
+var base_type_arrow_dmg := PackedFloat32Array()
+var base_type_bounty := PackedFloat32Array()
+var base_type_speed := PackedFloat32Array()
+var base_type_cooldown := PackedFloat32Array()
+var base_type_volley := PackedFloat32Array()
+var base_type_range_far := PackedFloat32Array()
+var base_gate_hp_max := 0.0
+var gate_mult := 1.0                   # множитель gate_hp, с которым посчитан gate_hp_max
+var type_cd_floor := PackedFloat32Array()   # нижний предел cooldown: 0, с модификатором скорости удара -CD_CARRY (остаток переносится на следующий удар)
 var wave_income := 0.0                 # доход прошлой волны: золото за убитых и бонус волны
 var gold_wave_start := 0.0             # золото в начале волны (после начисления дара): от него считается доход волны
 var story_intro := ""
@@ -332,8 +656,8 @@ const SIDE_LEFT := 1
 const SIDE_RIGHT := 2
 const SIDE_ARROWS := ["↑", "←", "→"]
 const VIEW_HALF_H := 540.0   # и половина высоты
-const SIDE_WORDS := ["сверху", "слева", "справа"]
-const VIEW_HALF_W := 960.0   # половина ширины экрана в px мира (камера по центру поля): для маркеров разведки у края экрана
+const SIDE_WORDS := ["SIDE_TOP", "SIDE_LEFT", "SIDE_RIGHT"]   # ключи перевода
+const VIEW_HALF_W := 960.0   # половина ширины экрана в px мира без камеры (бенчи без дерева); с камерой край вида — view_rect()
 var wave_plan: Array = []              # состав следующей (в бою — текущей) волны: записи {type, side, count}
 var wave_plan_for := 0                 # для какой волны построен wave_plan
 var wave_left := PackedInt32Array()    # сколько ещё не появилось по каждой записи плана
@@ -345,6 +669,7 @@ var debug_layer := DEBUG_LAYER         # и слой тоже
 var burst_pending := 0                 # слои: ещё не появившиеся юниты уже начавшихся всплесков
 var burst_live := 0                    # слои: сколько всплесков сейчас появляется
 var signal_redraw_until := 0.0         # до какого wave_t полоса сигнала меняется (перерисовка каждый кадр)
+var wave_signal_lead := 0.0            # окно сигнала всплеска на эту волну, с: signal_lead слоя (или burst_signal_lead) через Mods.value, _read_wave_mods
 const ARRIVALS_WINDOW := 300           # тиков в окне arrivals_10s_max (10 с)
 var arrivals_ring := PackedInt32Array()   # PROFILE: сколько зомби появилось в каждом из последних тиков
 var arrivals_sum := 0
@@ -391,6 +716,27 @@ var sel_sig := 0.0                            # отпечаток выбран�
 var sel_boxes := []                           # границы живых слотов отрядов для контуров (_squad_boxes), пока строи те же
 var sel_boxes_key := 0.0
 var hint_label: Label
+var fx_enabled := FX_ENABLED                  # бенчи переопределяют до _ready
+var fx_bg_mat: ShaderMaterial = null          # материалы эффектов; null при fx_enabled = false
+var fx_trees_mat: ShaderMaterial = null
+var fx_castle_mat: ShaderMaterial = null
+var fx_vps: Array[SubViewport] = []          # вьюпорты слоёв леса и замка с эффектами
+var camera: Camera2D = null                   # камера поля (_setup_camera); null в бенчах без дерева
+var castle_filter := CASTLE_FILTER            # бенчи переопределяют до _ready
+var layer_tuning_path := LAYER_TUNING_PATH    # и путь подгонки замка тоже
+var castle_sprite: Sprite2D = null            # спрайт слоя замка на экране (с эффектами — спрайт текстуры вьюпорта)
+var castle_offset := CASTLE_TX_OFFSET         # положение и масштаб замка в текселях фона (data/layer_tuning.json)
+var castle_scale := Vector2(CASTLE_TX_SCALE, CASTLE_TX_SCALE)
+var tune_on := false                          # режим подгонки замка (F3, debug-сборка)
+var tune_label: Label = null
+var tune_msg := ""                            # итог последнего сохранения
+var fx_bake_t := 0.0                          # с до следующей перерисовки вьюпорта
+static var fx_fire_map: ImageTexture = null   # карта факелов, строится один раз за запуск
+static var fx_torches := 0                    # найдено факелов
+var fx_gust_n := 0                            # номер порыва: интервал и длительность — хэш от номера (без генераторов)
+var fx_gust_wait := 0.0                       # с до порыва
+var fx_gust_left := 0.0                       # с до конца порыва
+var fx_gust := 0.0                            # сила порыва 0..1
 var paused := false                           # активная пауза: _physics_process не выполняется, команды только меняют данные
 var split_frac := 0.5                         # деление: доля уходящих в новый отряд
 var split_mode := 0                           # кто уходит: 0 правые, 1 левые, 2 задние ряды, 3 передние ряды
@@ -429,6 +775,9 @@ func _ready() -> void:
 	_setup_rendering()
 	_setup_camera()
 	_setup_fps_label()
+	var st := get_node_or_null("/root/Settings")
+	if st != null:
+		st.changed.connect(_on_settings_changed)   # переназначили клавишу — обновить подписи
 	queue_redraw()   # отладочные маркеры ворот и дороги (_draw)
 	# Звук сигнала всплеска: если файла нет — тихо, одно предупреждение за запуск.
 	if ResourceLoader.exists(SIGNAL_SOUND_PATH):
@@ -445,23 +794,384 @@ func _setup_background() -> void:
 	if not ResourceLoader.exists(BG_PATH):
 		push_warning("Нет фона %s: поле рисуется без фона" % BG_PATH)
 		return
-	var bg := Sprite2D.new()
-	bg.texture = load(BG_PATH)
-	bg.centered = false
-	bg.scale = Vector2(1.5, 1.5)
-	bg.position = Vector2(-21, 0)
-	bg.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	var bg := _map_sprite(BG_PATH)
 	bg.z_index = -1   # ниже MultiMeshInstance2D юнитов (z 0)
+	if fx_enabled:
+		fx_bg_mat = _fx_material(BG_SHADER, {"water_margin": WATER_MARGIN, "water_amp": minf(WATER_AMP, 1.0),
+			"water_speed": WATER_SPEED, "water_freq_y": WATER_FREQ_Y, "glint_density": WATER_GLINT_DENSITY,
+			"glint_rate": WATER_GLINT_RATE, "glint_light": WATER_GLINT_LIGHT, "debug_water": FX_DEBUG_WATER, "debug_dim": FX_DEBUG_DIM})
+		bg.material = fx_bg_mat
 	add_child(bg)
+	# Слои леса и замка поверх юнитов; замок добавлен позже — поверх леса
+	var trees := _layer_sprite(TREES_LAYER_PATH, TREES_TX_OFFSET, Vector2.ONE * TREES_TX_SCALE, TREES_ALPHA)
+	if trees != null:
+		if fx_enabled:
+			fx_trees_mat = _fx_material(TREES_SHADER, {"tree_noise_scale": TREE_NOISE_SCALE,
+				"tree_noise_speed": TREE_NOISE_SPEED, "tree_calm": TREE_CALM, "debug_dim": FX_DEBUG_DIM})
+			trees.material = fx_trees_mat
+			trees = _fx_bake(trees)
+			fx_gust_wait = lerpf(GUST_EVERY_MIN, GUST_EVERY_MAX, _fx_hash(0))
+		add_child(trees)
+	_load_layer_tuning()
+	var castle := _layer_sprite(CASTLE_LAYER_PATH, castle_offset, castle_scale, CASTLE_ALPHA)
+	if castle != null:
+		if castle_filter == "linear_mipmap":
+			castle.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		elif castle_filter != "nearest":
+			push_warning("CASTLE_FILTER: неизвестный фильтр %s, оставлен nearest" % castle_filter)
+		if fx_enabled:
+			if fx_fire_map == null:
+				fx_fire_map = _build_fire_map(castle.texture.get_image())
+			fx_castle_mat = _fx_material(CASTLE_SHADER, {"fire_map": fx_fire_map,
+				"fire_test": Vector4(FIRE_R_MIN, FIRE_G_MIN, FIRE_B_MAX, FIRE_RG_GAP), "fire_lum": FIRE_LUM,
+				"fire_shade0": FIRE_SHADES[0], "fire_shade1": FIRE_SHADES[1], "fire_shade2": FIRE_SHADES[2],
+				"fire_cycle_speed": FIRE_CYCLE_SPEED, "fire_flick_rate": FIRE_FLICK_RATE, "fire_flick_duty": FIRE_FLICK_DUTY,
+				"debug_fire": FX_DEBUG_FIRE, "debug_fire_rejected": FX_DEBUG_FIRE_REJECTED, "debug_dim": FX_DEBUG_DIM})
+			castle.material = fx_castle_mat
+			castle = _fx_bake(castle)
+		add_child(castle)
+		castle_sprite = castle
+	if fx_enabled:
+		_setup_leaves()
+		_sync_fx_debug()
 
 
-# Фиксированная камера на центре поля, без отдаления.
+func _fx_material(code: String, params: Dictionary) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = code.replace("NOISE", FX_NOISE_GLSL)
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	for k in params:
+		mat.set_shader_parameter(k, params[k])
+	return mat
+
+
+# Слой с эффектами рисуется в SubViewport размера текстуры раз в 1 / FX_RATE с (_update_fx), на экран — готовая
+# текстура спрайтом с теми же позицией, масштабом и z: шейдер не считается каждый кадр. Вьюпорт хранит цвет, умноженный
+# на альфу, поэтому смешивание premultiplied (и прозрачность слоя — во всех каналах modulate).
+func _fx_bake(inner: Sprite2D) -> Sprite2D:
+	var out := Sprite2D.new()
+	out.centered = false
+	out.position = inner.position
+	out.scale = inner.scale
+	out.z_index = inner.z_index
+	var a := inner.modulate.a
+	out.modulate = Color(a, a, a, a)
+	out.texture_filter = inner.texture_filter
+	var vp := SubViewport.new()
+	vp.size = Vector2i(inner.texture.get_size())
+	vp.transparent_bg = true
+	vp.disable_3d = true
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	inner.position = Vector2.ZERO
+	inner.scale = Vector2.ONE
+	inner.z_index = 0
+	inner.modulate = Color.WHITE
+	inner.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST   # во вьюпорт — тексель в тексель
+	vp.add_child(inner)
+	add_child(vp)
+	fx_vps.append(vp)
+	out.texture = vp.get_texture()
+	var cm := CanvasItemMaterial.new()
+	cm.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+	out.material = cm
+	return out
+
+
+# Карта факелов по текселям слоя замка: связные области цвета огня от FIRE_MIN_PIXELS и FIRE_MIN_SPAN. r — факел, g — верхние
+# FIRE_TOP_ROWS рядов области, b — фаза (золотое сечение от номера факела). Один раз за запуск игры (статическое поле).
+func _build_fire_map(img: Image) -> ImageTexture:
+	if img.is_compressed():
+		img.decompress()
+	img.convert(Image.FORMAT_RGBA8)
+	var w := img.get_width()
+	var h := img.get_height()
+	var src := img.get_data()
+	var r_min := int(FIRE_R_MIN * 255.0)
+	var g_min := int(FIRE_G_MIN * 255.0)
+	var b_max := int(FIRE_B_MAX * 255.0)
+	var gap := int(FIRE_RG_GAP * 255.0)
+	var fire := PackedByteArray()
+	fire.resize(w * h)
+	for i in w * h:
+		var o := i * 4
+		var r := src[o]
+		if r >= r_min and src[o + 3] > 127 and src[o + 1] >= g_min and src[o + 2] <= b_max and r - src[o + 1] >= gap:
+			fire[i] = 1
+	var out := PackedByteArray()
+	out.resize(w * h * 4)
+	var torches := 0
+	for i in w * h:
+		if fire[i] != 1:
+			continue
+		var area := PackedInt32Array([i])
+		fire[i] = 2
+		var k := 0
+		while k < area.size():
+			var q := area[k]
+			k += 1
+			var qx := q % w
+			var qy := q / w
+			for dy in [-1, 0, 1]:
+				for dx in [-1, 0, 1]:
+					var x: int = qx + dx
+					var y: int = qy + dy
+					if x >= 0 and y >= 0 and x < w and y < h and fire[y * w + x] == 1:
+						fire[y * w + x] = 2
+						area.append(y * w + x)
+		if area.size() < FIRE_MIN_PIXELS:
+			continue
+		var top := h
+		var bottom := 0
+		var left := w
+		var right := 0
+		for q in area:
+			top = mini(top, q / w)
+			bottom = maxi(bottom, q / w)
+			left = mini(left, q % w)
+			right = maxi(right, q % w)
+		if mini(bottom - top, right - left) + 1 < FIRE_MIN_SPAN:
+			continue
+		var phase := int(fposmod(torches * 0.618034, 1.0) * 255.0)
+		torches += 1
+		for q in area:
+			out[q * 4] = 255
+			out[q * 4 + 1] = 255 if q / w < top + FIRE_TOP_ROWS else 0
+			out[q * 4 + 2] = phase
+			out[q * 4 + 3] = 255
+	fx_torches = torches
+	return ImageTexture.create_from_image(Image.create_from_data(w, h, false, Image.FORMAT_RGBA8, out))
+
+
+# Порывы ветра по времени кадра: порог шума деревьев плавно опускается за GUST_RAMP с и обратно.
+func _update_fx(delta: float) -> void:
+	if fx_vps.is_empty():
+		return
+	fx_bake_t -= delta
+	if fx_bake_t <= 0.0:
+		fx_bake_t = maxf(fx_bake_t + 1.0 / FX_RATE, 0.0)
+		for vp in fx_vps:
+			vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	if fx_trees_mat == null:
+		return
+	if fx_gust_left > 0.0:
+		fx_gust_left -= delta
+		if fx_gust_left <= 0.0:
+			fx_gust_n += 1
+			fx_gust_wait = lerpf(GUST_EVERY_MIN, GUST_EVERY_MAX, _fx_hash(fx_gust_n * 2))
+	else:
+		fx_gust_wait -= delta
+		if fx_gust_wait <= 0.0:
+			fx_gust_left = lerpf(GUST_LEN_MIN, GUST_LEN_MAX, _fx_hash(fx_gust_n * 2 + 1))
+	var g := move_toward(fx_gust, 1.0 if fx_gust_left > 0.0 else 0.0, delta / GUST_RAMP)
+	if g != fx_gust:
+		fx_gust = g
+		fx_trees_mat.set_shader_parameter("tree_calm", lerpf(TREE_CALM, TREE_GUST_CALM, g))
+
+
+# Псевдослучайное 0..1 от целого (для порывов ветра).
+func _fx_hash(k: int) -> float:
+	return fposmod(sin(k * 12.9898 + 1.0) * 43758.5453, 1.0)
+
+
+# Отладка масок эффектов: F2 (раскраска по ряду) в debug-сборке.
+func _sync_fx_debug() -> void:
+	var on := OS.is_debug_build() and color_mode == 1
+	for mat in [fx_bg_mat, fx_trees_mat, fx_castle_mat]:
+		if mat != null:
+			mat.set_shader_parameter("debug_masks", on)
+	fx_bake_t = 0.0   # слои перерисуются в ближайшем кадре
+
+
+# Листва: CPUParticles2D со своим генератором; движение — по времени кадра, покачивание — в шейдере по TIME.
+func _setup_leaves() -> void:
+	var p := CPUParticles2D.new()
+	p.amount = LEAF_AMOUNT
+	p.lifetime = LEAF_LIFE_MAX
+	p.lifetime_randomness = 1.0 - LEAF_LIFE_MIN / LEAF_LIFE_MAX
+	p.preprocess = LEAF_LIFE_MAX   # поле с листьями с первого кадра
+	p.position = Vector2(0.0, FIELD.y * 0.5)
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	p.emission_rect_extents = Vector2(1.0, FIELD.y * 0.5)
+	p.direction = Vector2.RIGHT
+	p.spread = LEAF_SPREAD
+	p.gravity = Vector2.ZERO
+	p.initial_velocity_min = LEAF_SPEED_MIN
+	p.initial_velocity_max = LEAF_SPEED_MAX
+	p.scale_amount_min = LEAF_PX_MIN   # без текстуры частица — квадрат 1x1 px
+	p.scale_amount_max = LEAF_PX_MAX
+	var ramp := Gradient.new()   # случайная точка рампы на частицу; ступенчатая рампа — один из цветов LEAF_COLORS
+	ramp.interpolation_mode = Gradient.GRADIENT_INTERPOLATE_CONSTANT
+	ramp.offsets = PackedFloat32Array(range(LEAF_COLORS.size()).map(func(k: int) -> float: return float(k) / LEAF_COLORS.size()))
+	ramp.colors = PackedColorArray(LEAF_COLORS)
+	p.color_initial_ramp = ramp
+	p.modulate.a = LEAF_ALPHA
+	p.z_index = LEAF_Z
+	var sh := Shader.new()
+	sh.code = LEAF_SHADER
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	mat.set_shader_parameter("amp", LEAF_SWAY_AMP)
+	mat.set_shader_parameter("freq", LEAF_SWAY_FREQ)
+	p.material = mat
+	add_child(p)
+
+
+# Спрайт карты: тексель (u, v) — тексель фона tx_offset + tx_scale * (u, v); фон — с нулевым сдвигом и масштабом 1.
+func _map_sprite(path: String, tx_offset := Vector2.ZERO, tx_scale := Vector2.ONE) -> Sprite2D:
+	var sp := Sprite2D.new()
+	sp.texture = load(path)
+	sp.centered = false
+	_place_map_sprite(sp, tx_offset, tx_scale)
+	sp.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	return sp
+
+
+func _place_map_sprite(sp: Sprite2D, tx_offset: Vector2, tx_scale: Vector2) -> void:
+	sp.scale = Vector2(BG_SCALE, BG_SCALE) * tx_scale
+	sp.position = BG_OFFSET + tx_offset * BG_SCALE
+
+
+# Положение и масштаб замка из data/layer_tuning.json; нет файла — значения по умолчанию, битый — они же с предупреждением.
+func _load_layer_tuning() -> void:
+	if not FileAccess.file_exists(layer_tuning_path):
+		return
+	var d = JSON.parse_string(FileAccess.get_file_as_string(layer_tuning_path))
+	var off = d.get("castle_offset") if d is Dictionary else null
+	if not (off is Array and off.size() == 2 and (off[0] is float or off[0] is int) and (off[1] is float or off[1] is int)
+			and _require_numbers(d, ["castle_scale_x", "castle_scale_y"], layer_tuning_path)):
+		push_warning("%s: нужны castle_offset [x, y], castle_scale_x, castle_scale_y — взяты значения по умолчанию" % layer_tuning_path)
+		return
+	castle_offset = Vector2(off[0], off[1])
+	castle_scale = Vector2(d["castle_scale_x"], d["castle_scale_y"])
+
+
+func _save_layer_tuning() -> void:
+	var f := FileAccess.open(layer_tuning_path, FileAccess.WRITE)
+	if f == null:
+		tune_msg = "не сохранено: %s (%s)" % [layer_tuning_path, error_string(FileAccess.get_open_error())]   # tr-skip: отладка или контекст лога
+		return
+	f.store_string(JSON.stringify({"castle_offset": [castle_offset.x, castle_offset.y],
+		"castle_scale_x": castle_scale.x, "castle_scale_y": castle_scale.y}, "\t", false) + "\n")
+	f.close()
+	tune_msg = "сохранено в %s" % layer_tuning_path   # tr-skip: отладка или контекст лога
+
+
+# Подгонка замка (только debug-сборка): F3 включает и выключает; во включённом режиме стрелки — сдвиг на TUNE_STEP
+# текселя фона, Q/E — масштаб по обеим осям, Z/X — по x, C/V — по y (меньше/больше в 1 ± TUNE_SCALE_STEP раз), с Shift
+# мельче; масштаб — от левого верхнего угла слоя; F4 — сохранить. Съеденная клавиша в игру не идёт; выключенный режим
+# не забирает ничего, кроме F3 без Shift (раскраска по состоянию — Shift+F3). Симуляцию не трогает: только спрайт.
+func _tune_key(event: InputEvent) -> bool:
+	if not (event is InputEventKey and event.pressed and OS.is_debug_build() and castle_sprite != null):
+		return false
+	var k: Key = event.keycode
+	if k == KEY_F3 and not event.shift_pressed:
+		if not event.echo:
+			tune_on = not tune_on
+			tune_msg = ""
+			_tune_show()
+		return true
+	if not tune_on:
+		return false
+	var step := TUNE_STEP_FINE if event.shift_pressed else TUNE_STEP
+	var ds := TUNE_SCALE_STEP_FINE if event.shift_pressed else TUNE_SCALE_STEP
+	match k:
+		KEY_LEFT:
+			castle_offset.x -= step
+		KEY_RIGHT:
+			castle_offset.x += step
+		KEY_UP:
+			castle_offset.y -= step
+		KEY_DOWN:
+			castle_offset.y += step
+		KEY_Q:
+			castle_scale *= 1.0 - ds
+		KEY_E:
+			castle_scale *= 1.0 + ds
+		KEY_Z:
+			castle_scale.x *= 1.0 - ds
+		KEY_X:
+			castle_scale.x *= 1.0 + ds
+		KEY_C:
+			castle_scale.y *= 1.0 - ds
+		KEY_V:
+			castle_scale.y *= 1.0 + ds
+		KEY_F4:
+			if not event.echo:
+				_save_layer_tuning()
+		_:
+			return false
+	_place_map_sprite(castle_sprite, castle_offset, castle_scale)
+	_tune_show()
+	return true
+
+
+func _tune_show() -> void:
+	if tune_label == null:
+		var layer := CanvasLayer.new()
+		tune_label = Label.new()
+		tune_label.position = Vector2(16, 40)
+		tune_label.add_theme_constant_override("outline_size", 6)
+		tune_label.add_theme_color_override("font_outline_color", Color.BLACK)
+		tune_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layer.add_child(tune_label)
+		add_child(layer)
+	tune_label.visible = tune_on
+	tune_label.text = ("Подгонка замка (F3): смещение (%.2f, %.2f) текселей фона, масштаб x %.4f, y %.4f\n"   # tr-skip: отладка или контекст лога
+		+ "стрелки — сдвиг 1 (Shift 0.25) · Q/E — масштаб -/+0.5%% (Shift 0.1%%) · Z/X — по x · C/V — по y · F4 — сохранить%s") % [   # tr-skip: отладка или контекст лога
+		castle_offset.x, castle_offset.y, castle_scale.x, castle_scale.y, ("\n" + tune_msg) if tune_msg != "" else ""]
+
+
+# Слой поверх юнитов (z FG_Z) с прозрачностью alpha; нет файла — null с предупреждением.
+func _layer_sprite(path: String, tx_offset: Vector2, tx_scale: Vector2, alpha: float) -> Sprite2D:
+	if not ResourceLoader.exists(path):
+		push_warning("Нет слоя %s: рисуется без него" % path)
+		return null
+	var sp := _map_sprite(path, tx_offset, tx_scale)
+	sp.z_index = FG_Z
+	sp.modulate.a = alpha
+	return sp
+
+
+# Камера на центре поля, без отдаления при росте армии. Зум не меньше camera_min_zoom(): поле закрывает весь экран
+# (при 1920x1080 и поле 2208x1056 — по высоте, 1080/1056), центр зажат так, чтобы края вида не выходили за поле.
 func _setup_camera() -> void:
-	var cam := Camera2D.new()
-	cam.position = FIELD * 0.5
-	cam.zoom = Vector2.ONE
-	add_child(cam)
-	cam.make_current()
+	camera = Camera2D.new()
+	camera.zoom = Vector2.ONE * camera_min_zoom()
+	camera.position = _camera_clamp(FIELD * 0.5, camera.zoom.x)
+	add_child(camera)
+	camera.make_current()
+
+
+# Наименьший зум, при котором поле перекрывает экран целиком по обеим осям.
+func camera_min_zoom() -> float:
+	var vs := _screen_size()
+	return maxf(vs.y / FIELD.y, vs.x / FIELD.x)
+
+
+# Размер экрана в px интерфейса (база окна при stretch canvas_items); вне дерева — размер окна из настроек проекта.
+func _screen_size() -> Vector2:
+	if is_inside_tree():
+		return get_viewport_rect().size
+	return Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
+
+
+# Центр камеры при зуме z: половина вида в мире не выходит за край поля (вид больше поля по оси — центр поля).
+func _camera_clamp(c: Vector2, z: float) -> Vector2:
+	var half := _screen_size() * 0.5 / z
+	var out := c
+	for a in 2:
+		out[a] = FIELD[a] * 0.5 if half[a] * 2.0 >= FIELD[a] else clampf(c[a], half[a], FIELD[a] - half[a])
+	return out
+
+
+# Видимая часть поля в мировых координатах (для полос сигнала и маркеров у края экрана). Без камеры (бенчи без дерева) —
+# экран VIEW_HALF_W x VIEW_HALF_H вокруг центра поля, как раньше.
+func view_rect() -> Rect2:
+	if camera == null:
+		return Rect2(FIELD * 0.5 - Vector2(VIEW_HALF_W, VIEW_HALF_H), Vector2(VIEW_HALF_W, VIEW_HALF_H) * 2.0)
+	var half := _screen_size() * 0.5 / camera.zoom
+	return Rect2(camera.position - half, half * 2.0)
 
 
 # Полоса HP ворот (всегда) и отладочные маркеры ворот и дороги (только при DEBUG_COLORS).
@@ -520,17 +1230,18 @@ func _draw() -> void:
 			var g := _formation_geometry(list[0], drag_start, drag_cur, drag_flip)
 			if g.n > 0:
 				_draw_block_preview(type_color[squad_type[list[0]]], g.centre, g.front, g.angle, g.width, g.rows, g.adjusted or g.overlap >= 0)
-				draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), "%d × %d · %d юн." % [g.width, g.rows, g.n],
+				draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), tr("HUD_PREVIEW_ONE") % [g.width, g.rows, g.n],
 					HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
 		elif list.size() > 1:
 			var mg := _multi_geometry(list, drag_start, drag_cur, drag_flip)
 			for it in mg.items:
 				_draw_block_preview(type_color[squad_type[it.s]], it.centre, it.front, mg.angle, it.width, it.rows, mg.adjusted or not mg.fits or mg.overlap >= 0)
-			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), "%d отр. · %d px" % [list.size(), roundi(mg.length)],
+			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), tr("HUD_PREVIEW_MANY") % [list.size(), roundi(mg.length)],
 				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
 	# Сигнал всплеска: пульсирующая золотая полоса вдоль края экрана и мигающий (2 Гц) треугольник 48 px у своей стороны
-	var view_lo := FIELD * 0.5 - Vector2(VIEW_HALF_W, VIEW_HALF_H)
-	var view_size := Vector2(VIEW_HALF_W, VIEW_HALF_H) * 2.0
+	var vr := view_rect()
+	var view_lo := vr.position
+	var view_size := vr.size
 	# Слои: мягкая красная полоса у края экрана своей стороны — 0.30 у края, плавно до 0 на 100 px вглубь (10 ступеней)
 	for side in 3:
 		var sa := _signal_alpha(side)
@@ -668,7 +1379,10 @@ func _load_waves() -> bool:
 			"subwave_interval", "max_alive", "spawn_center_x", "spawn_front_y", "spawn_columns", "spawn_spacing",
 			"wave_bonus_gold", "gold_per_kill", "start_gold", "runner_from_wave", "runner_share_early", "runner_share", "sides_from_wave",
 			"side_prob", "knight_from_wave", "knight_per_wave", "knight_cap", "spawn_left_x", "spawn_left_y", "spawn_right_x", "spawn_right_y",
-			"burst_target_size", "burst_gap", "burst_gap_jitter", "burst_signal_lead", "burst_chunk", "burst_chunk_interval"], WAVES_PATH):
+			"burst_target_size", "burst_gap", "burst_gap_jitter", "burst_signal_lead", "burst_chunk", "burst_chunk_interval", "heal_base"], WAVES_PATH):
+		return false
+	if d.heal_base < 0.0 or d.heal_base > 1.0:
+		push_error("%s: heal_base — доля потерянного HP от 0 до 1" % WAVES_PATH)
 		return false
 	if not d.get("layers") is Array or d.layers.size() != 3:
 		push_error("%s: нет массива layers из трёх слоёв" % WAVES_PATH)
@@ -676,7 +1390,7 @@ func _load_waves() -> bool:
 	for q in 3:
 		var layer = d.layers[q]
 		if not layer is Dictionary or not _require_numbers(layer, ["gap", "gap_jitter", "signal_lead", "pair_prob", "group_max", "side_weight_top", "side_weight_left",
-				"side_weight_right", "sides_from_wave", "burst_target_size", "burst_count_min", "burst_count_max"], "%s, слой %d" % [WAVES_PATH, q + 1]):
+				"side_weight_right", "sides_from_wave", "burst_target_size", "burst_count_min", "burst_count_max"], "%s, слой %d" % [WAVES_PATH, q + 1]):   # tr-skip: отладка или контекст лога
 			if not layer is Dictionary:
 				push_error("%s: слой %d не объект" % [WAVES_PATH, q + 1])
 			return false
@@ -714,7 +1428,7 @@ func _load_shop() -> bool:
 		var keys := ["base", "growth", param_key[id]]
 		if id in ["inf_pack", "archer_pack"]:
 			keys.append("cap")
-		if not _require_numbers(e, keys, "%s, товар %s" % [SHOP_PATH, id]):
+		if not _require_numbers(e, keys, "%s, товар %s" % [SHOP_PATH, id]):   # tr-skip: отладка или контекст лога
 			return false
 		if not e.get("label") is String:
 			push_error("%s: у товара %s нет строкового поля label" % [SHOP_PATH, id])
@@ -725,6 +1439,12 @@ func _load_shop() -> bool:
 		shop_param[k] = e[param_key[id]]
 		shop_cap[k] = e.get("cap", 0)   # только у отрядов; у остальных не используется
 	return true
+
+
+# Название товара на текущем языке: ключ из shop.json с числом из его параметра (оружие — в процентах).
+func _shop_title(k: int) -> String:
+	var v := shop_param[k]
+	return tr(shop_label[k]) % (roundi((v - 1.0) * 100.0) if SHOP_ITEMS[k] == "weapons" else roundi(v))
 
 
 # Синглтон Game (каркас забега) или null: в бенчах и headless-скриптах автозагрузки нет.
@@ -771,39 +1491,454 @@ func _save_record() -> void:
 
 # Дары: gifts.json и активный набор (Game.active_gifts или active_gifts бенча). Ошибка в файле или в наборе — остановка.
 func _load_mods() -> bool:
-	var defs: Dictionary = MODS.load_gifts(gifts_path)
-	if defs.is_empty():
+	gift_defs = MODS.load_gifts(gifts_path)
+	if gift_defs.is_empty():
 		return false
+	card_defs = CARDS.load_cards(cards_path)
+	if card_defs.is_empty():
+		return false
+	card_rules = game.card_rules if game != null else (CARDS.load_rules(CARD_RULES_PATH) if card_pick_auto != "" else {})
 	if game != null:
 		active_gifts = game.active_gifts.duplicate()
-	mods = MODS.new(defs)
-	return mods.build(active_gifts)
+	mods = MODS.new(gift_defs)
+	_setup_war_cry()
+	return _load_mods_sources()
 
 
-# Эффективные характеристики забега — один раз, до создания юнитов: дальше бой читает только готовые числа.
-# Урон, HP и награда умножаются прямо в массивах типов (type_damage, type_arrow_dmg, type_hp, type_bounty_mult),
-# ворота — в gate_hp_max, доход — в income_pct. Тип игрока получает множители цели all_units и своей (infantry, archer).
-# Без даров все множители ровно 1.0 и числа те же бит в бит.
+# Клич Благодати: уровень из набора даров забега (Game.active_gifts или active_gifts бенча), параметры уровня из gifts.json.
+func _setup_war_cry() -> void:
+	war_cry_level = 0
+	var d: Dictionary = gift_defs.get("war_cry", {})
+	var lvl := int(active_gifts.get("war_cry", 0))
+	if d.is_empty() or d.get("type", "") != "ability" or d.get("hidden", false) or lvl < 1 or lvl > d.levels.size():
+		return
+	var lv: Dictionary = d.levels[lvl - 1]
+	var tps := Engine.physics_ticks_per_second
+	war_cry_level = lvl
+	war_cry_mult = 1.0 + lv.bonus_pct / 100.0
+	war_cry_dur = roundi(lv.duration_s * tps)
+	war_cry_cd = roundi(lv.cooldown_s * tps)
+
+
+# Можно ли активировать клич сейчас: дар куплен, идёт бой, перезарядка прошла (исполнится на следующем тике).
+func war_cry_can() -> bool:
+	return war_cry_level > 0 and wave_state == WS_BATTLE and not paused and tick_counter + 1 >= war_cry_ready
+
+
+# Команда игрока или бота: активировать клич на ближайшем тике симуляции. Нельзя — false, ничего не меняется.
+func request_war_cry() -> bool:
+	if not war_cry_can():
+		return false
+	war_cry_request = true
+	return true
+
+
+# Начало тика: план (воспроизведение), запрос, окончание действия. Активация на тике T: бонус на тиках T..T+dur-1, готов снова с T+cd.
+func _tick_war_cry() -> void:
+	while not war_cry_plan.is_empty() and war_cry_plan[0] <= tick_counter:
+		war_cry_plan.pop_front()
+		war_cry_request = true
+	if war_cry_request:
+		war_cry_request = false
+		if wave_state == WS_BATTLE and tick_counter >= war_cry_ready:
+			war_cry_until = tick_counter + war_cry_dur
+			war_cry_ready = tick_counter + war_cry_cd
+			war_cry_log.append(tick_counter)
+			war_cry_uses += 1
+			squad_atk_speed_mult.fill(war_cry_mult)
+	if war_cry_until >= 0:
+		if tick_counter >= war_cry_until:
+			_end_war_cry()
+		else:
+			war_cry_active_ticks += 1
+
+
+func _end_war_cry() -> void:
+	war_cry_until = -1
+	squad_atk_speed_mult.fill(1.0)
+
+
+# Новая волна: клич готов сразу (перезарядка между волнами сбрасывается).
+func _reset_war_cry() -> void:
+	_end_war_cry()
+	war_cry_request = false
+	war_cry_ready = 0
+
+
+# Собрать модификаторы из списка источников — как Game.mod_sources, но с defs из gifts_path сцены.
+func _load_mods_sources() -> bool:
+	return mods.build_sources(_mod_sources())
+
+
+func _mod_sources() -> Array:
+	return [MODS.gifts_source(gift_defs, active_gifts), CARDS.source(card_defs, _cards())]
+
+
+# Выбранные карточки забега: Game.run_cards или active_cards бенча.
+func _cards() -> Array:
+	return game.run_cards if game != null else active_cards
+
+
+# Старт забега, до создания юнитов: запомнить базу типов и ворот, посчитать эффективные данные (_apply_wave_data), ворота полные.
 func _apply_mods() -> void:
+	base_type_hp = type_hp.duplicate()
+	base_type_damage = type_damage.duplicate()
+	base_type_arrow_dmg = type_arrow_dmg.duplicate()
+	base_type_bounty = type_bounty_mult.duplicate()
+	base_type_speed = type_speed.duplicate()
+	base_type_cooldown = type_cooldown.duplicate()
+	base_type_volley = type_volley_period.duplicate()
+	base_type_range_far = type_range_far.duplicate()
+	base_gate_hp_max = gate_hp_max
+	gate_mult = 1.0
+	type_cd_floor.resize(type_hp.size())
+	type_cd_floor.fill(0.0)
+	_apply_wave_data()
+	gate_hp = gate_hp_max
+
+
+# Эффективные данные волны = база + все активные модификаторы (дары и карточки), каждый раз от базы, не поверх прошлых:
+# урон и стрелы (с покупками оружия в том же порядке, что _buy), HP, скорость, перезарядка и скорость удара, дальность лучников,
+# HP зомби (enemy_hp), награда (общая и за рыцаря), ворота (с прибавками ремонта), доход. Тип игрока получает множители цели
+# all_units и своей (infantry, archer). Изменился максимум HP типа — у живых юнитов этого типа HP сохраняет долю от максимума;
+# изменилась скорость — скорость строя отряда этого типа меняется в той же пропорции. Без модификаторов все множители ровно 1.0
+# и числа те же бит в бит. Вызывается при старте забега и в начале каждой волны (_prepare_wave).
+func _apply_wave_data() -> void:
 	var names := {infantry_type: "infantry", archer_type: "archer"}
+	var hp_new := base_type_hp.duplicate()
+	var dmg_new := base_type_damage.duplicate()
+	var arrow_new := base_type_arrow_dmg.duplicate()
+	var speed_new := base_type_speed.duplicate()
+	var cd_new := base_type_cooldown.duplicate()
+	var volley_new := base_type_volley.duplicate()
+	var range_new := base_type_range_far.duplicate()
+	var bounty_new := base_type_bounty.duplicate()
 	for t in names:
 		var dmg: float = mods.get_mult("damage", "all_units") * mods.get_mult("damage", names[t])
-		type_damage[t] *= dmg
-		type_arrow_dmg[t] *= dmg
-		type_hp[t] *= mods.get_mult("hp", "all_units") * mods.get_mult("hp", names[t])
+		dmg_new[t] *= dmg
+		arrow_new[t] *= dmg
+		hp_new[t] *= mods.get_mult("hp", "all_units") * mods.get_mult("hp", names[t])
+		speed_new[t] *= mods.get_mult("speed", "all_units") * mods.get_mult("speed", names[t])
+	var wk := SHOP_ITEMS.find("weapons")
+	for n in shop_bought[wk]:   # покупки оружия — после модификаторов, как в _buy
+		dmg_new[infantry_type] *= shop_param[wk]
+		arrow_new[archer_type] *= shop_param[wk]
+	var enemy: float = mods.get_mult("enemy_hp", "enemy")
+	for t in hp_new.size():
+		if not names.has(t):
+			hp_new[t] *= enemy
+	if mods.has_key("attack_speed", "infantry"):
+		cd_new[infantry_type] = _cd_actual(base_type_cooldown[infantry_type]) / mods.get_mult("attack_speed", "infantry")
+	var reload: float = mods.get_mult("reload", "archer")
+	if mods.has_key("reload", "archer"):
+		cd_new[archer_type] = _cd_actual(base_type_cooldown[archer_type]) / reload
+	volley_new[archer_type] /= reload
+	range_new[archer_type] *= mods.get_mult("range", "archer")
+	type_cd_floor[infantry_type] = -CD_CARRY if mods.has_key("attack_speed", "infantry") else 0.0
+	type_cd_floor[archer_type] = -CD_CARRY if mods.has_key("reload", "archer") else 0.0
 	var bounty: float = mods.get_mult("bounty", "player")
-	for t in type_bounty_mult.size():
-		type_bounty_mult[t] *= bounty
-	gate_hp_max *= mods.get_mult("gate_hp", "gate")
-	gate_hp = gate_hp_max
+	for t in bounty_new.size():
+		bounty_new[t] *= bounty
+	bounty_new[knight_type] *= mods.get_mult("bounty", "knight")
+	for t in hp_new.size():
+		if hp_new[t] != type_hp[t] and type_hp[t] > 0.0:
+			var k: float = hp_new[t] / type_hp[t]
+			for i in mini(count, unit_type.size()):   # при старте забега массивов юнитов ещё нет
+				if unit_type[i] == t:
+					hp[i] *= k
+		if speed_new[t] != type_speed[t] and type_speed[t] > 0.0:
+			for sq in SQUAD_MAX:
+				if squad_used.size() > sq and squad_used[sq] == 1 and squad_type[sq] == t:
+					squad_speed[sq] *= speed_new[t] / type_speed[t]
+	type_hp = hp_new
+	type_damage = dmg_new
+	type_arrow_dmg = arrow_new
+	type_speed = speed_new
+	type_cooldown = cd_new
+	type_volley_period = volley_new
+	type_range_far = range_new
+	type_bounty_mult = bounty_new
+	var gm: float = mods.get_mult("gate_hp", "gate")
+	if gm != gate_mult:   # ворота — только при смене множителя: от базы с прибавками ремонта, текущее HP сохраняет долю
+		var gk := SHOP_ITEMS.find("gate")
+		var gmax: float = base_gate_hp_max * gm
+		for n in shop_bought[gk]:   # прибавки ремонта — после множителя, как в _buy
+			gmax += shop_param[gk]
+		if gate_hp_max > 0.0:
+			gate_hp *= gmax / gate_hp_max
+		gate_hp_max = gmax
+		gate_mult = gm
 	income_pct = mods.get_mult("income", "player") - 1.0
+	income_flat = mods.value("income_flat", 0.0)
 
 
-# Дар на стартовые юниты: прибавка каждому стартовому отряду, юниты выходят из ворот, как купленные.
+# Фактический интервал удара без модификатора: cooldown убывает шагами решения юнита (CD_CARRY = 2 тика) до 0 без переноса,
+# и из-за float32 0.8 с — это 13 шагов (0.867 с), а не 12. С модификатором скорости удара интервал = этот фактический / множитель
+# и остаток переносится (type_cd_floor), поэтому +12% к скорости дают в среднем +12% ударов, а не прыжок к ближайшему шагу.
+func _cd_actual(cd: float) -> float:
+	var c := PackedFloat32Array([cd])
+	var steps := 0
+	while c[0] > 0.0 and steps < 10000:
+		c[0] = maxf(c[0] - CD_CARRY, 0.0)
+		steps += 1
+	return steps * CD_CARRY
+
+
+# Начало волны: модификаторы заново (карточки могли смениться в передышке), данные волны от базы, статы на лету,
+# бесплатные юниты (grant_units_free) в первый отряд пехоты — до начала боя, с уже пересчитанным HP.
+func _prepare_wave() -> void:
+	_load_mods_sources()
+	_apply_wave_data()
+	_read_wave_mods()
+	var free := int(mods.value("grant_units_free", 0.0))
+	if free > 0:
+		_squad_add_units(_first_squad_of(infantry_type), infantry_type, free)
+	_prepare_cards()
+
+
+# Условные (C) и особые (K vengeance) карточки на волну: список условий, численность отрядов на начало волны, павшие — с нуля.
+func _prepare_cards() -> void:
+	cond_cards = []
+	vengeance = {}
+	for r in _cards():
+		var d: Dictionary = card_defs.get(r.id, {})
+		if d.is_empty() or d.get("disabled", false):
+			continue
+		if d.kind == "C":
+			cond_cards.append({"id": r.id, "cond": d.when.cond, "when": d.when, "mods": d.mods.filter(func(e): return not e.get("cost", false))})
+		elif d.get("special", "") == "vengeance":
+			vengeance = {"id": r.id, "per_unit_pct": float(d.per_unit_pct), "max_pct": float(d.max_pct)}
+	for sq in SQUAD_MAX:
+		squad_start_n[sq] = squad_n[sq] if squad_used[sq] == 1 else 0
+	wave_fallen = 0
+	_cards_off()
+	squad_dmg_mult.fill(1.0)
+	squad_taken_mult.fill(1.0)
+	squad_speed_mult.fill(1.0)
+
+
+# Индикаторы карточек: условия и особые — выключены, бонус 0 (начало пересчёта, начало волны, передышка).
+func _cards_off() -> void:
+	card_state = {}
+	for c in cond_cards:
+		card_state[c.id] = {"on": false, "pct": 0.0}
+	if not vengeance.is_empty():
+		card_state[vengeance.id] = {"on": false, "pct": 0.0}
+
+
+# Множители отрядов по условиям карточек (раз в COND_EVERY тиков боя и в начале волны; по тикам и состоянию симуляции, без ГСЧ).
+# Проценты условий складываются; урон — 1 + сумма / 100 (и vengeance: +per_unit_pct за павшего, не больше max_pct), скорость — так же.
+# Бонус к HP по условию — снижение получаемого урона 1 / (1 + x): HP юнитов на лету не переписывается.
+func _update_card_conditions() -> void:
+	if cond_cards.is_empty() and vengeance.is_empty():
+		return
+	_cards_off()
+	for sq in SQUAD_MAX:
+		var d := 0.0
+		var h := 0.0
+		var sp := 0.0
+		if squad_used[sq] == 1 and squad_n[sq] > 0 and squad_team[sq] == 0:
+			if squad_start_n[sq] == 0:
+				squad_start_n[sq] = squad_n[sq]
+			var tname := "infantry" if squad_type[sq] == infantry_type else ("archer" if squad_type[sq] == archer_type else "")
+			for c in cond_cards:
+				var k := cond_factor(c.cond, c.when, sq)
+				if k == 0.0:
+					continue
+				var st: Dictionary = card_state[c.id]
+				st.on = true
+				for e in c.mods:   # индикатор: бонус урона этой карточки в отряде (для ступеней — с их числом), наибольший по отрядам
+					if e.stat == "damage" and (e.target == "all_units" or e.target == tname):
+						st.pct = maxf(st.pct, e.value * k)
+				for e in c.mods:
+					if e.target == "all_units" or e.target == tname:
+						match e.stat:
+							"damage":
+								d += e.value * k
+							"hp":
+								h += e.value * k
+							"speed":
+								sp += e.value * k
+			if not vengeance.is_empty():
+				var vp := minf(vengeance.per_unit_pct * wave_fallen, vengeance.max_pct)
+				d += vp
+				card_state[vengeance.id] = {"on": vp > 0.0, "pct": vp}
+		squad_dmg_mult[sq] = 1.0 + d / 100.0
+		squad_taken_mult[sq] = 1.0 / (1.0 + h / 100.0)
+		squad_speed_mult[sq] = 1.0 + sp / 100.0
+
+
+# Условие карточки для отряда sq: 0 — не выполнено, 1 — выполнено; lost_steps — число ступеней (0..max_steps).
+func cond_factor(cond: String, w: Dictionary, sq: int) -> float:
+	match cond:
+		"hold":
+			return 1.0 if squad_order[sq] == ORDER_HOLD else 0.0
+		"retreat":
+			return 1.0 if squad_order[sq] == ORDER_RETREAT else 0.0
+		"gate_low":
+			return 1.0 if gate_hp < w.frac * gate_hp_max else 0.0
+		"squad_low":
+			return 1.0 if squad_n[sq] < w.frac * squad_start_n[sq] else 0.0
+		"wave_time":
+			return 1.0 if wave_state == WS_BATTLE and wave_t < w.seconds else 0.0
+		"gold_high":
+			return 1.0 if gold_wave_start >= w.gold else 0.0
+		"lost_steps":
+			if squad_start_n[sq] <= 0:
+				return 0.0
+			var lost_pct := (squad_start_n[sq] - squad_n[sq]) * 100.0 / squad_start_n[sq]
+			return float(clampi(floori(lost_pct / w.step_pct + 1e-9), 0, int(w.max_steps)))
+	return 0.0
+
+
+# Доля потерянного HP, которую свои юниты восстанавливают между волнами: heal_base из waves.json плюс стат heal (дары, карточки)
+# процентными пунктами (+10 — это +0.10 доли, а не умножение базы), не больше 1.0 и не меньше 0.
+func heal_fraction() -> float:
+	return clampf(wave_cfg.heal_base + (mods.get_mult("heal", "player") - 1.0), 0.0, 1.0)
+
+
+# Начало передышки после волны из pick_after_waves: тройка карточек (генератор забега), с интерфейсом — экран выбора.
+func _offer_cards() -> void:
+	if card_rules.is_empty() or not wave_number in card_rules.pick_after_waves:
+		return
+	var rng: RandomNumberGenerator = game.run_rng if game != null else bench_card_rng
+	if rng == null:
+		return
+	pending_offer = CARDS.offer(card_defs, _cards(), card_rules, rng)
+	if card_screen != null and not pending_offer.is_empty():
+		card_screen.open(pending_offer, card_defs, _cards().map(func(r): return card_defs[r.id].name_key))
+
+
+# Выбрать карточку из тройки: запись (Game.pick_card или запись бенча), разовый эффект, экран закрыт. Не из тройки — false.
+func choose_card(id: String) -> bool:
+	if not id in pending_offer:
+		return false
+	var r: Dictionary
+	if game != null:
+		r = game.pick_card(id)
+	else:
+		r = CARDS.make_record(card_defs[id], bench_card_rng)
+		active_cards.append(r)
+	pending_offer = []
+	if card_screen != null:
+		card_screen.visible = false
+		banner.visible = banner_any and not banner_hidden
+	if not r.is_empty():
+		apply_on_pick(r)
+		if r.has("result"):   # «Жертва ради победы»: что выпало — сразу строкой в HUD
+			_say(tr("MSG_CARD_SPLIT") % [tr(card_defs[r.id].name_key), card_split_text(r)], 8.0)
+	ui_t = 0.0
+	return true
+
+
+# Число для подписей карточек: 25, а не 25.0; 1.5 и 0.85 как есть.
+static func num_text(v: float) -> String:
+	return str(int(v)) if v == floorf(v) else String.num(v)
+
+
+# Результат случайного эффекта карточки (random_split): «пехота ×1.5, лучники ×0.85».
+func card_split_text(r: Dictionary) -> String:
+	var sp: Dictionary = card_defs[r.id].on_pick.random_split
+	return "%s ×%s, %s ×%s" % [tr(SPLIT_NAMES[r.result.good]), num_text(sp.good), tr(SPLIT_NAMES[r.result.bad]), num_text(sp.bad)]
+
+
+# Строка карточки в HUD: название; результат случайного эффекта; бонус по ступеням или павшим (+15%), пока он есть.
+func card_row_text(r: Dictionary) -> String:
+	var t := tr(card_defs[r.id].name_key)
+	if r.has("result"):
+		t += " (%s)" % card_split_text(r)
+	var st: Dictionary = card_state.get(r.id, {})
+	var d: Dictionary = card_defs[r.id]
+	if st.get("on", false) and (d.get("special", "") == "vengeance" or (d.has("when") and d.when.cond == "lost_steps")):
+		t += " +%s%%" % num_text(snappedf(st.pct, 0.1))
+	return t
+
+
+# Подсказка к строке карточки: название, описание (без издержки), издержка, условие.
+func card_tooltip(r: Dictionary) -> String:
+	var d: Dictionary = card_defs[r.id]
+	var desc := tr(d.desc_key)
+	var lines := [tr(d.name_key)]
+	var at := desc.find(";")
+	lines.append(desc if at < 0 else desc.left(at))
+	if at >= 0:
+		lines.append(tr("UI_CARD_TIP_COST") % desc.substr(at + 1).strip_edges())
+	if d.has("when"):
+		lines.append(tr("UI_CARD_TIP_COND") % cond_text(d.when))
+	elif d.get("special", "") == "vengeance":
+		lines.append(tr("UI_CARD_TIP_COND") % tr("COND_VENGEANCE"))
+	if r.has("result"):
+		lines.append(tr("UI_CARD_TIP_RESULT") % card_split_text(r))
+	return "\n".join(lines)
+
+
+func cond_text(w: Dictionary) -> String:
+	match w.cond:
+		"gate_low", "squad_low":
+			return tr(COND_KEYS[w.cond]) % num_text(w.frac * 100.0)
+		"wave_time":
+			return tr(COND_KEYS[w.cond]) % num_text(w.seconds)
+		"gold_high":
+			return tr(COND_KEYS[w.cond]) % num_text(w.gold)
+		"lost_steps":
+			return tr(COND_KEYS[w.cond]) % num_text(w.step_pct)
+	return tr(COND_KEYS[w.cond])
+
+
+# Список карточек в HUD: строки создаются при смене набора; текст, цвет и подсказка — по card_state (его пишет симуляция).
+func _update_cards_ui() -> void:
+	var recs := _cards()
+	if cards_rows.size() != recs.size():
+		for l in cards_rows:
+			l.queue_free()
+		cards_rows.clear()
+		for r in recs:
+			var l := Label.new()
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			l.mouse_filter = Control.MOUSE_FILTER_STOP   # подсказка при наведении
+			l.add_theme_font_size_override("font_size", 18)
+			l.add_theme_color_override("font_outline_color", Color.BLACK)
+			l.add_theme_constant_override("outline_size", 5)
+			cards_box.add_child(l)
+			cards_rows.append(l)
+	cards_label.visible = not recs.is_empty()
+	for k in recs.size():
+		var r: Dictionary = recs[k]
+		var l: Label = cards_rows[k]
+		var cond: bool = card_state.has(r.id)
+		var on: bool = card_state.get(r.id, {}).get("on", false)
+		l.text = ("● " if on else "") + card_row_text(r)
+		l.add_theme_color_override("font_color", CARD_ON if on else (CARD_IDLE if cond or card_defs[r.id].has("when") else Color.WHITE))
+		l.tooltip_text = card_tooltip(r)
+
+
+# Разовый эффект выбранной карточки (on_pick): grant_units — столько пехоты в первый отряд пехоты сразу.
+func apply_on_pick(r: Dictionary) -> void:
+	var d: Dictionary = card_defs.get(r.id, {})
+	if d.has("on_pick") and d.on_pick.has("grant_units"):
+		_squad_add_units(_first_squad_of(infantry_type), infantry_type, int(d.on_pick.grant_units))
+
+
+# Первый занятый отряд типа type (пехота — всегда есть отряд 0).
+func _first_squad_of(type: int) -> int:
+	for s in SQUAD_MAX:
+		if squad_used[s] == 1 and squad_type[s] == type:
+			return s
+	return 0
+
+
+# Статы волны «на лету» (Mods.value): разброс стрел и окно сигнала всплеска. Читаются при старте забега и в начале каждой волны,
+# тик берёт готовые wave_spread и wave_signal_lead. Без модификаторов — те же числа, что в данных.
+func _read_wave_mods() -> void:
+	wave_spread = type_spread.duplicate()
+	wave_spread[archer_type] = mods.value("spread", type_spread[archer_type])
+	wave_signal_lead = mods.value("signal_window", _layer().signal_lead if bursts_layered else wave_cfg.burst_signal_lead)
+
+
+# Дар на стартовые юниты: прибавка каждому стартовому отряду (процент от его числа — вниз, не меньше +1), юниты выходят из ворот, как купленные.
 func _add_start_units() -> void:
-	var names := ["infantry", "archer"]
 	for s in START_SQUADS:
-		var n := int(mods.get_flat("start_units", "all_units") + mods.get_flat("start_units", names[s]))
+		var n: int = mods.get_count("start_units", "player", squad_n[s])
 		if n > 0:
 			_squad_add_units(s, squad_type[s], n)
 
@@ -879,15 +2014,15 @@ func _plan_text() -> String:
 			runners += r.count
 		elif r.type == knight_type:
 			knights += r.count
-	var text := "Дальше: волна %d" % wave_plan_for
+	var text := tr("HUD_PLAN") % wave_plan_for
 	for side in 3:
 		if by_side[side] > 0:
 			text += " · %s %d" % [SIDE_ARROWS[side], by_side[side]]
 	var extra := PackedStringArray()
 	if runners > 0:
-		extra.append("бегуны %d" % runners)
+		extra.append(tr("HUD_PLAN_RUNNERS") % runners)
 	if knights > 0:
-		extra.append("рыцари %d" % knights)
+		extra.append(tr("HUD_PLAN_KNIGHTS") % knights)
 	return text if extra.is_empty() else text + " (%s)" % ", ".join(extra)
 
 
@@ -897,8 +2032,9 @@ func _recon_markers() -> Array:
 	var out := []
 	if not scout_shown or not waves_enabled or wave_state != WS_RESPITE:
 		return out
-	var at := [Vector2(wave_cfg.spawn_center_x, 150.0), Vector2(FIELD.x * 0.5 - VIEW_HALF_W + 120.0, wave_cfg.spawn_left_y),
-		Vector2(FIELD.x * 0.5 + VIEW_HALF_W - 120.0, wave_cfg.spawn_right_y)]
+	var vr := view_rect()
+	var at := [Vector2(wave_cfg.spawn_center_x, 150.0), Vector2(vr.position.x + 120.0, wave_cfg.spawn_left_y),
+		Vector2(vr.end.x - 120.0, wave_cfg.spawn_right_y)]
 	var dirs := [Vector2.DOWN, Vector2.RIGHT, Vector2.LEFT]
 	for side in 3:
 		var items := []
@@ -1048,15 +2184,15 @@ func _spread_group(bursts: Array, first: int, last: int, rng: RandomNumberGenera
 # появляться одновременно, каждый своей сеткой блока. Куски — по burst_chunk раз в burst_chunk_interval.
 func _update_bursts_layered(delta: float) -> void:
 	wave_t += delta
-	var lead: float = _layer().signal_lead
+	var lead := wave_signal_lead
 	while burst_signal_n < wave_bursts.size() and wave_t >= wave_bursts[burst_signal_n].t_group - lead:
 		var g: int = wave_bursts[burst_signal_n].group
 		var words := PackedStringArray()
 		while burst_signal_n < wave_bursts.size() and wave_bursts[burst_signal_n].group == g:
-			words.append(SIDE_WORDS[wave_bursts[burst_signal_n].side])
+			words.append(tr(SIDE_WORDS[wave_bursts[burst_signal_n].side]))
 			burst_signal_n += 1
 		if SIGNAL_TEXT_SHOWN:
-			burst_msg = "Всплеск: %s" % ", ".join(words)
+			burst_msg = tr("HUD_BURST") % ", ".join(words)
 			burst_msg_until = wave_t + 3.0
 			ui_t = 0.0
 		if signal_player != null:
@@ -1148,8 +2284,8 @@ func _burst_signals() -> Array:
 # по burst_chunk юнитов раз в burst_chunk_interval; куски продолжают одну сетку блока своей стороны.
 func _update_bursts(delta: float) -> void:
 	wave_t += delta
-	while burst_signal_n < wave_bursts.size() and wave_t >= wave_bursts[burst_signal_n].t_start - wave_cfg.burst_signal_lead:
-		burst_msg = "Всплеск: %s" % SIDE_WORDS[wave_bursts[burst_signal_n].side]
+	while burst_signal_n < wave_bursts.size() and wave_t >= wave_bursts[burst_signal_n].t_start - wave_signal_lead:
+		burst_msg = tr("HUD_BURST") % tr(SIDE_WORDS[wave_bursts[burst_signal_n].side])
 		burst_msg_until = wave_t + 3.0
 		burst_signal_n += 1
 		ui_t = 0.0   # надпись и иконка сразу
@@ -1190,13 +2326,11 @@ func _update_bursts(delta: float) -> void:
 
 # Space в передышке: следующая волна. Сила зомби растёт с номером волны.
 func _start_wave() -> void:
-	if not waves_enabled or wave_state != WS_RESPITE:
-		return
+	if not waves_enabled or wave_state != WS_RESPITE or not pending_offer.is_empty():
+		return   # пока карточка не выбрана, волна не начинается
 	wave_number += 1
 	wave_state = WS_BATTLE
 	_set_paused(false)
-	if income_pct != 0.0:
-		gold += wave_income * income_pct
 	gold_wave_start = gold
 	if wave_plan_for != wave_number:   # план строится в начале передышки; сюда — если номер волны сменили в обход
 		wave_plan = _plan_wave(wave_number)
@@ -1211,6 +2345,7 @@ func _start_wave() -> void:
 	team_dmg_mult[1] = 1.0 + wave_cfg.dmg_growth * (wave_number - 1)
 	wave_kills = 0
 	wave_kills_by_type.fill(0)
+	_prepare_wave()
 	arrows_fired = 0   # в отладочной строке — за текущую волну
 	arrows_hit = 0
 	arrows_out_of_range = 0
@@ -1220,6 +2355,8 @@ func _start_wave() -> void:
 	kills_by_arrows = 0
 	subwave_timer = 0.0
 	wave_t = 0.0
+	_update_card_conditions()   # условия карточек — с первого тика волны
+	_reset_war_cry()
 	burst_idx = 0
 	burst_signal_n = 0
 	burst_active = false
@@ -1336,39 +2473,48 @@ func _spawn_zombie(p: Vector2, type: int) -> void:
 # Состав убитых за волну: «убито: крестьяне 90, бегуны 20, рыцари 4» (типы без убитых не показываются).
 func _kills_text() -> String:
 	var parts := PackedStringArray()
-	var names := ["крестьяне", "бегуны", "рыцари"]
+	var names := ["MSG_KILLS_PEASANTS", "MSG_KILLS_RUNNERS", "MSG_KILLS_KNIGHTS"]
 	var types := [zombie_type, runner_type, knight_type]
 	for q in 3:
 		if wave_kills_by_type[types[q]] > 0:
-			parts.append("%s %d" % [names[q], wave_kills_by_type[types[q]]])
-	return "" if parts.is_empty() else "убито: " + ", ".join(parts)
+			parts.append(tr(names[q]) % wave_kills_by_type[types[q]])
+	return "" if parts.is_empty() else tr("MSG_KILLS") % ", ".join(parts)
 
 
 func _wave_cleared() -> void:
+	_end_war_cry()   # в передышке клич не действует
+	_cards_off()     # в передышке условия карточек не горят
 	if run_limit and wave_number == waves_per_run:
 		_on_win()   # последняя волна забега: передышки не будет
 		return
 	gold += wave_cfg.wave_bonus_gold
 	wave_income = gold - gold_wave_start
+	if income_pct != 0.0:
+		gold += wave_income * income_pct   # доход (стат income) — в конце волны, до магазина передышки
+	if income_flat != 0.0:
+		gold += income_flat
+	var heal := heal_fraction()
 	for i in count:
 		if team[i] == 0:
-			hp[i] = type_hp[unit_type[i]]   # бесплатное лечение армии
+			if heal >= 1.0:
+				hp[i] = type_hp[unit_type[i]]   # полное лечение
+			else:
+				hp[i] += (type_hp[unit_type[i]] - hp[i]) * heal   # возвращается доля heal потерянного HP
 	wave_state = WS_RESPITE
 	_set_paused(false)
 	_free_empty_squads()
 	wave_plan = _plan_wave(wave_number + 1)   # состав и всплески следующей волны известны с начала передышки
 	wave_plan_for = wave_number + 1
 	wave_bursts = _plan_bursts(wave_plan_for, wave_plan)
-	var summary := "Волна %d пройдена: убито %d, +%d золота. Space — волна %d" % [
-		wave_number, wave_kills, int(wave_cfg.wave_bonus_gold), wave_number + 1]
-	var killed := _kills_text()
-	_show_banner(summary if killed == "" else summary + "\n" + killed, _entry_text(wave_number))
+	_offer_cards()
+	_set_banner(_banner_wave_cleared.bind(_entry_text(wave_number), wave_number, wave_kills, int(wave_cfg.wave_bonus_gold)))
 	queue_redraw()   # маркеры разведки
 
 # --- Магазин ------------------------------------------------------------------
 
+# Цена товара k: база с ростом за купленные, затем Mods.value по стату товара (SHOP_COST_STATS); без модификаторов — как есть.
 func _price(k: int) -> float:
-	return shop_base[k] * (1.0 + shop_growth[k] * shop_bought[k])
+	return mods.value(SHOP_COST_STATS[k], shop_base[k] * (1.0 + shop_growth[k] * shop_bought[k]), "archer" if SHOP_ITEMS[k] == "archer_pack" else "")
 
 
 # Отряд упёрся в cap: живых этого типа плюс покупка больше предела.
@@ -1539,11 +2685,11 @@ func _cmd_new_squad() -> bool:
 	if wave_state != WS_RESPITE:
 		return false
 	if sel_primary < 0:
-		_say("Выбери отряд")
+		_say(tr("MSG_PICK_SQUAD"))
 		return false
 	var s := _squad_create(sel_primary)
 	if s < 0:
-		_say("Свободных отрядов нет: занято %d из %d" % [SQUAD_MAX, SQUAD_MAX])
+		_say(tr("MSG_NO_FREE_SQUADS") % [SQUAD_MAX, SQUAD_MAX])
 		return false
 	_select_only(s)
 	return true
@@ -1558,19 +2704,19 @@ func _cmd_split() -> bool:
 		return false
 	if wave_state == WS_BATTLE and not paused:
 		if PAUSE_ENABLED:
-			_say("Поставь паузу (Space)")
+			_say(tr("MSG_PAUSE_FIRST") % SETTINGS.key_label("wave_start"))
 		return false
 	if sel_mask == 0 or sel_mask & (sel_mask - 1) != 0:
-		_say("Выбери один отряд")
+		_say(tr("MSG_PICK_ONE_SQUAD"))
 		return false
 	var s := sel_primary
 	var n := squad_n[s]
 	if squad_used[s] == 0 or n < 2:
-		_say("В отряде меньше 2 юнитов: делить нечего")
+		_say(tr("MSG_SQUAD_TOO_SMALL"))
 		return false
 	var t := _squad_create(s)
 	if t < 0:
-		_say("Свободных отрядов нет: занято %d из %d" % [SQUAD_MAX, SQUAD_MAX])
+		_say(tr("MSG_NO_FREE_SQUADS") % [SQUAD_MAX, SQUAD_MAX])
 		return false
 	squad_order[t] = squad_order[s]
 	squad_pos[t] = squad_pos[s]
@@ -1622,8 +2768,8 @@ func _next_split_mode() -> void:
 func _update_split_ui() -> void:
 	if split_label == null:
 		return
-	split_label.text = "Доля ухода: %d%%" % roundi(split_frac * 100.0)
-	split_mode_button.text = "Уходят: %s (K)" % SPLIT_MODE_NAMES[split_mode]
+	split_label.text = tr("HUD_SPLIT_SHARE") % roundi(split_frac * 100.0)
+	split_mode_button.text = tr("HUD_SPLIT_SIDE") % [tr(SPLIT_MODE_NAMES[split_mode]), SETTINGS.key_label("split_side")]
 
 
 # Пауза только в бою. При включении prev_pos = pos: после снятия юниты не отскакивают на долю тика назад.
@@ -1689,7 +2835,7 @@ func _cmd_merge() -> bool:
 				dst = s
 				break
 		if dst < 0:
-			_say("Нет другого отряда этого типа")
+			_say(tr("MSG_NO_MERGE_PARTNER"))
 			return false
 		if src < START_SQUADS:
 			srcs[0] = dst
@@ -1698,7 +2844,7 @@ func _cmd_merge() -> bool:
 		dst = srcs[0]
 		for s in srcs:
 			if squad_type[s] != squad_type[dst]:
-				_say("Сливаются только отряды одного типа")
+				_say(tr("MSG_MERGE_SAME_TYPE"))
 				return false
 		srcs.remove_at(0)
 	var k := 0
@@ -1724,11 +2870,13 @@ func _on_defeat() -> void:
 	set_physics_process(false)
 	best_wave = maxi(best_wave, wave_number)
 	if game == null:
-		_show_banner("", _ending_text(wave_number), "R — заново")
+		_set_banner(func(): _show_banner("", _ending_text(wave_number), tr("MSG_RESTART") % "R"))
 		return
 	game.end_run("loss", wave_number, run_kills)
-	_show_banner("", _ending_text(wave_number), "Лучшая волна осады %s: %d. Enter — в хаб" % [
-		GAME_SCRIPT.roman(game.siege), game.records[game.siege].best_wave])
+	_set_banner(func():
+		_show_banner("", _ending_text(wave_number), tr("END_DEFEAT_HINT") % [
+			GAME_SCRIPT.roman(game.siege), game.records[game.siege].best_wave, SETTINGS.key_label("to_hub")])
+		_show_radiance(game.last_run.radiance))
 	_show_hub_button()
 
 
@@ -1739,7 +2887,10 @@ func _on_win() -> void:
 	set_physics_process(false)
 	best_wave = maxi(best_wave, wave_number)
 	game.end_run("win", wave_number, run_kills)
-	_show_banner("Осада пережита. Волн: %d из %d." % [wave_number, waves_per_run], story_victories.get(debug_layer, ""), "Enter — в хаб")
+	_set_banner(func():
+		_show_banner(tr("END_WIN_TITLE") % [wave_number, waves_per_run], tr(story_victories.get(debug_layer, "")),
+			tr("END_TO_HUB_HINT") % SETTINGS.key_label("to_hub"))
+		_show_radiance(game.last_run.radiance))
 	_show_hub_button()
 	queue_redraw()
 
@@ -1755,6 +2906,35 @@ func _show_hub_button() -> void:
 		banner.position.y = BANNER_TOP
 
 
+# Esc вне протяжки и рамки: меню паузы (дерево сцен встаёт на паузу: бой, окно сигнала и play_time стоят).
+# Только с синглтоном Game: в бенчах выходить некуда.
+func _open_esc_menu() -> void:
+	if esc_menu != null and game != null:
+		esc_menu.open("" if _run_over() else ESC_NOTE)
+
+
+# «Выйти в меню» посреди забега: поражение с начислением Сияния, без экрана итога. В бою — на текущей волне,
+# в передышке — на следующей (пройденные волны засчитаны все). Забег уже кончился — итог записан, повторно не пишется.
+func _abandon_run() -> void:
+	if game == null or _run_over():
+		return
+	var w := wave_number if wave_state == WS_BATTLE else wave_number + 1
+	wave_state = WS_DEFEAT
+	set_physics_process(false)
+	game.end_run("loss", w, run_kills)
+
+
+# Экран итога: строка «+N Сияния» между дневником и подсказкой (после _show_banner: он её прячет).
+func _show_radiance(n: int) -> void:
+	banner_radiance = tr("END_RADIANCE") % n
+	if radiance_label == null:
+		return
+	radiance_label.text = banner_radiance
+	radiance_label.visible = true
+	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
+	banner.position.y = BANNER_TOP
+
+
 # Экран конца забега: Enter, Space, R и кнопка «В хаб». Без синглтона (бенчи) — прежний перезапуск сцены.
 func _to_hub() -> void:
 	if not _run_over():
@@ -1767,9 +2947,12 @@ func _to_hub() -> void:
 
 # Баннер: заголовок, текст, дневник (другим цветом), подсказка. Пустая часть скрыта; всё пусто — баннер скрыт.
 func _show_banner(text: String, story := "", hint := "", title := "") -> void:
+	banner_build = Callable()   # новый баннер: прежний сборщик больше не нужен (_set_banner ставит свой после вызова)
 	banner_parts = PackedStringArray([title, text, story, hint])
+	banner_radiance = ""
 	if banner == null:
 		return
+	radiance_label.visible = false
 	var any := false
 	for k in banner_labels.size():
 		banner_labels[k].text = banner_parts[k]
@@ -1777,7 +2960,7 @@ func _show_banner(text: String, story := "", hint := "", title := "") -> void:
 		any = any or banner_parts[k] != ""
 	banner_any = any
 	banner_hidden = false   # новый текст показывается, даже если прошлый скрыли клавишей H
-	banner.visible = any
+	banner.visible = any and not _picking()
 	# размер по содержимому, по центру сверху: иначе после длинного текста баннер остаётся высоким
 	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
 	banner.position.y = BANNER_TOP
@@ -1789,7 +2972,12 @@ func _toggle_banner() -> void:
 		return
 	banner_hidden = not banner_hidden
 	if banner != null:
-		banner.visible = banner_any and not banner_hidden
+		banner.visible = banner_any and not banner_hidden and not _picking()
+
+
+# Открыт экран выбора карточки: баннер итога волны ждёт выбора (не просвечивает сквозь экран).
+func _picking() -> bool:
+	return card_screen != null and card_screen.visible
 
 
 # F вне протяжки: каждый выбранный отряд разворачивается «кругом» на месте (слоты в мире не двигаются).
@@ -1846,10 +3034,42 @@ func _entry_text(w: int) -> String:
 		if game.diary_read(e.id):
 			return ""
 		game.mark_diary(e.id)
-	return e.text
+	return e.text   # ключ перевода записи
 
 
-# Вступление для стартового баннера: с синглтоном — только пока оно не прочитано. "" — баннер без дневника.
+# Баннер, собранный функцией build (тексты через tr): при смене языка build вызывается снова, скрытый (H) баннер
+# остаётся скрытым.
+func _set_banner(build: Callable) -> void:
+	build.call()
+	banner_build = build
+
+
+# Итог волны в передышке: entry — ключ записи дневника или "".
+func _banner_wave_cleared(entry: String, w: int, kills: int, bonus: int) -> void:
+	var summary: String = tr("MSG_WAVE_CLEARED") % [w, kills, bonus, SETTINGS.key_label("wave_start"), w + 1]
+	var killed := _kills_text()
+	_show_banner(summary if killed == "" else summary + "\n" + killed, tr(entry) if entry != "" else "")
+
+
+# Смена языка: баннер собрать заново (скрытый клавишей H остаётся скрытым), HUD и панели — сразу, не ждать таймера.
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_TRANSLATION_CHANGED:
+		return
+	if banner_build.is_valid():
+		var build := banner_build
+		var hidden := banner_hidden
+		build.call()
+		banner_build = build   # _show_banner его сбросил
+		if hidden and banner != null:
+			banner_hidden = true
+			banner.visible = false
+	if hud_label != null:
+		_update_split_ui()
+		_update_squad_panel()
+		_update_ui()
+
+
+# Вступление для стартового баннера (ключ перевода): с синглтоном — только пока оно не прочитано. "" — баннер без дневника.
 func _intro_text() -> String:
 	if game != null:
 		if game.diary_read(GAME_SCRIPT.INTRO_ID):
@@ -1864,7 +3084,7 @@ func _ending_text(w: int) -> String:
 	for k in story_end_wave.size():
 		if story_end_wave[k] <= w and (best < 0 or story_end_wave[k] > story_end_wave[best]):
 			best = k
-	return "" if best < 0 else story_end_text[best].replace("{wave}", str(w))
+	return "" if best < 0 else tr(story_end_text[best]).replace("{wave}", str(w))
 
 
 func _load_types() -> bool:
@@ -1906,7 +3126,7 @@ func _load_types() -> bool:
 			push_error("%s: тип #%d без поля name" % [UNIT_TYPES_PATH, t])
 			return false
 		if not _require_numbers(e, ["hp", "damage", "range", "cooldown", "speed", "block_mult", "leash_start", "leash_end",
-				"range_far", "volley_period", "draw_time", "spread", "arrow_dmg", "bounty_mult", "chase", "recoil_px"], "%s, тип \"%s\"" % [UNIT_TYPES_PATH, e.name]):
+				"range_far", "volley_period", "draw_time", "spread", "arrow_dmg", "bounty_mult", "chase", "recoil_px"], "%s, тип \"%s\"" % [UNIT_TYPES_PATH, e.name]):   # tr-skip: отладка или контекст лога
 			return false
 		if not e.get("label") is String:
 			push_error("%s: у типа \"%s\" нет строкового поля label" % [UNIT_TYPES_PATH, e.name])
@@ -1982,6 +3202,7 @@ func _setup_data() -> void:
 	runner_type = runner
 	knight_type = knight
 	_apply_mods()
+	_read_wave_mods()
 	# Все массивы юнитов — один раз на MAX_UNITS; живые юниты всегда в [0, count).
 	pos.resize(MAX_UNITS)
 	team.resize(MAX_UNITS)
@@ -2044,6 +3265,13 @@ func _setup_data() -> void:
 	squad_rows.resize(SQUAD_MAX)
 	squad_dirty.resize(SQUAD_MAX)
 	squad_speed.resize(SQUAD_MAX)
+	for arr in [squad_dmg_mult, squad_taken_mult, squad_speed_mult]:
+		arr.resize(SQUAD_MAX)
+		arr.fill(1.0)
+	squad_atk_speed_mult.resize(SQUAD_MAX)
+	squad_atk_speed_mult.fill(1.0)
+	squad_start_n.resize(SQUAD_MAX)
+	squad_start_n.fill(0)
 	squad_center_off.resize(SQUAD_MAX)
 	squad_reflow_n.resize(SQUAD_MAX)
 	squad_front_row.resize(SQUAD_MAX)
@@ -2150,6 +3378,9 @@ func _setup_data() -> void:
 				min_speed = minf(min_speed, type_speed[unit_type[i]])
 		squad_speed[s] = 0.75 * min_speed
 	_add_start_units()
+	for r in _cards():   # карточки, заданные до старта (бенчи): разовые эффекты сразу
+		apply_on_pick(r)
+	_prepare_cards()
 
 
 func _setup_rendering() -> void:
@@ -2158,6 +3389,14 @@ func _setup_rendering() -> void:
 	# Лист не загрузился или не подошёл (высота не 16, ширина не кратна 16, кадров не 1-3) — тип рисуется квадратом,
 	# с одним предупреждением.
 	var sheets: Array[Image] = []
+	type_sprite_scale.resize(type_sprite.size())
+	type_sprite_scale.fill(1.0)
+	type_sprite_scale[knight_type] = KNIGHT_SPRITE_SCALE
+	type_walk_rate.resize(type_sprite.size())
+	type_walk_rate.fill(0.0)
+	if ZOMBIE_WALK_FRAME_T > 0.0:
+		type_walk_rate[zombie_type] = 1.0 / ZOMBIE_WALK_FRAME_T
+		type_walk_rate[runner_type] = RUNNER_ANIM_SPEED / ZOMBIE_WALK_FRAME_T
 	atlas_cells = 0
 	for t in type_sprite.size():
 		type_sprite_frames[t] = 0
@@ -2264,8 +3503,17 @@ func _setup_fps_label() -> void:
 		l.visible = false
 		banner_box.add_child(l)
 		banner_labels.append(l)
+	radiance_label = Label.new()   # «+N Сияния»: только на экране итога, перед подсказкой
+	radiance_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	radiance_label.add_theme_font_size_override("font_size", 36)
+	radiance_label.add_theme_color_override("font_color", RADIANCE_COLOR)
+	radiance_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	radiance_label.add_theme_constant_override("outline_size", 8)
+	radiance_label.visible = false
+	banner_box.add_child(radiance_label)
+	banner_box.move_child(radiance_label, 3)
 	hub_button = Button.new()   # только на экране конца забега; баннер клики пропускает, кнопка — нет
-	hub_button.text = "В хаб"
+	hub_button.text = "HUD_TO_HUB"
 	hub_button.add_theme_font_size_override("font_size", 36)
 	hub_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	hub_button.visible = false
@@ -2273,6 +3521,27 @@ func _setup_fps_label() -> void:
 	banner_box.add_child(hub_button)
 	banner.visible = false
 	layer.add_child(banner)
+	esc_menu = ESC_MENU.new()
+	esc_menu.before_menu = _abandon_run
+	add_child(esc_menu)
+	card_screen = CARD_PICK.new()
+	card_screen.picked.connect(choose_card)
+	add_child(card_screen)
+	# Выбранные карточки: справа сверху, компактным списком названий
+	cards_box = VBoxContainer.new()
+	cards_box.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	cards_box.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	cards_box.position = Vector2(-16.0, 8.0)
+	cards_box.add_theme_constant_override("separation", 0)
+	cards_label = Label.new()
+	cards_label.text = "HUD_CARDS"
+	cards_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	cards_label.add_theme_font_size_override("font_size", 18)
+	cards_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	cards_label.add_theme_constant_override("outline_size", 5)
+	cards_label.visible = false
+	cards_box.add_child(cards_label)
+	layer.add_child(cards_box)
 	# HUD сверху по центру
 	hud_label = Label.new()
 	hud_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -2296,7 +3565,7 @@ func _setup_fps_label() -> void:
 	burst_label.visible = false
 	layer.add_child(burst_label)
 	pause_label = Label.new()
-	pause_label.text = "ПАУЗА"
+	pause_label.text = "HUD_PAUSED"
 	pause_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	pause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pause_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -2346,13 +3615,11 @@ func _setup_fps_label() -> void:
 		squad_swatches.append(sw)
 	# Внизу панели: создание, разделение, слияние (видны только в передышке)
 	squad_actions = HBoxContainer.new()
-	var action_names := ["+ Отряд (N)", "Разделить (G)", "Слить (M)"]
 	var action_calls := [_cmd_new_squad, _cmd_split, _cmd_merge]
-	for k in action_names.size():
+	for k in action_calls.size():
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size = Vector2(0, 36)
-		b.text = action_names[k]
 		b.pressed.connect(action_calls[k])
 		squad_actions.add_child(b)
 		action_buttons.append(b)
@@ -2381,7 +3648,8 @@ func _setup_fps_label() -> void:
 	squad_panel.add_child(split_box)
 	_update_split_ui()
 	hint_label = Label.new()
-	hint_label.text = "ЛКМ выбор · ПКМ приказ · Shift добавить"
+	_setup_war_cry_ui(layer)
+	hint_label.text = "HUD_MOUSE_HINT"
 	hint_label.add_theme_font_size_override("font_size", 13)
 	hint_label.modulate = Color(1.0, 1.0, 1.0, 0.7)
 	squad_panel.add_child(hint_label)
@@ -2391,8 +3659,17 @@ func _setup_fps_label() -> void:
 	_update_squad_panel()
 	if wave_state == WS_RESPITE:
 		var intro := _intro_text()
-		_show_banner("", intro, "Расставь отряды. Space — начать волну 1", "Дневник военачальника" if intro != "" else "")
+		_set_banner(func(): _show_banner("", tr(intro) if intro != "" else "", tr("MSG_WAVE_START") % SETTINGS.key_label("wave_start"),
+			tr("UI_DIARY_TITLE") if intro != "" else ""))
 	_update_ui()
+
+
+# Подписи с клавишами (кнопки отрядов, деления, магазина) — после переназначения в настройках.
+func _on_settings_changed(key: String) -> void:
+	if key == "input":
+		_update_split_ui()
+		_update_squad_panel()
+		_update_ui()
 
 
 # Ни один Control не берёт фокус клавиатуры: Space, Enter и стрелки не нажимают кнопки и не двигают ползунок.
@@ -2599,7 +3876,7 @@ func _squad_label(s: int) -> String:
 			same += 1
 			if q <= s:
 				rank += 1
-	return type_label[squad_type[s]] if same < 2 else "%s %d" % [type_label[squad_type[s]], rank]
+	return tr(type_label[squad_type[s]]) if same < 2 else "%s %d" % [tr(type_label[squad_type[s]]), rank]
 
 
 # Левая панель отрядов: раз в 0.25 с и сразу при выборе / смене приказа. Строки свободных индексов скрыты,
@@ -2615,9 +3892,13 @@ func _update_squad_panel() -> void:
 			continue
 		sig |= 2 << s
 		squad_swatches[s].color = type_color[squad_type[s]]
-		squad_buttons[s].text = "%d  %s — %d — %s" % [s + 1, _squad_label(s), squad_n[s], ORDER_NAMES[squad_order[s]]]
+		squad_buttons[s].text = "%s  %s — %d — %s" % [SETTINGS.key_label("squad_select_%d" % (s + 1)), _squad_label(s), squad_n[s], tr(ORDER_NAMES[squad_order[s]])]
 		squad_buttons[s].set_pressed_no_signal(_is_sel(s))
 	squad_actions.visible = acts
+	for k in action_buttons.size():   # подписи с актуальной клавишей (её могли переназначить)
+		var t: String = tr(ACTION_TEXTS[k]) % SETTINGS.key_label(ACTION_KEYS[k])
+		if action_buttons[k].text != t:
+			action_buttons[k].text = t
 	split_box.visible = acts
 	action_buttons[0].disabled = wave_state != WS_RESPITE   # новый отряд и слияние — только в передышке
 	action_buttons[2].disabled = wave_state != WS_RESPITE
@@ -2627,14 +3908,83 @@ func _update_squad_panel() -> void:
 		squad_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 16)
 
 
+# Кнопка Клича Благодати под списком отрядов (только если дар куплен) и подсветка краёв экрана.
+func _setup_war_cry_ui(layer: CanvasLayer) -> void:
+	if war_cry_level <= 0:
+		return
+	war_cry_box = VBoxContainer.new()
+	war_cry_box.add_theme_constant_override("separation", 2)
+	war_cry_button = Button.new()
+	war_cry_button.focus_mode = Control.FOCUS_NONE
+	war_cry_button.custom_minimum_size = Vector2(300, 40)
+	war_cry_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	war_cry_button.pressed.connect(request_war_cry)
+	war_cry_box.add_child(war_cry_button)
+	war_cry_bar = ProgressBar.new()
+	war_cry_bar.show_percentage = false
+	war_cry_bar.min_value = 0.0
+	war_cry_bar.max_value = 1.0
+	war_cry_bar.custom_minimum_size = Vector2(300, 8)
+	war_cry_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	war_cry_box.add_child(war_cry_bar)
+	squad_panel.add_child(war_cry_box)
+	for side in 4:   # тонкие полосы по краям экрана: верх, низ, лево, право
+		var r := ColorRect.new()
+		r.color = WAR_CRY_GLOW
+		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var a: Array = [[0, 0, 1, 0], [0, 1, 1, 1], [0, 0, 0, 1], [1, 0, 1, 1]][side]   # left, top, right, bottom якоря
+		r.anchor_left = a[0]
+		r.anchor_top = a[1]
+		r.anchor_right = a[2]
+		r.anchor_bottom = a[3]
+		var o: Array = [[0, 0, 0, WAR_CRY_GLOW_PX], [0, -WAR_CRY_GLOW_PX, 0, 0], [0, 0, WAR_CRY_GLOW_PX, 0], [-WAR_CRY_GLOW_PX, 0, 0, 0]][side]
+		r.offset_left = o[0]
+		r.offset_top = o[1]
+		r.offset_right = o[2]
+		r.offset_bottom = o[3]
+		r.visible = false
+		layer.add_child(r)
+		war_cry_glow.append(r)
+
+
+# Вид кнопки: готов — полная полоса; действует — золотая кнопка, остаток времени и убывающая полоса; перезарядка — заполнение до готовности.
+func _update_war_cry_ui() -> void:
+	if war_cry_button == null:
+		return
+	var tps := float(Engine.physics_ticks_per_second)
+	var key := SETTINGS.key_label("war_cry")
+	var active := war_cry_until >= 0
+	var gold_tint := Color(1.0, 0.85, 0.35) if active else Color.WHITE
+	war_cry_button.modulate = gold_tint
+	if active:
+		war_cry_button.text = tr("HUD_WAR_CRY_ACTIVE") % [key, "%.1f" % ((war_cry_until - tick_counter) / tps)]
+		war_cry_bar.value = float(war_cry_until - tick_counter) / maxf(war_cry_dur, 1)
+	elif wave_state != WS_BATTLE:
+		war_cry_button.text = tr("HUD_WAR_CRY_BATTLE") % key
+		war_cry_bar.value = 1.0
+	elif tick_counter + 1 < war_cry_ready:
+		war_cry_button.text = tr("HUD_WAR_CRY_WAIT") % [key, "%d" % ceili((war_cry_ready - tick_counter) / tps)]
+		war_cry_bar.value = 1.0 - float(war_cry_ready - tick_counter) / maxf(war_cry_cd, 1)
+	else:
+		war_cry_button.text = tr("HUD_WAR_CRY_READY") % key
+		war_cry_bar.value = 1.0
+	war_cry_button.disabled = not active and not war_cry_can()
+	war_cry_bar.modulate = gold_tint
+	for r in war_cry_glow:
+		r.visible = active
+
+
 # HUD и магазин: раз в 0.1 с (и сразу после покупки).
 func _update_ui() -> void:
 	if hud_label == null:
 		return
-	hud_label.text = "Волна %s · зомби: %d · ворота: %d/%d · золото: %d" % [
+	hud_label.text = tr("HUD_STATUS") % [
 		"%d/%d" % [wave_number, waves_per_run] if run_limit else str(wave_number), zombie_alive + wave_remaining, ceili(maxf(gate_hp, 0.0)), roundi(gate_hp_max), floori(gold)]
 	if scout_shown and waves_enabled and wave_state == WS_RESPITE:
 		hud_label.text += "\n" + _plan_text()   # разведка
+	_update_war_cry_ui()
+	if cards_box != null and not card_defs.is_empty():
+		_update_cards_ui()
 	burst_label.text = burst_msg
 	burst_label.visible = wave_state == WS_BATTLE and burst_msg != "" and wave_t < burst_msg_until
 	if hud_msg != "":
@@ -2642,16 +3992,15 @@ func _update_ui() -> void:
 	shop_panel.visible = wave_state == WS_RESPITE
 	if not shop_panel.visible:
 		return
-	var key_names := ["Z", "X", "C", "V"]
 	for k in shop_buttons.size():
 		var price := _price(k)
 		var capped := _at_cap(k)
-		shop_buttons[k].text = "%s  %s — %s (куплено %d)" % [key_names[k], shop_label[k], "макс." if capped else "%d зол." % ceili(price), shop_bought[k]]
+		shop_buttons[k].text = tr("HUD_SHOP_ROW") % [SETTINGS.key_label("buy_%d" % (k + 1)), _shop_title(k), tr("HUD_SHOP_MAX") if capped else tr("HUD_SHOP_PRICE") % ceili(price), shop_bought[k]]
 		# Юниты идут в выбранный отряд своего типа, иначе в первый отряд типа.
 		var pack_type := infantry_type if SHOP_ITEMS[k] == "inf_pack" else (archer_type if SHOP_ITEMS[k] == "archer_pack" else -1)
 		if pack_type >= 0:
 			var target := _buy_target(pack_type)
-			shop_buttons[k].text += "\n→ Отряд %d (%s)" % [target + 1, _squad_label(target)]
+			shop_buttons[k].text += "\n" + tr("HUD_SHOP_TARGET") % [target + 1, _squad_label(target)]
 		shop_buttons[k].disabled = capped or gold < price   # серая при нехватке золота или на пределе
 
 
@@ -2659,7 +4008,7 @@ func _update_ui() -> void:
 var sim_ms := 0.0
 var draw_ms := 0.0
 # Профиль фаз тика (PROFILE; бенчи включают profile): сетка, юниты, движение, смерти, грубая сетка, остальное
-const PROF_NAMES := ["сетка", "юниты", "движение", "смерти", "грубая", "остальное"]
+const PROF_NAMES := ["сетка", "юниты", "движение", "смерти", "грубая", "остальное"]   # tr-skip: отладка или контекст лога
 var profile := PROFILE
 var prof_acc := PackedFloat64Array([0, 0, 0, 0, 0, 0])   # мкс за текущие 60 тиков
 var prof_avg := PackedFloat64Array([0, 0, 0, 0, 0, 0])   # мс на тик, среднее за прошлые 60 тиков
@@ -2671,6 +4020,10 @@ func _physics_process(delta: float) -> void:
 	var t := Time.get_ticks_usec()
 	prev_pos = pos.duplicate()   # для интерполяции в _process
 	tick_counter += 1
+	if war_cry_level > 0:
+		_tick_war_cry()
+	if wave_state == WS_BATTLE and tick_counter % COND_EVERY == 0:
+		_update_card_conditions()
 	_update_waves(delta)
 	_update_squads(delta)
 	_update_unit_dirs()
@@ -2743,6 +4096,7 @@ func _physics_process(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	var t := Time.get_ticks_usec()
+	_update_fx(delta)
 	ui_t -= delta
 	if ui_t <= 0.0:
 		ui_t = 0.1
@@ -2781,6 +4135,8 @@ func _process(delta: float) -> void:
 	# до первого физического тика prev_pos пуст; на паузе — pos без интерполяции (доля тика продолжает меняться)
 	var have_prev := prev_pos.size() == pos.size() and not paused
 	var sprites := sprites_on and by_type   # F2-F4: все квадратами, чтобы отладочный цвет читался
+	if not paused:
+		anim_clock += delta
 	var jitter := RENDER_JITTER > 0.0
 	# Замах стрелков по отряду (как в _unit_anim_state): 1 — залп натягивается или ждёт цель, 2 — одиночный огонь.
 	var draw_mode := PackedByteArray()
@@ -2821,6 +4177,38 @@ func _process(delta: float) -> void:
 				st = 1
 			buf[o + 12] = type_sprite_base[ut] + mini(st, frames - 1)
 			continue
+		if sprites and frames > 0:
+			# Зомби со спрайтом. Взгляд — по движению за тик (в бою не меняется), с гистерезисом; пишется в unit_dir, бой его не читает.
+			var zst := 0
+			if anim > 0.0:
+				zst = 2
+			elif unit_state[i] == ST_ATTACK:
+				if cooldown[i] <= windup_cd:
+					zst = 1
+			else:
+				if have_prev:
+					var dx := pos[i].x - prev_pos[i].x
+					var dy := pos[i].y - prev_pos[i].y
+					var ax := absf(dx)
+					var ay := absf(dy)
+					if ax + ay > ZOMBIE_TURN_MIN:
+						if ax > ay * ZOMBIE_TURN_HYST:
+							unit_dir[i] = 0 if dx > 0.0 else 2
+						elif ay > ax * ZOMBIE_TURN_HYST:
+							unit_dir[i] = 1 if dy > 0.0 else 3
+				if type_walk_rate[ut] > 0.0:
+					zst = ZOMBIE_WALK_SEQ[int(anim_clock * type_walk_rate[ut] + unit_rand[i] * 4.0) & 3]   # фаза шага у каждого своя
+			var zb := unit_dir[i] * 4
+			var zk := type_sprite_scale[ut]
+			buf[o + 0] = DIR_BASIS[zb] * zk
+			buf[o + 1] = DIR_BASIS[zb + 1] * zk
+			buf[o + 4] = DIR_BASIS[zb + 2] * zk
+			buf[o + 5] = DIR_BASIS[zb + 3] * zk
+			buf[o + 8] = 1.0
+			buf[o + 9] = 1.0
+			buf[o + 10] = 1.0
+			buf[o + 12] = type_sprite_base[ut] + mini(zst, frames - 1)
+			continue
 		buf[o + 0] = UNIT_QUAD
 		buf[o + 1] = 0.0
 		buf[o + 4] = 0.0
@@ -2834,13 +4222,13 @@ func _process(delta: float) -> void:
 	multimesh.visible_instance_count = count
 	multimesh.buffer = buf          # один вызов вместо UNIT_COUNT
 	draw_ms = (Time.get_ticks_usec() - t) / 1000.0
-	fps_label.text = "FPS: %d | units: %d | sim avg: %.1f peak: %.1f | grid: %.1f ms | цвет: F%d | ворота: %.0f | стрелы за волну: %d/%d" % [
+	fps_label.text = tr("DEBUG_FPS_LINE") % [
 		Engine.get_frames_per_second(), count, sim_avg, sim_peak, grid_ms, color_mode + 1, gate_hp, arrows_fired, arrows_hit]
 	if profile:
 		var parts := []
 		for q in 6:
 			parts.append("%s %.2f" % [PROF_NAMES[q], prof_avg[q]])
-		fps_label.text += "\nфазы, мс/тик: " + ", ".join(parts) + " | появилось за 10 с, максимум: %d" % arrivals_10s_max
+		fps_label.text += "\n" + tr("DEBUG_FPS_PHASES") % [", ".join(parts), arrivals_10s_max]
 	if gate_hp != drawn_gate_hp:
 		queue_redraw()   # полоса HP ворот
 
@@ -2988,25 +4376,27 @@ func _update_unit(i: int, delta: float) -> void:
 				var l0 := type_leash_start[t]
 				var l1 := type_leash_end[t]
 				leash_w = 1.0 if l1 <= l0 else smoothstep(l0, l1, sqrt(ds2))
-				slot_vel = ((slot_world - p) * SLOT_GAIN).limit_length(type_speed[t] * 1.3)
+				slot_vel = ((slot_world - p) * SLOT_GAIN).limit_length(type_speed[t] * squad_speed_mult[sq] * 1.3)
 				if leash_w > 0.5:
 					leash_ticks += 2   # решение действует 2 тика (юнит обновляется раз в 2 тика)
 		if best_d > type_range_sq[t] and order == ORDER_HOLD:
 			# Держать: к врагу не идём, остаёмся (возвращаемся) в слот; бьём только того, кто в дальности атаки.
 			var hold_slot := squad_pos[sq] + unit_slot[i].rotated(squad_angle[sq])
-			v = ((hold_slot - p) * SLOT_GAIN).limit_length(type_speed[t] * 1.3)
+			v = ((hold_slot - p) * SLOT_GAIN).limit_length(type_speed[t] * squad_speed_mult[sq] * 1.3)
 			unit_state[i] = ST_RETURN if p.distance_squared_to(hold_slot) > SLOT_NEAR_SQ else ST_IDLE
 		elif best_d > type_range_sq[t]:
 			var dir := (pos[best] - p).normalized()
 			if unit_squad[i] == -1:
 				# Зомби подходит к врагу, качаясь вбок; фаза своя у каждого (unit_rand).
 				dir += dir.orthogonal() * HORDE_CHAOS * sin(tick_counter * 0.15 + unit_rand[i] * TAU)
-			v = dir * type_speed[t]
+			v = dir * (type_speed[t] * (squad_speed_mult[unit_squad[i]] if unit_squad[i] >= 0 else 1.0))
 			unit_state[i] = ST_CHASE
 		else:
 			unit_state[i] = ST_ATTACK
 		if best_d <= type_range_sq[t] and cooldown[i] <= 0.0:
 			var dmg := type_damage[t]
+			if unit_squad[i] >= 0:
+				dmg *= squad_dmg_mult[unit_squad[i]]   # условия карточек (без карточек 1.0)
 			if WAVE_DMG_TO_UNITS and my_team == 1:
 				dmg *= team_dmg_mult[1]   # сила зомби растёт с волной; без волн множитель 1.0
 			var m := type_block_mult[unit_type[best]]
@@ -3020,10 +4410,15 @@ func _update_unit(i: int, delta: float) -> void:
 					if a.dot(Vector2.from_angle(squad_angle[sj])) > BLOCK_COS * a.length():
 						dmg *= m
 						blocked_hits += 1
+			if unit_squad[best] >= 0:
+				dmg *= squad_taken_mult[unit_squad[best]]   # бонус к HP по условию — меньше получаемого урона
 			hp[best] -= dmg
 			if my_team == 1 and contact_tick < 0:
 				contact_tick = tick_counter
-			cooldown[i] = type_cooldown[t]
+			var cd := type_cooldown[t]
+			if unit_squad[i] >= 0:
+				cd /= squad_atk_speed_mult[unit_squad[i]]   # Клич Благодати (без него 1.0)
+			cooldown[i] = cd + cooldown[i]   # cooldown <= 0: остаток (до -CD_CARRY) переносится, без модификатора скорости удара он 0
 			unit_anim_t[i] = ATTACK_ANIM_T
 		if leash_w > 0.0:
 			v = v.lerp(slot_vel, leash_w)   # смесь «к врагу (или стоять и бить)» и «к слоту»
@@ -3033,7 +4428,7 @@ func _update_unit(i: int, delta: float) -> void:
 		var s := unit_squad[i]
 		if s >= 0:
 			var slot_world := squad_pos[s] + unit_slot[i].rotated(squad_angle[s])
-			var lim := type_speed[t] * 1.3 * (RETREAT_SPEED_MULT if order == ORDER_RETREAT else 1.0)
+			var lim := type_speed[t] * squad_speed_mult[s] * 1.3 * (RETREAT_SPEED_MULT if order == ORDER_RETREAT else 1.0)
 			v = ((slot_world - p) * SLOT_GAIN).limit_length(lim)
 			# дальше полуслота от своего места — «возвращается», иначе «стоит»
 			unit_state[i] = ST_RETURN if p.distance_squared_to(slot_world) > SLOT_NEAR_SQ else ST_IDLE
@@ -3056,7 +4451,7 @@ func _update_unit(i: int, delta: float) -> void:
 	# Толчок не разовым сдвигом позиции, а добавкой к скорости на 2 тика до следующего решения:
 	# delta здесь = 2 тика, поэтому за эти 2 тика юнит сместится ровно на push * PUSH_K_2.
 	vel[i] = v + push * PUSH_K_2 / delta
-	cooldown[i] = maxf(cooldown[i] - delta, 0.0)
+	cooldown[i] = maxf(cooldown[i] - delta, type_cd_floor[t])
 
 
 func _move_units(delta: float) -> void:
@@ -3078,6 +4473,8 @@ func _remove_dead() -> void:
 				run_kills += 1
 				gold += wave_cfg.gold_per_kill * type_bounty_mult[unit_type[i]]
 				wave_kills_by_type[unit_type[i]] += 1
+			elif team[i] == 0:
+				wave_fallen += 1   # пал свой (карточка 24)
 			if unit_squad[i] >= 0:
 				squad_dirty[unit_squad[i]] = 1
 				squad_n[unit_squad[i]] -= 1
@@ -3443,7 +4840,7 @@ func _cmd_move_group(list: PackedInt32Array, p: Vector2) -> bool:
 	var lim := Vector2(FIELD.x, WALL_Y - FORM_MARGIN)
 	for axis in 2:
 		if hi[axis] - lo[axis] > lim[axis] + 0.01:
-			_say("Отряды не помещаются в поле", 2.0)
+			_say(tr("MSG_SQUADS_DONT_FIT"), 2.0)
 			return false
 		if lo[axis] < 0.0:
 			delta[axis] -= lo[axis]
@@ -3452,7 +4849,7 @@ func _cmd_move_group(list: PackedInt32Array, p: Vector2) -> bool:
 	for s in list:
 		var q := _target_overlap(s, squad_pos[s] + delta, mask)
 		if q >= 0:
-			_say("Блок пересекается с отрядом %d" % (q + 1), 2.0)   # цели не меняются ни у кого
+			_say(tr("MSG_BLOCK_OVERLAP") % (q + 1), 2.0)   # цели не меняются ни у кого
 			return false
 	for s in list:
 		squad_target[s] = squad_pos[s] + delta
@@ -3463,7 +4860,7 @@ func _cmd_move_group(list: PackedInt32Array, p: Vector2) -> bool:
 func _cmd_move(s: int, target: Vector2) -> bool:
 	var q := _target_overlap(s, target)
 	if q >= 0:
-		_say("Блок пересекается с отрядом %d" % (q + 1), 2.0)   # цель не меняется
+		_say(tr("MSG_BLOCK_OVERLAP") % (q + 1), 2.0)   # цель не меняется
 		return false
 	squad_target[s] = target
 	return true
@@ -3512,7 +4909,7 @@ func _place_formation(s: int, a: Vector2, b: Vector2, flip := false) -> void:
 	if n == 0:
 		return
 	if g.overlap >= 0:
-		_say("Блок пересекается с отрядом %d" % (g.overlap + 1), 2.0)   # отряд остаётся на месте
+		_say(tr("MSG_BLOCK_OVERLAP") % (g.overlap + 1), 2.0)   # отряд остаётся на месте
 		queue_redraw()
 		return
 	_apply_formation(s, g.width, g.rows, g.user_width, g.angle, g.centre, g.front)
@@ -3648,7 +5045,7 @@ func _place_formation_multi(list: PackedInt32Array, a: Vector2, b: Vector2, flip
 		return true
 	var g := _multi_geometry(list, a, b, flip)
 	if not g.fits or g.overlap >= 0:
-		_say("Строй не помещается в поле" if not g.fits else "Блок пересекается с отрядом %d" % (g.overlap + 1), 2.0)
+		_say(tr("MSG_FORMATION_DOESNT_FIT") if not g.fits else tr("MSG_BLOCK_OVERLAP") % (g.overlap + 1), 2.0)
 		queue_redraw()
 		return false
 	for it in g.items:
@@ -3707,7 +5104,7 @@ func _update_squads(delta: float) -> void:
 			var to_f := squad_target[s] - squad_pos[s]
 			var dist_f := to_f.length()
 			if dist_f > maxf(squad_stop_dist[s], 1.0):
-				squad_pos[s] += to_f / dist_f * minf(squad_speed[s] * delta, dist_f)
+				squad_pos[s] += to_f / dist_f * minf(squad_speed[s] * squad_speed_mult[s] * delta, dist_f)
 			continue
 		var to := squad_target[s] - squad_pos[s]
 		var dist := to.length()
@@ -3723,7 +5120,7 @@ func _update_squads(delta: float) -> void:
 				diff = angle_difference(squad_angle[s], to.angle())
 			squad_angle[s] += clampf(diff, -TURN_SPEED * delta, TURN_SPEED * delta)
 		if absf(diff) < MOVE_ANGLE:
-			var spd := squad_speed[s] * (RETREAT_SPEED_MULT if squad_order[s] == ORDER_RETREAT else 1.0)
+			var spd := squad_speed[s] * squad_speed_mult[s] * (RETREAT_SPEED_MULT if squad_order[s] == ORDER_RETREAT else 1.0)
 			squad_pos[s] += to / dist * minf(spd * delta, dist)
 
 
@@ -3881,7 +5278,7 @@ func _single_fire(s: int) -> void:
 		if j == -1:
 			continue
 		_fire_arrow(i, pos[j], 0.0)
-		cooldown[i] = type_cooldown[t]
+		cooldown[i] = type_cooldown[t] / squad_atk_speed_mult[s] + cooldown[i]   # cooldown <= 0: остаток переносится (см. type_cd_floor); Клич — скорострельность
 
 
 # Залп: цикл draw (draw_time) -> fire -> reload до volley_period от начала цикла.
@@ -3911,7 +5308,7 @@ func _volley(s: int, delta: float) -> void:
 		if contact_tick < 0:
 			volleys_before_contact += 1
 		squad_volley_t[s] = t
-	elif t >= type_volley_period[ut]:
+	elif t >= type_volley_period[ut] / squad_atk_speed_mult[s]:   # Клич Благодати ускоряет цикл залпа (без него 1.0)
 		squad_volley_t[s] = 0.0   # перезарядка закончилась: новый цикл с натяжения
 		squad_volley_fired[s] = 0
 	else:
@@ -3959,14 +5356,14 @@ func _fire_arrow(i: int, aim: Vector2, delay: float, own_range := false, release
 		return
 	var t := unit_type[i]
 	var dist := pos[i].distance_to(aim)
-	var land := aim + Vector2.from_angle(arrow_rng.randf() * TAU) * (type_spread[t] * dist * sqrt(arrow_rng.randf()))
+	var land := aim + Vector2.from_angle(arrow_rng.randf() * TAU) * (wave_spread[t] * dist * sqrt(arrow_rng.randf()))
 	if own_range and pos[i].distance_to(land) > type_range_far[t]:
 		arrows_out_of_range += 1
 		return
 	var ticks := roundi((delay + pos[i].distance_to(land) / ARROW_SPEED) * Engine.physics_ticks_per_second)
 	arrow_land[arrow_count] = land
 	arrow_tick[arrow_count] = tick_counter + maxi(ticks, 1)
-	arrow_dmg[arrow_count] = type_arrow_dmg[t]
+	arrow_dmg[arrow_count] = type_arrow_dmg[t] * squad_dmg_mult[unit_squad[i]]
 	arrow_count += 1
 	arrows_fired += 1
 	if contact_tick < 0:
@@ -4015,12 +5412,22 @@ func _process_arrows() -> void:
 
 
 # Shift на момент последнего события мыши или клавиатуры: клик по строке панели сюда приходит раньше, чем кнопке.
+# Действие игры для нажатой клавиши или "". Сначала действия с модификаторами (Ctrl+A, Ctrl+R), затем остальные.
+func _key_action(event: InputEvent) -> String:
+	for a in KEY_ACTIONS:
+		if InputMap.has_action(a) and event.is_action(a):
+			return a
+	return ""
+
+
 func _input(event: InputEvent) -> void:
 	if event is InputEventWithModifiers:
 		mod_shift = event.shift_pressed
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _tune_key(event):
+		return   # подгонка замка (F3, debug-сборка)
 	# Сюда приходят только события, не съеденные интерфейсом: клик по панели карту не трогает.
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		# ЛКМ выбирает: клик — отряд под курсором, протяжка — рамка
@@ -4074,73 +5481,90 @@ func _unhandled_input(event: InputEvent) -> void:
 			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_LEFT, MOUSE_BUTTON_WHEEL_RIGHT]:
 		# Shift + колесо: поворот на месте (с Shift система может прислать горизонтальное колесо); без Shift колесо не занято
 		_cmd_rotate(-1 if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_LEFT] else 1)
-	elif event is InputEventKey and event.pressed and not event.echo:
+	elif (event is InputEventKey and event.pressed and not event.echo) or (event is InputEventMouseButton and event.pressed
+			and SETTINGS.MOUSE_BINDABLE.has(event.button_index)):
+		# Команды игры — действия InputMap (клавиши по умолчанию в [input] project.godot, переназначение — Settings, можно
+		# и на среднюю/боковые кнопки мыши); Esc и F1–F5 постоянные и идут по keycode.
+		var key := event as InputEventKey   # null — кнопка мыши
 		if _run_over():
-			if event.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_R]:
+			if event.is_action("to_hub") or event.is_action("wave_start"):
 				_to_hub()
+			elif key != null and key.keycode == KEY_ESCAPE:
+				_open_esc_menu()
 			return   # экран конца забега: остальные клавиши не действуют
-		match event.keycode:
-			KEY_ESCAPE:
-				drag_active = false   # Esc отменяет протяжку и рамку
-				box_active = false
-				queue_redraw()
-			KEY_F:
+		var act := _key_action(event)
+		if act.begins_with("squad_select_"):
+			var s := int(act.trim_prefix("squad_select_")) - 1
+			if event.shift_pressed:
+				_toggle_sel(s)
+			else:
+				_select_only(s)
+		elif act.begins_with("buy_"):
+			_buy(int(act.trim_prefix("buy_")) - 1)
+		match act:
+			"about_face":
 				if drag_active:
 					drag_flip = not drag_flip   # во время протяжки: лицо строя наоборот
 					queue_redraw()
 				else:
 					_cmd_about_face()
-			KEY_H:
+			"banner_toggle":
 				_toggle_banner()
-			KEY_T:
+			"auto_width":
 				for s in _sel_list():
 					squad_user_width[s] = 0   # ширина строя снова авто
-			KEY_R:
-				if DEBUG_COLORS and event.ctrl_pressed:
+			"debug_restart":
+				if DEBUG_COLORS:
 					get_tree().reload_current_scene()   # отладочный перезапуск боя
-			KEY_SPACE:
+			"wave_start":
 				if PAUSE_ENABLED and wave_state == WS_BATTLE:
 					_set_paused(not paused)
 				else:
 					_start_wave()
-			KEY_P:
+			"pause":
 				_set_paused(not paused)
-			KEY_K:
+			"split_side":
 				_next_split_mode()
-			KEY_LEFT:
+			"post_left":
 				_cmd_side_post(SIDE_LEFT)
-			KEY_UP:
+			"post_top":
 				_cmd_side_post(SIDE_TOP)
-			KEY_RIGHT:
+			"post_right":
 				_cmd_side_post(SIDE_RIGHT)
-			KEY_DOWN:
+			"post_back":
 				_cmd_side_post(-1)
-			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8:
-				if event.shift_pressed:
-					_toggle_sel(event.keycode - KEY_1)
-				else:
-					_select_only(event.keycode - KEY_1)
-			KEY_A:
-				if event.ctrl_pressed:
-					_select_all()
-			KEY_N:
+			"select_all":
+				_select_all()
+			"squad_new":
 				_cmd_new_squad()
-			KEY_G:
+			"squad_split":
 				_cmd_split()
-			KEY_M:
+			"squad_merge":
 				_cmd_merge()
-			KEY_Q:
+			"order_attack":
 				_set_order(ORDER_ATTACK)
-			KEY_W:
+			"order_hold":
 				_set_order(ORDER_HOLD)
-			KEY_E:
+			"order_retreat":
 				_set_order(ORDER_RETREAT)
-			KEY_Z, KEY_X, KEY_C, KEY_V:
-				_buy(SHOP_KEYS.find(event.keycode))
+			"war_cry":
+				request_war_cry()
+		if key == null:
+			return
+		match key.keycode:
+			KEY_ESCAPE:
+				if drag_active or box_active:
+					drag_active = false   # Esc отменяет протяжку и рамку
+					box_active = false
+					queue_redraw()
+				else:
+					_open_esc_menu()
 			KEY_F1:
 				color_mode = 0
-			KEY_F2, KEY_F3, KEY_F4:
+				_sync_fx_debug()
+			KEY_F2, KEY_F3, KEY_F4:   # в debug-сборке F3 без Shift — подгонка замка (_tune_key), раскраска по состоянию — Shift+F3
 				if DEBUG_COLORS:
 					color_mode = event.keycode - KEY_F1
+					_sync_fx_debug()
 			KEY_F5:
 				sprites_on = not sprites_on   # спрайты / все юниты квадратами
