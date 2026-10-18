@@ -1207,7 +1207,7 @@ func _wave_cleared() -> void:
 	gold += wave_cfg.wave_bonus_gold
 	for i in count:
 		if team[i] == 0:
-			hp[i] = type_hp[unit_type[i]]   # бесплатное лечение армии
+			hp[i] = type_hp[unit_type[i]] if wave_cfg.heal_base >= 1.0 else hp[i] + (type_hp[unit_type[i]] - hp[i]) * wave_cfg.heal_base   # лечение между волнами, как в рабочем main (6b)
 	wave_state = WS_RESPITE
 	_free_empty_squads()
 	wave_plan = _plan_wave(wave_number + 1)   # состав и всплески следующей волны известны с начала передышки
