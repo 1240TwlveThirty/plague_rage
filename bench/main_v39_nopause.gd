@@ -643,6 +643,7 @@ var wave_remaining := 0              # зомби этой волны, ещё н
 var subwave_timer := 0.0
 var wave_hp_mult := 1.0
 var wave_kills := 0
+var wave_spawned := 0                  # зомби создано за волну: номер следующего — для разброса HP (hp_spread)
 var zombie_alive := 0
 var gold := 0.0
 var unit_rng := RandomNumberGenerator.new()   # unit_rand, джиттер спавна, точки выхода из ворот
@@ -1384,6 +1385,11 @@ func _load_waves() -> bool:
 	if d.heal_base < 0.0 or d.heal_base > 1.0:
 		push_error("%s: heal_base — доля потерянного HP от 0 до 1" % WAVES_PATH)
 		return false
+	var spread = d.get("hp_spread", 0.0)   # нет поля — разброса нет
+	if not (spread is float or spread is int) or spread < 0.0 or spread >= 1.0:
+		push_error("%s: hp_spread — число от 0 до 1 (не включая 1)" % WAVES_PATH)
+		return false
+	d.hp_spread = float(spread)
 	if not d.get("layers") is Array or d.layers.size() != 3:
 		push_error("%s: нет массива layers из трёх слоёв" % WAVES_PATH)
 		return false
@@ -1682,6 +1688,18 @@ func _cd_actual(cd: float) -> float:
 		c[0] = maxf(c[0] - CD_CARRY, 0.0)
 		steps += 1
 	return steps * CD_CARRY
+
+
+# Множитель HP зомби при разбросе s: 1 + s * (2u − 1), u в [0, 1) — из целочисленного хэша (seed, волна, номер зомби в волне).
+# Детерминирован и не трогает потоки ГСЧ симуляции; одинаковые аргументы — один и тот же множитель.
+static func hp_spread_factor(s: float, seed: int, w: int, n: int) -> float:
+	var h := (seed * 73856093) ^ (w * 19349663) ^ (n * 83492791)
+	for k in 3:   # перемешивание в 32 битах
+		h = (h ^ (h >> 16)) & 0xFFFFFFFF
+		h = (h * 0x45D9F3B) & 0xFFFFFFFF
+	h = (h ^ (h >> 16)) & 0xFFFFFFFF
+	var u := float(h & 0xFFFFFF) / 16777216.0
+	return 1.0 + s * (2.0 * u - 1.0)
 
 
 # Начало волны: модификаторы заново (карточки могли смениться в передышке), данные волны от базы, статы на лету,
@@ -2345,6 +2363,7 @@ func _start_wave() -> void:
 	team_dmg_mult[1] = 1.0 + wave_cfg.dmg_growth * (wave_number - 1)
 	wave_kills = 0
 	wave_kills_by_type.fill(0)
+	wave_spawned = 0
 	_prepare_wave()
 	arrows_fired = 0   # в отладочной строке — за текущую волну
 	arrows_hit = 0
@@ -2460,6 +2479,9 @@ func _spawn_zombie(p: Vector2, type: int) -> void:
 	unit_rand[i] = unit_rng.randf()
 	unit_render_off[i] = _render_offset(i)
 	hp[i] = type_hp[type] * wave_hp_mult
+	if wave_cfg.hp_spread > 0.0:   # разброс HP: свой хэш (волна, номер зомби в волне, seed), не ГСЧ симуляции
+		hp[i] *= hp_spread_factor(wave_cfg.hp_spread, spawn_seed, wave_number, wave_spawned)
+	wave_spawned += 1
 	arrivals_now += 1
 	cooldown[i] = unit_rand[i] * type_cooldown[type]
 	unit_state[i] = ST_IDLE

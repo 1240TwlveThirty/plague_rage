@@ -1,6 +1,7 @@
 extends SceneTree
 # Калибровка осады I: один забег бота. Аргументы: <бот B1..B6> <seed> [множитель численности, по умолчанию 1] [--gifts id:уровень,id:уровень]
-# [--cards id,id] [--pick random] [--variants путь] [--war-cry on|off].
+# [--cards id,id] [--pick random] [--variants путь] [--war-cry on|off] [--hp-spread s].
+# --hp-spread — разброс HP зомби s (data/waves.json hp_spread заменяется в памяти; 0 — без разброса).
 # Рабочие scripts/main.gd и JSON из data/ (только чтение). Пример замера «потолка»: B5 1 --gifts tempered_steel:3,reserve:2
 # --cards — карточки с начала забега (разовые эффекты сразу; случайный результат карточки 30 — генератор забега бенча, seed = seed бота).
 # --pick random — настоящий выбор: после волн pick_after_waves бот берёт случайную карточку из тройки (тот же генератор забега).
@@ -29,7 +30,10 @@ func zombie_near(m: Node2D) -> bool:
 				return true
 	return false
 const WAVE_CAP := 40
-const CYCLES := {"B1": [0, 2, 1, 3], "B2": [0, 2], "B3": [3], "B5": [0, 1], "B6": [2, 0, 2, 1]}
+const CYCLES := {"B1": [0, 2, 1, 3], "B2": [0, 2], "B3": [3], "B5": [0, 1], "B6": [2, 0, 2, 1], "B7": [0, 1]}
+# B7 (задача 6b): покупки как у B5 (по кругу пехота, лучники); перед ними — ремонт ворот, если их HP ниже B7_REPAIR_BELOW от максимума и хватает
+# золота; перед стартом каждой волны — приказ «держать» всем отрядам пехоты. На сигнал всплеска не реагирует. Пишет строки лога B7,...
+const B7_REPAIR_BELOW := 0.6
 
 func count_type(m: Node2D, type: int) -> int:
 	var n := 0
@@ -43,7 +47,7 @@ func _initialize() -> void:
 		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	var args := Array(OS.get_cmdline_user_args())
 	var opt := {}   # --gifts, --cards, --pick, --variants -> значение
-	for key in ["--gifts", "--cards", "--pick", "--variants", "--war-cry"]:
+	for key in ["--gifts", "--cards", "--pick", "--variants", "--war-cry", "--hp-spread"]:
 		var at := args.find(key)
 		if at >= 0:
 			opt[key] = String(args[at + 1]) if at + 1 < args.size() else ""
@@ -81,6 +85,8 @@ func _initialize() -> void:
 	m._setup_data()
 	if opt.has("--variants"):
 		DirAccess.remove_absolute(m.cards_path)
+	if opt.has("--hp-spread") and not m.type_id.is_empty():
+		m.wave_cfg.hp_spread = float(opt["--hp-spread"])
 	if m.type_id.is_empty():
 		m.free()
 		quit(1)   # данные или набор даров не загрузились: ошибка уже в stderr
@@ -106,6 +112,13 @@ func _initialize() -> void:
 			while m._buy(0):
 				pass
 		else:
+			if bot == "B7" and m.gate_hp < B7_REPAIR_BELOW * m.gate_hp_max:
+				var price: float = m._price(3)
+				var hp0: float = m.gate_hp
+				if m._buy(3):
+					print("B7,%d,repair,ворота %.0f/%.0f -> %.0f/%.0f, цена %.0f" % [m.wave_number, hp0, m.gate_hp_max - m.shop_param[3], m.gate_hp, m.gate_hp_max, price])
+				else:
+					print("B7,%d,repair_skip,ворота %.0f/%.0f, золота %.0f < %.0f" % [m.wave_number, hp0, m.gate_hp_max, m.gold, price])
 			var cycle: Array = CYCLES[bot]
 			while true:
 				var bought := false
@@ -122,6 +135,13 @@ func _initialize() -> void:
 		var arch := count_type(m, m.archer_type)
 		var gate0 := ceili(maxf(m.gate_hp, 0.0))
 		var p: Dictionary = STRENGTH.player(m)
+		if bot == "B7":
+			var held := PackedStringArray()
+			for sq in m.SQUAD_MAX:
+				if m.squad_used[sq] == 1 and m.squad_n[sq] > 0 and m.squad_type[sq] == m.infantry_type:
+					m.squad_order[sq] = m.ORDER_HOLD
+					held.append("%d (%d)" % [sq, m.squad_n[sq]])
+			print("B7,%d,hold,отряды пехоты: %s" % [m.wave_number + 1, ", ".join(held)])
 		m._start_wave()
 		var e: Dictionary = STRENGTH.enemy(m)
 		var ticks := 0

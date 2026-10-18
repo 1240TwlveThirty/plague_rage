@@ -72,6 +72,7 @@ Godot "карточки: условия C и особые K (v49c)" "res://bench
 Godot "карточки: выбор в забеге (v53)" "res://bench/check_v53_pick.gd" "CHECK: провалов 0"
 Godot "Клич Благодати (v54)" "res://bench/check_v54_warcry.gd" "CHECK: провалов 0"
 Godot "карточки в HUD: индикаторы (v51)" "res://bench/check_v51.gd" "CHECK: провалов 0"
+Godot "разброс HP зомби (v52)" "res://bench/check_v52.gd" "CHECK: провалов 0"
 Godot "меню, хаб, пауза по Esc (v45)" "res://bench/check_v45.gd" "CHECK: провалов 0"
 Godot "подгонка слоя замка (v48)" "res://bench/check_v48.gd" "CHECK: провалов 0"
 Godot "настройки, полный экран (v49)" "res://bench/check_v49.gd" "CHECK: провалов 0"
