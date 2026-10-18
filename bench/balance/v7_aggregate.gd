@@ -58,7 +58,8 @@ func _initialize() -> void:
 	G.append_array(head)
 	G.append(line("без даров", "none", "B8"))
 	for lvl in [1, 2, 3]:
-		G.append(line("«Стена щитов» %d (block +%d п. п.)" % [lvl, lvl * 5], "spear_wall_%d" % lvl, "B8"))
+		G.append(line("«Стена щитов» %d (block +%d п. п.)" % [lvl, lvl * 5], "spear_wall_%d" % lvl, "B8",
+			"бот не использует: копейщики B8 на «держать», навык уже даёт 0.6 + 0.30 = 0.90, потолок 0.95"))
 	for lvl in [1, 2, 3]:
 		G.append(line("все дары ур. %d, со «Стеной щитов»" % lvl, "all_%d" % lvl, "B8"))
 		G.append(line("все дары ур. %d, без «Стены щитов»" % lvl, "allno_%d" % lvl, "B8"))
