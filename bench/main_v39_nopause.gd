@@ -58,7 +58,8 @@ const STORY_PATH := "res://data/story.json"   # дневник: тексты б�
 const GIFTS_PATH := "res://data/gifts.json"   # дары: модификаторы забега
 const MODS := preload("res://scripts/mods.gd")
 const CARDS := preload("res://scripts/cards.gd")
-const CARD_PICK := preload("res://scripts/card_pick.gd")   # экран выбора карточки
+const CARD_PICK := preload("res://scripts/card_pick.gd")
+const ICONS := preload("res://scripts/icons.gd")   # иконки карточек (список в HUD)   # экран выбора карточки
 const CARD_RULES_PATH := "res://data/cards_rules.json"
 const ESC_MENU := preload("res://scripts/esc_menu.gd")   # меню паузы по Esc: «Продолжить», «Выйти в меню», «Выход из игры»
 const ESC_NOTE := "UI_PAUSE_NOTE_LOSS"   # ключ перевода
@@ -1908,16 +1909,23 @@ func _update_cards_ui() -> void:
 	var recs := _cards()
 	if cards_rows.size() != recs.size():
 		for l in cards_rows:
-			l.queue_free()
+			l.get_parent().queue_free()
 		cards_rows.clear()
 		for r in recs:
+			var row := HBoxContainer.new()   # иконка карточки и название
+			row.alignment = BoxContainer.ALIGNMENT_END
+			row.add_theme_constant_override("separation", 6)
+			var icon := ICONS.make(ICONS.of_card(r.id), 1)
+			icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			row.add_child(icon)
 			var l := Label.new()
 			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 			l.mouse_filter = Control.MOUSE_FILTER_STOP   # подсказка при наведении
 			l.add_theme_font_size_override("font_size", 18)
 			l.add_theme_color_override("font_outline_color", Color.BLACK)
 			l.add_theme_constant_override("outline_size", 5)
-			cards_box.add_child(l)
+			row.add_child(l)
+			cards_box.add_child(row)
 			cards_rows.append(l)
 	cards_label.visible = not recs.is_empty()
 	for k in recs.size():

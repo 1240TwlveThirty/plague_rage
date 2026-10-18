@@ -1,0 +1,33 @@
+{
+	"cell": 16,
+	"per_row": 8,
+	"icons": {
+		"sword": 0,
+		"arrow": 1,
+		"reload": 2,
+		"range": 3,
+		"spear": 4,
+		"shield": 5,
+		"heart": 6,
+		"cross": 7,
+		"boot": 8,
+		"gate": 9,
+		"hammer": 10,
+		"coin": 11,
+		"purse": 12,
+		"anvil": 13,
+		"weapons": 14,
+		"pick": 15,
+		"soldiers": 16,
+		"skull": 17,
+		"horn": 18,
+		"eye": 19,
+		"line": 20,
+		"cry": 21,
+		"hourglass": 22,
+		"fire": 23,
+		"radiance": 24,
+		"blood": 25,
+		"scales": 26
+	}
+}

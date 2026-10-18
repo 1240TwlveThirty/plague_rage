@@ -10,6 +10,8 @@ const DIARY_SIZE := Vector2(0.5, 0.7)        # панель дневника: д
 const DIARY_EMPTY := "HUB_DIARY_EMPTY"
 const RADIANCE_COLOR := Color(0.6, 0.9, 1.0)
 const RADIANCE_ICON := "res://art/shine.png"
+const ICONS := preload("res://scripts/icons.gd")
+const GIFT_ICON_AT := Vector2(8, 5)   # иконка 16 x 16 в окне рамки 32 x 48 (масштаб 1, как у рамки в строке)
 const GIFT_ICON := "res://art/card_meta_perk.png"   # общая заглушка; своя иконка дара — art/gift_<id>.png, если есть
 const GIFT_ICON_SIZE := Vector2(32.0, 48.0)   # 12 строк даров помещаются на экран 1080
 const GIFT_FONT := 26
@@ -136,7 +138,12 @@ func _setup_gifts() -> void:
 		if game.gift_defs[id].hidden:
 			continue   # скрытый дар (hidden в gifts.json) в магазине не показывается
 		var own := "res://art/gift_%s.png" % id
-		grid.add_child(_icon(own if ResourceLoader.exists(own) else GIFT_ICON, GIFT_ICON_SIZE))
+		var cell_icon := _icon(own if ResourceLoader.exists(own) else GIFT_ICON, GIFT_ICON_SIZE)
+		if not ResourceLoader.exists(own):   # своей картинки дара нет: рамка карточки дара и иконка из общего набора в её окне
+			var ic := ICONS.make(ICONS.of_gift(id), 1)
+			ic.position = GIFT_ICON_AT
+			cell_icon.add_child(ic)
+		grid.add_child(cell_icon)
 		_cell(grid, game.gift_defs[id].name_key)
 		var row := {"level": _cell(grid), "effect": _cell(grid), "price": _cell(grid, "", RADIANCE_COLOR)}
 		var b := Button.new()
