@@ -123,7 +123,7 @@ func t_run() -> void:
 	await step(3)
 	var m := current_scene as Node2D
 	check("забег начат: экран выбора есть и скрыт, выбранных карточек нет, в HUD списка нет", m != null and m.card_screen != null and not m.card_screen.visible and g.run_cards.is_empty()
-		and m.cards_label.text == "")
+		and m.cards_rows.is_empty() and not m.cards_label.visible)
 	boost(m)
 	wave(m)
 	check("после волны 1 выбора нет", m.wave_state == m.WS_RESPITE and m.pending_offer.is_empty() and not m.card_screen.visible)
@@ -141,7 +141,8 @@ func t_run() -> void:
 	check("клавиша 2: выбрана вторая карточка, экран закрыт, тройка снята", g.run_cards.size() == 1 and g.run_cards[0].id == offer[1] and not m.card_screen.visible
 		and m.pending_offer.is_empty())
 	m._update_ui()
-	check("HUD: «Карточки:» и название выбранной", m.cards_label.text.contains(tr(g.card_defs[offer[1]].name_key)) and m.cards_label.text.begins_with(tr("HUD_CARDS")), m.cards_label.text)
+	check("HUD: «Карточки:» и строка с названием выбранной", m.cards_label.visible and tr(m.cards_label.text) == tr("HUD_CARDS") and m.cards_rows.size() == 1
+		and m.cards_rows[0].text.contains(tr(g.card_defs[offer[1]].name_key)), "" if m.cards_rows.is_empty() else m.cards_rows[0].text)
 	for w in [3, 4]:
 		wave(m)
 		check("после волны %d выбора нет" % w, m.wave_number == w and m.pending_offer.is_empty())
@@ -161,7 +162,7 @@ func t_run() -> void:
 	g.start_run(1)
 	await step(3)
 	m = current_scene as Node2D
-	check("новый забег: выбранные карточки очищены, HUD пуст", g.run_cards.is_empty() and m.cards_label.text == "" and cards_before.size() == 3)
+	check("новый забег: выбранные карточки очищены, HUD пуст", g.run_cards.is_empty() and m.cards_rows.is_empty() and not m.cards_label.visible and cards_before.size() == 3)
 
 # Один seed забега — одни и те же тройки (без выбора: генератор забега не зависит от симуляции).
 func offers_of(seed: int) -> Array:

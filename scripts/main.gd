@@ -12,6 +12,11 @@ const SHOP_COST_STATS := ["unit_cost", "unit_cost", "weapon_cost", "repair_cost"
 const HEAL_BASE := 1.0    # лечение между волнами: доля потерянного HP, база — полное; стат heal прибавляет проценты (выше 1.0 ничего не меняет)
 const WAR_CRY_GLOW := Color(1.0, 0.82, 0.3, 0.3)   # подсветка краёв экрана, пока действует Клич Благодати
 const WAR_CRY_GLOW_PX := 10.0
+const SPLIT_NAMES := {"infantry": "UI_SPLIT_INFANTRY", "archer": "UI_SPLIT_ARCHER"}   # «Жертва ради победы»: кому выпало
+const COND_KEYS := {"hold": "COND_HOLD", "retreat": "COND_RETREAT", "gate_low": "COND_GATE_LOW", "squad_low": "COND_SQUAD_LOW",
+	"wave_time": "COND_WAVE_TIME", "gold_high": "COND_GOLD_HIGH", "lost_steps": "COND_LOST_STEPS"}
+const CARD_ON := Color(1.0, 0.82, 0.3)          # строка карточки: условие выполнено
+const CARD_IDLE := Color(1.0, 1.0, 1.0, 0.55)   # условная карточка, условие не выполнено
 const COND_EVERY := 15   # условия карточек пересчитываются раз в столько тиков симуляции
 const CD_CARRY := 2.0 / 30.0   # перенос остатка перезарядки: не больше одного шага решения юнита (2 тика при 30 Гц)
 const SETTINGS := preload("res://scripts/settings.gd")   # key_label(действие): клавиша для подсказок
@@ -601,7 +606,12 @@ var pending_offer: Array = []          # тройка, ждущая выбора
 var card_pick_auto := ""               # бенчи: "random" — выбор без экрана
 var bench_card_rng: RandomNumberGenerator = null
 var card_screen: CanvasLayer = null    # экран выбора (только с интерфейсом)
-var cards_label: Label = null          # выбранные карточки в HUD
+var cards_label: Label = null          # заголовок списка выбранных карточек в HUD («Карточки:»)
+var cards_box: VBoxContainer = null    # список: строка на карточку (подсветка условия, подсказка при наведении)
+var cards_rows: Array = []             # Label на каждую выбранную карточку, порядок _cards()
+# Индикаторы карточек для HUD: id -> {on: условие выполнено хотя бы в одном отряде, pct: текущий бонус урона %} — пишет
+# _update_card_conditions (раз в COND_EVERY тиков), HUD только читает; в передышке все выключены.
+var card_state := {}
 var mods: RefCounted = null            # MODS: собирается при старте забега и в начале каждой волны (_prepare_wave), тик его не вызывает
 var income_pct := 0.0                  # стат income: эта доля дохода волны начисляется в конце волны (до магазина передышки)
 var income_flat := 0.0                 # стат income_flat: столько золота начисляется в конце волны вместе с доходом
@@ -1693,15 +1703,25 @@ func _prepare_cards() -> void:
 		if d.is_empty() or d.get("disabled", false):
 			continue
 		if d.kind == "C":
-			cond_cards.append({"cond": d.when.cond, "when": d.when, "mods": d.mods.filter(func(e): return not e.get("cost", false))})
+			cond_cards.append({"id": r.id, "cond": d.when.cond, "when": d.when, "mods": d.mods.filter(func(e): return not e.get("cost", false))})
 		elif d.get("special", "") == "vengeance":
-			vengeance = {"per_unit_pct": float(d.per_unit_pct), "max_pct": float(d.max_pct)}
+			vengeance = {"id": r.id, "per_unit_pct": float(d.per_unit_pct), "max_pct": float(d.max_pct)}
 	for sq in SQUAD_MAX:
 		squad_start_n[sq] = squad_n[sq] if squad_used[sq] == 1 else 0
 	wave_fallen = 0
+	_cards_off()
 	squad_dmg_mult.fill(1.0)
 	squad_taken_mult.fill(1.0)
 	squad_speed_mult.fill(1.0)
+
+
+# Индикаторы карточек: условия и особые — выключены, бонус 0 (начало пересчёта, начало волны, передышка).
+func _cards_off() -> void:
+	card_state = {}
+	for c in cond_cards:
+		card_state[c.id] = {"on": false, "pct": 0.0}
+	if not vengeance.is_empty():
+		card_state[vengeance.id] = {"on": false, "pct": 0.0}
 
 
 # Множители отрядов по условиям карточек (раз в COND_EVERY тиков боя и в начале волны; по тикам и состоянию симуляции, без ГСЧ).
@@ -1710,6 +1730,7 @@ func _prepare_cards() -> void:
 func _update_card_conditions() -> void:
 	if cond_cards.is_empty() and vengeance.is_empty():
 		return
+	_cards_off()
 	for sq in SQUAD_MAX:
 		var d := 0.0
 		var h := 0.0
@@ -1722,6 +1743,11 @@ func _update_card_conditions() -> void:
 				var k := cond_factor(c.cond, c.when, sq)
 				if k == 0.0:
 					continue
+				var st: Dictionary = card_state[c.id]
+				st.on = true
+				for e in c.mods:   # индикатор: бонус урона этой карточки в отряде (для ступеней — с их числом), наибольший по отрядам
+					if e.stat == "damage" and (e.target == "all_units" or e.target == tname):
+						st.pct = maxf(st.pct, e.value * k)
 				for e in c.mods:
 					if e.target == "all_units" or e.target == tname:
 						match e.stat:
@@ -1732,7 +1758,9 @@ func _update_card_conditions() -> void:
 							"speed":
 								sp += e.value * k
 			if not vengeance.is_empty():
-				d += minf(vengeance.per_unit_pct * wave_fallen, vengeance.max_pct)
+				var vp := minf(vengeance.per_unit_pct * wave_fallen, vengeance.max_pct)
+				d += vp
+				card_state[vengeance.id] = {"on": vp > 0.0, "pct": vp}
 		squad_dmg_mult[sq] = 1.0 + d / 100.0
 		squad_taken_mult[sq] = 1.0 / (1.0 + h / 100.0)
 		squad_speed_mult[sq] = 1.0 + sp / 100.0
@@ -1789,8 +1817,91 @@ func choose_card(id: String) -> bool:
 		banner.visible = banner_any and not banner_hidden
 	if not r.is_empty():
 		apply_on_pick(r)
+		if r.has("result"):   # «Жертва ради победы»: что выпало — сразу строкой в HUD
+			_say(tr("MSG_CARD_SPLIT") % [tr(card_defs[r.id].name_key), card_split_text(r)], 8.0)
 	ui_t = 0.0
 	return true
+
+
+# Число для подписей карточек: 25, а не 25.0; 1.5 и 0.85 как есть.
+static func num_text(v: float) -> String:
+	return str(int(v)) if v == floorf(v) else String.num(v)
+
+
+# Результат случайного эффекта карточки (random_split): «пехота ×1.5, лучники ×0.85».
+func card_split_text(r: Dictionary) -> String:
+	var sp: Dictionary = card_defs[r.id].on_pick.random_split
+	return "%s ×%s, %s ×%s" % [tr(SPLIT_NAMES[r.result.good]), num_text(sp.good), tr(SPLIT_NAMES[r.result.bad]), num_text(sp.bad)]
+
+
+# Строка карточки в HUD: название; результат случайного эффекта; бонус по ступеням или павшим (+15%), пока он есть.
+func card_row_text(r: Dictionary) -> String:
+	var t := tr(card_defs[r.id].name_key)
+	if r.has("result"):
+		t += " (%s)" % card_split_text(r)
+	var st: Dictionary = card_state.get(r.id, {})
+	var d: Dictionary = card_defs[r.id]
+	if st.get("on", false) and (d.get("special", "") == "vengeance" or (d.has("when") and d.when.cond == "lost_steps")):
+		t += " +%s%%" % num_text(snappedf(st.pct, 0.1))
+	return t
+
+
+# Подсказка к строке карточки: название, описание (без издержки), издержка, условие.
+func card_tooltip(r: Dictionary) -> String:
+	var d: Dictionary = card_defs[r.id]
+	var desc := tr(d.desc_key)
+	var lines := [tr(d.name_key)]
+	var at := desc.find(";")
+	lines.append(desc if at < 0 else desc.left(at))
+	if at >= 0:
+		lines.append(tr("UI_CARD_TIP_COST") % desc.substr(at + 1).strip_edges())
+	if d.has("when"):
+		lines.append(tr("UI_CARD_TIP_COND") % cond_text(d.when))
+	elif d.get("special", "") == "vengeance":
+		lines.append(tr("UI_CARD_TIP_COND") % tr("COND_VENGEANCE"))
+	if r.has("result"):
+		lines.append(tr("UI_CARD_TIP_RESULT") % card_split_text(r))
+	return "\n".join(lines)
+
+
+func cond_text(w: Dictionary) -> String:
+	match w.cond:
+		"gate_low", "squad_low":
+			return tr(COND_KEYS[w.cond]) % num_text(w.frac * 100.0)
+		"wave_time":
+			return tr(COND_KEYS[w.cond]) % num_text(w.seconds)
+		"gold_high":
+			return tr(COND_KEYS[w.cond]) % num_text(w.gold)
+		"lost_steps":
+			return tr(COND_KEYS[w.cond]) % num_text(w.step_pct)
+	return tr(COND_KEYS[w.cond])
+
+
+# Список карточек в HUD: строки создаются при смене набора; текст, цвет и подсказка — по card_state (его пишет симуляция).
+func _update_cards_ui() -> void:
+	var recs := _cards()
+	if cards_rows.size() != recs.size():
+		for l in cards_rows:
+			l.queue_free()
+		cards_rows.clear()
+		for r in recs:
+			var l := Label.new()
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			l.mouse_filter = Control.MOUSE_FILTER_STOP   # подсказка при наведении
+			l.add_theme_font_size_override("font_size", 18)
+			l.add_theme_color_override("font_outline_color", Color.BLACK)
+			l.add_theme_constant_override("outline_size", 5)
+			cards_box.add_child(l)
+			cards_rows.append(l)
+	cards_label.visible = not recs.is_empty()
+	for k in recs.size():
+		var r: Dictionary = recs[k]
+		var l: Label = cards_rows[k]
+		var cond: bool = card_state.has(r.id)
+		var on: bool = card_state.get(r.id, {}).get("on", false)
+		l.text = ("● " if on else "") + card_row_text(r)
+		l.add_theme_color_override("font_color", CARD_ON if on else (CARD_IDLE if cond or card_defs[r.id].has("when") else Color.WHITE))
+		l.tooltip_text = card_tooltip(r)
 
 
 # Разовый эффект выбранной карточки (on_pick): grant_units — столько пехоты в первый отряд пехоты сразу.
@@ -2364,6 +2475,7 @@ func _kills_text() -> String:
 
 func _wave_cleared() -> void:
 	_end_war_cry()   # в передышке клич не действует
+	_cards_off()     # в передышке условия карточек не горят
 	if run_limit and wave_number == waves_per_run:
 		_on_win()   # последняя волна забега: передышки не будет
 		return
@@ -3408,15 +3520,20 @@ func _setup_fps_label() -> void:
 	card_screen.picked.connect(choose_card)
 	add_child(card_screen)
 	# Выбранные карточки: справа сверху, компактным списком названий
+	cards_box = VBoxContainer.new()
+	cards_box.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	cards_box.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	cards_box.position = Vector2(-16.0, 8.0)
+	cards_box.add_theme_constant_override("separation", 0)
 	cards_label = Label.new()
-	cards_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	cards_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	cards_label.text = "HUD_CARDS"
 	cards_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	cards_label.position = Vector2(-16.0, 8.0)
 	cards_label.add_theme_font_size_override("font_size", 18)
 	cards_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	cards_label.add_theme_constant_override("outline_size", 5)
-	layer.add_child(cards_label)
+	cards_label.visible = false
+	cards_box.add_child(cards_label)
+	layer.add_child(cards_box)
 	# HUD сверху по центру
 	hud_label = Label.new()
 	hud_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -3858,9 +3975,8 @@ func _update_ui() -> void:
 	if scout_shown and waves_enabled and wave_state == WS_RESPITE:
 		hud_label.text += "\n" + _plan_text()   # разведка
 	_update_war_cry_ui()
-	if cards_label != null:
-		var names := _cards().map(func(r): return tr(card_defs[r.id].name_key)) if not card_defs.is_empty() else []
-		cards_label.text = "" if names.is_empty() else tr("HUD_CARDS") + "\n" + "\n".join(names)
+	if cards_box != null and not card_defs.is_empty():
+		_update_cards_ui()
 	burst_label.text = burst_msg
 	burst_label.visible = wave_state == WS_BATTLE and burst_msg != "" and wave_t < burst_msg_until
 	if hud_msg != "":

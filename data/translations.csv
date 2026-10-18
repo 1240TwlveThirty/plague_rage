@@ -275,3 +275,17 @@ HUD_WAR_CRY_READY,[%s] Клич Благодати,[%s] Call of Grace
 HUD_WAR_CRY_ACTIVE,[%s] Клич: ещё %s с,[%s] Call: %s s left
 HUD_WAR_CRY_WAIT,[%s] Клич через %s с,[%s] Call in %s s
 HUD_WAR_CRY_BATTLE,[%s] Клич — только в бою,[%s] Call — in battle only
+MSG_CARD_SPLIT,%s: %s,%s: %s
+UI_SPLIT_INFANTRY,пехота,infantry
+UI_SPLIT_ARCHER,лучники,archers
+UI_CARD_TIP_COST,Издержка: %s,Drawback: %s
+UI_CARD_TIP_COND,Условие: %s,Condition: %s
+UI_CARD_TIP_RESULT,Выпало: %s,Rolled: %s
+COND_HOLD,у отряда приказ «Держать»,the squad is ordered to hold
+COND_RETREAT,отряд отходит,the squad is retreating
+COND_GATE_LOW,ворота ниже %s%%,the gate is below %s%%
+COND_SQUAD_LOW,в отряде меньше %s%% состава на начало волны,the squad is below %s%% of its wave-start size
+COND_WAVE_TIME,первые %s с волны,the first %s s of a wave
+COND_GOLD_HIGH,в начале волны золота не меньше %s,at least %s gold at the start of a wave
+COND_LOST_STEPS,бонус за каждые %s%% потерь отряда,bonus for every %s%% of the squad lost
+COND_VENGEANCE,бонус растёт с каждым своим павшим в волне,the bonus grows with every soldier lost this wave

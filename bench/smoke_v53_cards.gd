@@ -86,7 +86,7 @@ func _run() -> void:
 	m.choose_card(m.pending_offer[0])
 	m._update_ui()
 	await shot("cards_hud_ru.png")
-	check("после выбора HUD показывает список карточек", m.cards_label.visible and m.cards_label.text != "" and SCREEN.encloses(m.cards_label.get_global_rect()))
+	check("после выбора HUD показывает список карточек", m.cards_label.visible and m.cards_rows.size() == 1 and SCREEN.encloses(m.cards_box.get_global_rect()))
 	m.queue_free()
 	await step(2)
 	DirAccess.remove_absolute(g.save_path)
