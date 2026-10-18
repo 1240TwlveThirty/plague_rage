@@ -54,8 +54,8 @@ func _run() -> void:
 func t_data() -> void:
 	print("данные и выпадение")
 	var m := make()
-	check("block_chance: пехота и копейщики 0.6, лучники 0; навык «Стена щитов» у копейщиков +0.15; потолок 0.95", is_equal_approx(m.type_block_chance[m.infantry_type], 0.6)
-		and is_equal_approx(m.type_block_chance[m.spearman_type], 0.6) and m.type_block_chance[m.archer_type] == 0.0 and is_equal_approx(m.type_hold_block[m.spearman_type], 0.15)
+	check("block_chance: пехота и копейщики 0.6, лучники 0; навык «Стена щитов» у копейщиков +0.30 (после подгонки этапа D; было 0.15); потолок 0.95", is_equal_approx(m.type_block_chance[m.infantry_type], 0.6)
+		and is_equal_approx(m.type_block_chance[m.spearman_type], 0.6) and m.type_block_chance[m.archer_type] == 0.0 and is_equal_approx(m.type_hold_block[m.spearman_type], 0.30)
 		and m.type_hold_block[m.infantry_type] == 0.0 and m.BLOCK_CAP == 0.95)
 	var sc: GDScript = load(MAIN)
 	var sum := 0.0
@@ -89,11 +89,11 @@ func t_bonus() -> void:
 	check("копейщики на «атаке»: навык не действует, бонус отряда 0", m.squad_block_bonus[s] == 0.0 and m.squad_skill_on[s] == 0)
 	m.squad_order[s] = m.ORDER_HOLD
 	m._update_card_conditions()
-	check("копейщики на «держать»: навык +0.15 и карточка №9 +0.15 — бонус отряда 0.30, навык горит", is_equal_approx(m.squad_block_bonus[s], 0.30) and m.squad_skill_on[s] == 1)
+	check("копейщики на «держать»: навык +0.30 и карточка №9 +0.15 — бонус отряда 0.45, навык горит", is_equal_approx(m.squad_block_bonus[s], 0.45) and m.squad_skill_on[s] == 1)
 	var base: float = m.type_block_chance[m.spearman_type]
 	var extra: float = m.type_block_bonus[m.spearman_type] + m.squad_block_bonus[s]
 	var p := (minf(base + extra, m.BLOCK_CAP) - base) / (1.0 - base)
-	check("сумма: 0.6 + 0.15 (дар) + 0.30 = 1.05 -> потолок 0.95; добор среди не отражённых по правилу %.3f (= 0.35 / 0.4)" % p, is_equal_approx(extra, 0.45)
+	check("сумма: 0.6 + 0.15 (дар) + 0.45 = 1.2 -> потолок 0.95; добор среди не отражённых по правилу %.3f (= 0.35 / 0.4)" % p, is_equal_approx(extra, 0.60)
 		and is_equal_approx(p, 0.875))
 	m.free()
 	var n := make()
@@ -127,7 +127,7 @@ func t_battle() -> void:
 	var b := block_rate(true, true)
 	var c := block_rate(false, true)
 	var d := block_rate(false, true, {"spear_wall": 3})
-	check("копейщики на «держать»: без навыка блок %.3f, с навыком %.3f (+%.3f, ожидается около +0.15)" % [a, b, b - a], b - a > 0.10 and b - a < 0.20)
+	check("копейщики на «держать»: без навыка блок %.3f, с навыком %.3f (+%.3f, ожидается около +0.30)" % [a, b, b - a], b - a > 0.22 and b - a < 0.38)
 	check("на «атаке» навык не действует: %.3f (как без навыка, около %.3f)" % [c, a], absf(c - a) < 0.05)
 	check("дар «Стена щитов» 3 действует и без «держать»: %.3f (+%.3f)" % [d, d - c], d - c > 0.10)
 	var e := block_rate(true, true)

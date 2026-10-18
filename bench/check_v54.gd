@@ -45,8 +45,9 @@ func t_data() -> void:
 	var m := make()
 	var i: int = m.infantry_type
 	var s: int = m.spearman_type
-	check("spearman: HP как у пехоты, урон 0.85, дальность удара 1.6, скорость 0.95, щит (block_mult) как у пехоты", m.base_type_hp[s] == m.base_type_hp[i]
-		and is_equal_approx(m.base_type_damage[s], m.base_type_damage[i] * 0.85) and is_equal_approx(sqrt(m.type_range_sq[s]), sqrt(m.type_range_sq[i]) * 1.6)
+	# значения после подгонки этапа D (было: урон 0.85, дальность 1.6 пехоты)
+	check("spearman: HP как у пехоты, урон 1.0 пехоты, дальность удара 2.5 пехоты, скорость 0.95, щит (block_mult) как у пехоты", m.base_type_hp[s] == m.base_type_hp[i]
+		and is_equal_approx(m.base_type_damage[s], m.base_type_damage[i]) and absf(sqrt(m.type_range_sq[s]) / sqrt(m.type_range_sq[i]) - 2.5) < 0.01
 		and is_equal_approx(m.base_type_speed[s], m.base_type_speed[i] * 0.95) and m.type_block_mult[s] == m.type_block_mult[i],
 		"дальность %.2f / %.2f" % [sqrt(m.type_range_sq[s]), sqrt(m.type_range_sq[i])])
 	var k: int = m.SHOP_ITEMS.find("spear_pack")

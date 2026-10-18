@@ -30,7 +30,10 @@ func zombie_near(m: Node2D) -> bool:
 				return true
 	return false
 const WAVE_CAP := 40
-const CYCLES := {"B1": [0, 2, 1, 3], "B2": [0, 2], "B3": [3], "B5": [0, 1], "B6": [2, 0, 2, 1], "B7": [0, 1]}
+const CYCLES := {"B1": [0, 2, 1, 3], "B2": [0, 2], "B3": [3], "B5": [0, 1], "B6": [2, 0, 2, 1], "B7": [0, 1], "B8": [0, 1, 4, 1]}
+# B8 (задача 8): как B7, но по кругу пехота, лучники, копейщики, лучники — половина «пехотных» покупок уходит на копейщиков; «держать» —
+# отрядам пехоты и копейщиков. --army spear (равный бюджет): стартовые 300 пехоты заменяются копейщиками на ту же цену (200 при цене
+# 3 против 2 золота за юнита), а «пехотные» покупки бота (товар 0) идут на копейщиков (товар 4). --hold off — бот не ставит «держать».
 # B7 (задача 6b): покупки как у B5 (по кругу пехота, лучники); перед ними — ремонт ворот, если их HP ниже B7_REPAIR_BELOW от максимума и хватает
 # золота; перед стартом каждой волны — приказ «держать» всем отрядам пехоты. На сигнал всплеска не реагирует. Пишет строки лога B7,...
 const B7_REPAIR_BELOW := 0.6
@@ -47,7 +50,7 @@ func _initialize() -> void:
 		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	var args := Array(OS.get_cmdline_user_args())
 	var opt := {}   # --gifts, --cards, --pick, --variants -> значение
-	for key in ["--gifts", "--cards", "--pick", "--variants", "--war-cry", "--hp-spread"]:
+	for key in ["--gifts", "--cards", "--pick", "--variants", "--war-cry", "--hp-spread", "--army", "--hold"]:
 		var at := args.find(key)
 		if at >= 0:
 			opt[key] = String(args[at + 1]) if at + 1 < args.size() else ""
@@ -87,6 +90,24 @@ func _initialize() -> void:
 		DirAccess.remove_absolute(m.cards_path)
 	if opt.has("--hp-spread") and not m.type_id.is_empty():
 		m.wave_cfg.hp_spread = float(opt["--hp-spread"])
+	var army_spear: bool = opt.get("--army", "inf") == "spear"
+	var holds: bool = bot in ["B7", "B8"] and opt.get("--hold", "on") != "off"
+	if army_spear and not m.type_id.is_empty():
+		var ki: int = m.SHOP_ITEMS.find("inf_pack")
+		var ks: int = m.SHOP_ITEMS.find("spear_pack")
+		var keep := roundi(m.squad_n[0] * (m.shop_base[ki] / m.shop_param[ki]) / (m.shop_base[ks] / m.shop_param[ks]))   # 300 x 2 / 3 = 200
+		var seen := 0
+		for i in m.count:
+			if m.unit_squad[i] == 0:
+				m.unit_type[i] = m.spearman_type
+				m.hp[i] = m.type_hp[m.spearman_type]
+				seen += 1
+				if seen > keep:
+					m.hp[i] = 0.0
+		m._remove_dead()
+		m.squad_type[0] = m.spearman_type
+		m.squad_speed[0] = 0.75 * m.type_speed[m.spearman_type]
+		print("ARMY,spear,%d" % m.squad_n[0])
 	if m.type_id.is_empty():
 		m.free()
 		quit(1)   # данные или набор даров не загрузились: ошибка уже в stderr
@@ -112,18 +133,21 @@ func _initialize() -> void:
 			while m._buy(0):
 				pass
 		else:
-			if bot == "B7" and m.gate_hp < B7_REPAIR_BELOW * m.gate_hp_max:
+			if bot in ["B7", "B8"] and m.gate_hp < B7_REPAIR_BELOW * m.gate_hp_max:
 				var price: float = m._price(3)
 				var hp0: float = m.gate_hp
 				if m._buy(3):
-					print("B7,%d,repair,ворота %.0f/%.0f -> %.0f/%.0f, цена %.0f" % [m.wave_number, hp0, m.gate_hp_max - m.shop_param[3], m.gate_hp, m.gate_hp_max, price])
+					print("%s,%d,repair,ворота %.0f/%.0f -> %.0f/%.0f, цена %.0f" % [bot, m.wave_number, hp0, m.gate_hp_max - m.shop_param[3], m.gate_hp, m.gate_hp_max, price])
 				else:
-					print("B7,%d,repair_skip,ворота %.0f/%.0f, золота %.0f < %.0f" % [m.wave_number, hp0, m.gate_hp_max, m.gold, price])
+					print("%s,%d,repair_skip,ворота %.0f/%.0f, золота %.0f < %.0f" % [bot, m.wave_number, hp0, m.gate_hp_max, m.gold, price])
 			var cycle: Array = CYCLES[bot]
 			while true:
 				var bought := false
 				for k in cycle.size():
-					if m._buy(cycle[(ptr + k) % cycle.size()]):
+					var item: int = cycle[(ptr + k) % cycle.size()]
+					if army_spear and item == 0:
+						item = 4   # равный бюджет: вместо пехоты — копейщики
+					if m._buy(item):
 						ptr = (ptr + k + 1) % cycle.size()
 						bought = true
 						break
@@ -135,13 +159,13 @@ func _initialize() -> void:
 		var arch := count_type(m, m.archer_type)
 		var gate0 := ceili(maxf(m.gate_hp, 0.0))
 		var p: Dictionary = STRENGTH.player(m)
-		if bot == "B7":
+		if holds:
 			var held := PackedStringArray()
 			for sq in m.SQUAD_MAX:
-				if m.squad_used[sq] == 1 and m.squad_n[sq] > 0 and m.squad_type[sq] == m.infantry_type:
+				if m.squad_used[sq] == 1 and m.squad_n[sq] > 0 and (m.squad_type[sq] == m.infantry_type or m.squad_type[sq] == m.spearman_type):
 					m.squad_order[sq] = m.ORDER_HOLD
 					held.append("%d (%d)" % [sq, m.squad_n[sq]])
-			print("B7,%d,hold,отряды пехоты: %s" % [m.wave_number + 1, ", ".join(held)])
+			print("%s,%d,hold,отряды пехоты и копейщиков: %s" % [bot, m.wave_number + 1, ", ".join(held)])
 		m._start_wave()
 		var e: Dictionary = STRENGTH.enemy(m)
 		var ticks := 0
