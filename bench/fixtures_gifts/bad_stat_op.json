@@ -1,0 +1,1 @@
+[{"id": "g", "name_key": "Дар", "desc_key": "GIFT_TEST_DESC", "stat": "damage", "target": "all_units", "op": "add_flat", "levels": [8, 16, 24]}]

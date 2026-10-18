@@ -65,6 +65,7 @@ func _initialize() -> void:
 						break
 				if not bought:
 					break
+		var gold_bought := floori(m.gold)   # золото в начале волны после покупок
 		var inf := count_type(m, m.infantry_type)
 		var arch := count_type(m, m.archer_type)
 		var gate0 := ceili(maxf(m.gate_hp, 0.0))
@@ -76,8 +77,9 @@ func _initialize() -> void:
 			m._physics_process(1.0 / 30.0)
 			ticks += 1
 		var lost := inf + arch - count_type(m, m.infantry_type) - count_type(m, m.archer_type)
-		print("WAVE,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.4f,%.4f,%.4f,%.4f,%.1f" % [bot, seed, m.wave_number, inf, arch, m.shop_bought[2], gold_start, lost, e.n,
-			gate0, ceili(maxf(m.gate_hp, 0.0)), p.hp, p.dps, e.hp, e.dps, ticks / 30.0])
+		# поля 17-18 (с нуля от WAVE): золото после покупок и убито зомби за волну (из e.n в поле 9)
+		print("WAVE,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.4f,%.4f,%.4f,%.4f,%.1f,%d,%d" % [bot, seed, m.wave_number, inf, arch, m.shop_bought[2], gold_start, lost, e.n,
+			gate0, ceili(maxf(m.gate_hp, 0.0)), p.hp, p.dps, e.hp, e.dps, ticks / 30.0, gold_bought, m.wave_kills])
 		if m.wave_state == m.WS_DEFEAT:
 			defeat = m.wave_number
 			break

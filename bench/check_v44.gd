@@ -13,7 +13,8 @@ const FIX_R := "res://bench/fixtures_radiance/"
 const DIR := "user://bench_v44"
 const SAVE := DIR + "/save.json"
 const DT := 1.0 / 30.0
-const IDS := ["tempered_steel", "sturdy_shields", "spoils", "mine", "fortress_walls", "reserve"]
+const IDS := ["tempered_steel", "sturdy_shields", "marksmen", "spoils", "mine", "fortress_walls", "reserve"]   # data/gifts.json, порядок файла
+const SHOWN := ["tempered_steel", "sturdy_shields", "marksmen", "spoils", "mine", "reserve"]   # без скрытого fortress_walls
 # сохранение до шага 5: полей radiance и gift_levels нет
 const OLD_SAVE := "{\"version\": 1, \"unlocked_siege\": 2, \"last_siege\": 2, \"records\": {\"1\": {\"best_wave\": 10, \"wins\": 1, \"runs\": 4}}, \"diary_seen\": [\"intro\"], \"completed\": false, \"runs_total\": 4, \"play_time\": 90.5}"
 var fails := 0
@@ -187,10 +188,40 @@ func t_validation() -> void:
 	check("сцена боя с bad_pair.json: остановка (типы сброшены, тик выключен)", m.type_id.is_empty() and not m.is_physics_processing() and not m.is_processing())
 	m.free()
 	var defs: Dictionary = MODS.load_gifts(GIFTS)
-	var ok_data := defs.size() == 6
+	var ok_data := defs.size() == 7
 	for id in IDS:
-		ok_data = ok_data and defs.has(id) and Array(defs[id].req_sieges) == [0, 1, 2] and defs[id].prices.is_empty() and defs[id].target in want[defs[id].stat]
-	check("data/gifts.json: 6 даров, пары допустимые, req_sieges [0, 1, 2], «Стены крепости»", ok_data and tr(defs["fortress_walls"].name_key) == "Стены крепости")
+		ok_data = ok_data and defs.has(id) and Array(defs[id].req_sieges) == [0, 1, 2] and defs[id].prices.is_empty() == (id != "reserve") and defs[id].target in want[defs[id].stat] \
+			and defs[id].op in MODS.STAT_OPS[defs[id].stat] and defs[id].hidden == (id == "fortress_walls")
+	check("data/gifts.json: 7 даров, пары и op допустимые, req_sieges [0, 1, 2], свои цены только у reserve, скрыты только «Стены крепости»", ok_data
+		and tr(defs["fortress_walls"].name_key) == "Стены крепости")
+	var stat_ops := {"damage": ["add_pct", "mult"], "hp": ["add_pct", "mult"], "bounty": ["add_pct", "mult"], "income": ["add_pct", "mult"], "gate_hp": ["add_pct", "mult"],
+		"start_units": ["add_pct", "add_flat"]}
+	check("таблица MODS.STAT_OPS как в задании, покрывает все stat", MODS.STAT_OPS == stat_ops and MODS.STAT_OPS.size() == MODS.STATS.size(), str(MODS.STAT_OPS))
+	var wrong_op := PackedStringArray()
+	var allowed_op := 0
+	for stat in MODS.STATS:
+		for op in MODS.OPS:
+			var path := "%s/op_%s_%s.json" % [DIR, stat, op]
+			var f := FileAccess.open(path, FileAccess.WRITE)
+			f.store_string(JSON.stringify([{"id": "x", "name_key": "X", "desc_key": "X", "stat": stat, "target": want[stat][0], "op": op, "levels": [5]}]))
+			f.close()
+			var ok: bool = not MODS.load_gifts(path).is_empty()
+			allowed_op += int(ok)
+			if ok != (op in stat_ops[stat]):
+				wrong_op.append("%s/%s" % [stat, op])
+	check("все %d сочетаний stat x op: грузятся ровно допустимые (%d)" % [MODS.STATS.size() * MODS.OPS.size(), allowed_op], wrong_op.is_empty() and allowed_op == 12, ", ".join(wrong_op))
+	var g_prices := []
+	for lvl in [1, 2, 3]:
+		var top := 0
+		var own := 0
+		for id in defs:
+			var price: int = defs[id].prices[lvl - 1] if not defs[id].prices.is_empty() else [60, 120, 240][lvl - 1]   # общие цены radiance.json
+			if id == "reserve":
+				own = price
+			elif not defs[id].hidden:
+				top = maxi(top, price)
+		g_prices.append([own, top])
+	check("reserve стоит не меньше самого дорогого из остальных даров на каждом уровне", g_prices.all(func(x): return x[0] >= x[1]), str(g_prices))
 	check("req_sieges и prices не той длины или с числом меньше допустимого не грузятся", MODS.load_gifts(FIX_G + "bad_req.json").is_empty() and MODS.load_gifts(FIX_G + "bad_gift_prices.json").is_empty())
 	var shop: Dictionary = MODS.load_gifts(FIX_G + "shop.json")
 	check("shop.json: свои prices и req_sieges читаются; без полей — req_sieges 0, 1, 2 и пустой prices", shop.size() == 2 and Array(shop["cheap"].prices) == [10, 20, 30]
@@ -234,7 +265,7 @@ func t_buy() -> void:
 	print("(в) покупка")
 	wipe()
 	await new_game()
-	check("новая игра: Сияния 0, все 6 даров на уровне 0, пройдено осад 0", g.radiance == 0 and g.gift_levels.size() == 6 and g.owned_gifts().is_empty() and g.sieges_cleared() == 0, str(g.gift_levels))
+	check("новая игра: Сияния 0, все 7 даров на уровне 0, пройдено осад 0", g.radiance == 0 and g.gift_levels.size() == 7 and g.owned_gifts().is_empty() and g.sieges_cleared() == 0, str(g.gift_levels))
 	check("цены уровней по умолчанию 60 / 120 / 240; уровней 0 и 4 нет (-1)", g.gift_price("mine", 1) == 60 and g.gift_price("mine", 2) == 120 and g.gift_price("mine", 3) == 240
 		and g.gift_price("mine", 0) == -1 and g.gift_price("mine", 4) == -1 and g.gift_price("нет такого", 1) == -1)
 	g.radiance = 59
@@ -261,6 +292,8 @@ func t_buy() -> void:
 	check("уровень 3 — последний: отказ «Максимальный уровень», ничего не меняется", tr(g.buy_block("mine")) == "Максимальный уровень" and not g.buy_gift("mine") and state() == before)
 	check("неизвестный дар: отказ, ничего не меняется", not g.buy_gift("нет такого") and state() == before)
 	check("остальные дары не задеты", g.owned_gifts() == {"mine": 3})
+	check("скрытый fortress_walls не продаётся (BLOCK_DATA), ничего не меняется", g.buy_block("fortress_walls") == g.BLOCK_DATA and not g.buy_gift("fortress_walls") and state() == before)
+	check("цены reserve свои: 90 / 180 / 360", g.gift_price("reserve", 1) == 90 and g.gift_price("reserve", 2) == 180 and g.gift_price("reserve", 3) == 360)
 	wipe()
 	await new_game(FIX_G + "shop.json")
 	g.radiance = 100
@@ -278,17 +311,17 @@ func t_save() -> void:
 	g.buy_gift("spoils")
 	g.buy_gift("reserve")
 	var levels: Dictionary = g.gift_levels.duplicate()
-	check("запись: в файле radiance 537 и gift_levels со всеми 6 дарами", g.save() and on_disk().get("radiance") == 537 and on_disk().get("gift_levels", {}).size() == 6
+	check("запись: в файле radiance 507 и gift_levels со всеми 7 дарами", g.save() and on_disk().get("radiance") == 507 and on_disk().get("gift_levels", {}).size() == 7
 		and on_disk().gift_levels.get("spoils") == 2 and on_disk().gift_levels.get("tempered_steel") == 0, str(on_disk().get("gift_levels")))
 	await new_game()
-	check("загрузка новым узлом Game: те же radiance и gift_levels, предупреждений нет", g.radiance == 537 and g.gift_levels == levels and g.gift_levels["spoils"] == 2
+	check("загрузка новым узлом Game: те же radiance и gift_levels, предупреждений нет", g.radiance == 507 and g.gift_levels == levels and g.gift_levels["spoils"] == 2
 		and g.gift_levels["reserve"] == 1 and g.save_warning == "", str(state()))
 	check("уровни после загрузки — целые числа (сцена боя их примет)", typeof(g.gift_levels["spoils"]) == TYPE_INT and typeof(g.radiance) == TYPE_INT)
 	wipe()
 	put(OLD_SAVE)
 	await new_game()
 	check("старый файл без radiance и gift_levels грузится: Сияния 0, дары на уровне 0, остальное из файла, файл не признан повреждённым",
-		g.radiance == 0 and g.gift_levels.size() == 6 and g.owned_gifts().is_empty() and g.unlocked_siege == 2 and g.runs_total == 4 and g.records[1].wins == 1
+		g.radiance == 0 and g.gift_levels.size() == 7 and g.owned_gifts().is_empty() and g.unlocked_siege == 2 and g.runs_total == 4 and g.records[1].wins == 1
 		and g.diary_seen == ["intro"] and g.save_warning == "" and DirAccess.get_files_at(DIR).size() == 1, "%s, файлов %d" % [str(state()), DirAccess.get_files_at(DIR).size()])
 	check("пройденные осады берутся из рекордов старого файла: 1", g.sieges_cleared() == 1)
 	check("после первой записи в старом файле появляются оба поля", g.save() and on_disk().get("radiance") == 0 and on_disk().get("gift_levels") is Dictionary and on_disk().get("version") == 1)
@@ -297,6 +330,12 @@ func t_save() -> void:
 	await new_game()
 	check("кривые значения полей: radiance не число — 0; уровень выше числа уровней — 3; отрицательный, дробный и неизвестный дар отброшены",
 		g.radiance == 0 and g.owned_gifts() == {"mine": 3, "tempered_steel": 2} and g.save_warning == "" and g.runs_total == 4, str(state()))
+	wipe()
+	put(OLD_SAVE.replace("\"runs_total\": 4", "\"runs_total\": 4, \"radiance\": 30, \"gift_levels\": {\"fortress_walls\": 2, \"mine\": 1}"))
+	await new_game()
+	check("старый файл с купленными «Стенами крепости» 2: грузится без предупреждения, уровень хранится, но не действует (в owned_gifts только mine)",
+		g.save_warning == "" and g.radiance == 30 and g.gift_levels["fortress_walls"] == 2 and g.owned_gifts() == {"mine": 1} and DirAccess.get_files_at(DIR).size() == 1, str(state()))
+	check("после записи уровень скрытого дара в файле прежний (покупка не пропадает)", g.save() and on_disk().gift_levels.get("fortress_walls") == 2 and on_disk().gift_levels.get("mine") == 1)
 
 # (д) набор даров забега.
 func t_active() -> void:
@@ -317,10 +356,11 @@ func t_active() -> void:
 	g.gift_levels["reserve"] = 1
 	g.gift_levels["tempered_steel"] = 3
 	m = await run(1)
-	check("куплены fortress_walls 2, reserve 1, tempered_steel 3: active_gifts — ровно они (дары уровня 0 не входят)",
-		g.active_gifts == {"fortress_walls": 2, "reserve": 1, "tempered_steel": 3} and m.active_gifts == g.active_gifts, str(g.active_gifts))
-	check("в бою: ворота x1.30, урон пехоты x1.24, по +40 в стартовых отрядах, HP прежние", is_equal_approx(m.gate_hp_max, base[5] * 1.3)
-		and is_equal_approx(m.type_damage[m.infantry_type], base[1][m.infantry_type] * 1.24) and m.count == base[8] + 80 and Array(m.type_hp) == base[0],
+	check("куплены fortress_walls 2 (скрыт), reserve 1, tempered_steel 3: active_gifts — reserve и tempered_steel (дары уровня 0 и скрытые не входят)",
+		g.active_gifts == {"reserve": 1, "tempered_steel": 3} and m.active_gifts == g.active_gifts, str(g.active_gifts))
+	check("в бою: ворота прежние, урон пехоты x1.18, урон лучников прежний, +5% в стартовых отрядах (+15 и +5), HP прежние", m.gate_hp_max == base[5]
+		and is_equal_approx(m.type_damage[m.infantry_type], base[1][m.infantry_type] * 1.18) and m.type_damage[m.archer_type] == base[1][m.archer_type] and m.count == base[8] + 20
+		and Array(m.type_hp) == base[0],
 		"ворота %.0f, юнитов %d" % [m.gate_hp_max, m.count])
 	g.gifts_override = gs.parse_gifts_arg(PackedStringArray(["B5", "1", "--gifts", "mine:2"]))
 	m = await run(1)
@@ -332,7 +372,11 @@ func t_active() -> void:
 	check("--gifts с пустым значением: забег без даров при купленных", g.active_gifts.is_empty() and start_numbers(m) == base)
 	g.gifts_override = null
 	m = await run(1)
-	check("без параметра снова действуют купленные", g.active_gifts.size() == 3 and is_equal_approx(m.gate_hp_max, base[5] * 1.3))
+	check("без параметра снова действуют купленные", g.active_gifts.size() == 2 and m.count == base[8] + 20)
+	g.gifts_override = gs.parse_gifts_arg(PackedStringArray(["--gifts", "fortress_walls:3"]))
+	m = await run(1)
+	check("--gifts fortress_walls:3 (скрыт): забег идёт без ошибок, как без даров", m.type_id.size() > 0 and start_numbers(m) == base)
+	g.gifts_override = null
 	check("в сохранении набора забега нет, купленные уровни есть", g.save() and not on_disk().has("active_gifts") and on_disk().gift_levels.get("tempered_steel") == 3)
 
 # Вкладка «Дары» в хабе.
@@ -356,26 +400,27 @@ func t_hub() -> void:
 			icons = icons and c.texture != null
 	for id in h.gift_rows:
 		names.append(tr(g.gift_defs[id].name_key))
-	check("6 строк даров в порядке файла, у каждой иконка; баланс «Сияние: 200»", Array(h.gift_rows.keys()) == IDS and icons and grid.get_child_count() == 7 * 7 and tr(h.radiance_label.text) == "Сияние: 200"
-		and h.radiance_label.is_visible_in_tree() and "Стены крепости" in names and not "Крепостные стены" in names, ", ".join(names))
+	check("6 строк даров в порядке файла (скрытых «Стен крепости» нет), у каждой иконка; баланс «Сияние: 200»", Array(h.gift_rows.keys()) == SHOWN and icons and grid.get_child_count() == 7 * 7
+		and tr(h.radiance_label.text) == "Сияние: 200" and h.radiance_label.is_visible_in_tree() and not "Стены крепости" in names and "Меткие стрелки" in names, ", ".join(names))
 	var row: Dictionary = h.gift_rows["tempered_steel"]
-	check("строка дара: уровень «0 / 3», эффект следующего уровня «+8% к урону всех воинов», цена 60, «Купить» активна, причины нет",
-		tr(row.level.text) == "0 / 3" and tr(row.effect.text) == "+8% к урону всех воинов" and tr(row.price.text) == "60" and tr(row.button.text) == "Купить" and not row.button.disabled and tr(row.reason.text) == "",
+	check("строка дара: уровень «0 / 3», эффект следующего уровня «+6% к урону пехоты», цена 60, «Купить» активна, причины нет",
+		tr(row.level.text) == "0 / 3" and tr(row.effect.text) == "+6% к урону пехоты" and tr(row.price.text) == "60" and tr(row.button.text) == "Купить" and not row.button.disabled and tr(row.reason.text) == "",
 		"%s | %s | %s" % [row.level.text, row.effect.text, row.price.text])
 	var texts := PackedStringArray()
-	for id in IDS:
+	for id in SHOWN:
 		texts.append(h.gift_rows[id].effect.text)
-	check("эффекты одной строкой у всех даров", Array(texts) == ["+8% к урону всех воинов", "+8% к здоровью всех воинов", "+10% золота за убитых", "+5% от дохода прошлой волны в начале каждой волны",
-		"+15% к прочности ворот", "+40 воинов в каждом стартовом отряде"], " | ".join(texts))
+	check("эффекты одной строкой у всех даров", Array(texts) == ["+6% к урону пехоты", "+6% к здоровью всех воинов", "+8% к урону лучников", "+10% золота за убитых",
+		"+5% от дохода прошлой волны в начале каждой волны", "+5% воинов в каждом стартовом отряде (не меньше +1)"], " | ".join(texts))
+	check("цена «Резерва» в строке — своя: 90", tr(h.gift_rows["reserve"].price.text) == "90")
 	row.button.pressed.emit()
-	check("«Купить»: уровень «1 / 3», баланс 140, сохранено; следующий уровень +16% за 120 закрыт: «Откроется после осады I»", g.gift_levels["tempered_steel"] == 1 and g.radiance == 140
-		and tr(h.radiance_label.text) == "Сияние: 140" and tr(row.level.text) == "1 / 3" and tr(row.effect.text) == "+16% к урону всех воинов" and tr(row.price.text) == "120" and row.button.disabled
+	check("«Купить»: уровень «1 / 3», баланс 140, сохранено; следующий уровень +12% за 120 закрыт: «Откроется после осады I»", g.gift_levels["tempered_steel"] == 1 and g.radiance == 140
+		and tr(h.radiance_label.text) == "Сияние: 140" and tr(row.level.text) == "1 / 3" and tr(row.effect.text) == "+12% к урону пехоты" and tr(row.price.text) == "120" and row.button.disabled
 		and tr(row.reason.text) == "Откроется после осады I" and on_disk().get("radiance") == 140, row.reason.text)
 	h.gift_rows["mine"].button.pressed.emit()
 	h.gift_rows["spoils"].button.pressed.emit()
 	var poor: Dictionary = h.gift_rows["reserve"]
 	check("после ещё двух покупок Сияния 20: у некупленных кнопка неактивна, «Не хватает Сияния»", g.radiance == 20 and poor.button.disabled and tr(poor.reason.text) == "Не хватает Сияния"
-		and tr(poor.level.text) == "0 / 3" and tr(h.gift_rows["fortress_walls"].reason.text) == "Не хватает Сияния")
+		and tr(poor.level.text) == "0 / 3" and tr(h.gift_rows["marksmen"].reason.text) == "Не хватает Сияния")
 	poor.button.pressed.emit()
 	check("нажатие неактивной покупки ничего не меняет", g.radiance == 20 and g.gift_levels["reserve"] == 0)
 	g.records[1].wins = 1

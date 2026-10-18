@@ -4,5 +4,7 @@
 	{"id": "m15", "name_key": "C", "desc_key": "GIFT_TEST_DESC", "stat": "damage", "target": "all_units", "op": "mult", "levels": [1.5, 2.0]},
 	{"id": "inf", "name_key": "D", "desc_key": "GIFT_TEST_DESC", "stat": "damage", "target": "infantry", "op": "add_pct", "levels": [50]},
 	{"id": "f40", "name_key": "E", "desc_key": "GIFT_TEST_DESC", "stat": "start_units", "target": "player", "op": "add_flat", "levels": [40]},
-	{"id": "f25", "name_key": "F", "desc_key": "GIFT_TEST_DESC", "stat": "start_units", "target": "player", "op": "add_flat", "levels": [25]}
+	{"id": "f25", "name_key": "F", "desc_key": "GIFT_TEST_DESC", "stat": "start_units", "target": "player", "op": "add_flat", "levels": [25]},
+	{"id": "p5", "name_key": "G", "desc_key": "GIFT_TEST_DESC", "stat": "start_units", "target": "player", "op": "add_pct", "levels": [5, 10, 15]},
+	{"id": "hid", "name_key": "H", "desc_key": "GIFT_TEST_DESC", "stat": "damage", "target": "all_units", "op": "add_pct", "levels": [50], "hidden": true}
 ]

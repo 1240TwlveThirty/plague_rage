@@ -92,8 +92,12 @@ func _run() -> void:
 		and tr(em.continue_button.text) == "Продолжить" and tr(em.menu_button.text) == "Выйти в меню" and tr(em.quit_button.text) == "Выход из игры" and not em.note_label.visible and gold(em.continue_button) and gold(em.quit_button)
 		and centered(em.continue_button) and centered(em.menu_button) and centered(em.quit_button))
 	check("«Выход из игры» ведёт в Game.quit_game (сохранить и закрыть игру); не нажимается", em.quit_button.pressed.is_connected(em._on_quit) and g.has_method("quit_game"))
+	var play_hub: float = g.play_time
+	await step(30)
+	check("30 кадров паузы в хабе: play_time стоит", g.play_time == play_hub, "%.3f -> %.3f" % [play_hub, g.play_time])
 	em._input(esc())
-	check("Esc ещё раз: меню закрыто, пауза снята, хаб на месте", not em.visible and not paused and current_scene == h)
+	await step(5)
+	check("Esc ещё раз: меню закрыто, пауза снята, хаб на месте, play_time снова идёт", not em.visible and not paused and current_scene == h and g.play_time > play_hub)
 	h._unhandled_input(esc())
 	em.continue_button.pressed.emit()
 	check("«Продолжить»: меню закрыто, пауза снята", not em.visible and not paused and current_scene == h)

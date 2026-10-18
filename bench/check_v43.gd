@@ -118,6 +118,12 @@ func t_formula() -> void:
 		and m.build({"a20": 1, "inf": 1}) and is_equal_approx(m.get_mult("damage", "all_units"), 1.1) and is_equal_approx(m.get_mult("damage", "infantry"), 1.5))
 	check("add_flat одного ключа складывается: 40 + 25 = 65; на get_mult не влияет", m.build({"f40": 1, "f25": 1}) and m.get_flat("start_units", "player") == 65.0
 		and m.get_mult("start_units", "player") == 1.0)
+	check("add_pct счётного стата (get_count): 5% от 300 = +15, 15% = +45, от 7 вниз до 0 — всё равно +1; без даров 0; вместе с add_flat 40 — +55",
+		m.build({"p5": 1}) and m.get_count("start_units", "player", 300) == 15 and m.get_count("start_units", "player", 7) == 1
+		and m.build({"p5": 3}) and m.get_count("start_units", "player", 300) == 45 and m.build({}) and m.get_count("start_units", "player", 300) == 0
+		and m.build({"p5": 1, "f40": 1}) and m.get_count("start_units", "player", 300) == 55, str(m.get_count("start_units", "player", 300)))
+	check("скрытый дар (hidden) пропускается молча при любом уровне: build true, множитель 1.0", m.build({"hid": 1}) and m.build({"hid": 7}) and m.get_mult("damage", "all_units") == 1.0
+		and defs["hid"].hidden and not defs["a16"].hidden)
 	print("  ниже ожидаются строки ERROR: неизвестный дар и уровни вне диапазона")
 	check("неизвестный id, уровень 0, уровень больше числа уровней, дробный уровень: build false, сумм нет", not m.build({"нет такого": 1}) and not m.build({"a16": 0})
 		and not m.build({"a16": 2}) and not m.build({"a20": 1.5}) and m.get_mult("damage", "all_units") == 1.0)
@@ -127,13 +133,15 @@ func t_formula() -> void:
 func t_loader() -> void:
 	print("загрузчик gifts.json — ниже ожидаются строки ERROR от повреждённых файлов")
 	var defs: Dictionary = MODS.load_gifts(GIFTS)
-	var want := {"tempered_steel": ["damage", "all_units", "add_pct"], "sturdy_shields": ["hp", "all_units", "add_pct"], "spoils": ["bounty", "player", "add_pct"],
-		"mine": ["income", "player", "add_pct"], "fortress_walls": ["gate_hp", "gate", "add_pct"], "reserve": ["start_units", "player", "add_flat"]}
+	var want := {"tempered_steel": ["damage", "infantry", "add_pct"], "sturdy_shields": ["hp", "all_units", "add_pct"], "marksmen": ["damage", "archer", "add_pct"],
+		"spoils": ["bounty", "player", "add_pct"], "mine": ["income", "player", "add_pct"], "fortress_walls": ["gate_hp", "gate", "add_pct"], "reserve": ["start_units", "player", "add_pct"]}
 	var ok := defs.size() == want.size()
 	for id in want:
 		ok = ok and defs.has(id) and [defs[id].stat, defs[id].target, defs[id].op] == want[id] and defs[id].levels.size() == 3 and defs[id].name_key != "" and defs[id].desc_key != ""
-	check("data/gifts.json грузится: 6 даров, stat / target / op как в задании, по 3 уровня", ok, str(defs.keys()))
-	for name in ["bad_stat", "bad_target", "bad_op", "no_field", "bad_levels", "dup_id", "not_array", "missing_file"]:
+	check("data/gifts.json грузится: 7 даров, stat / target / op как в задании, по 3 уровня", ok, str(defs.keys()))
+	var hidden := defs.keys().filter(func(id): return defs[id].hidden)
+	check("скрыт ровно fortress_walls", hidden == ["fortress_walls"], str(hidden))
+	for name in ["bad_stat", "bad_target", "bad_op", "bad_stat_op", "bad_hidden", "no_field", "bad_levels", "dup_id", "not_array", "missing_file"]:
 		check("повреждённый %s.json не грузится" % name, MODS.load_gifts(FIX + name + ".json").is_empty())
 	for name in ["bad_stat", "bad_target"]:
 		var m := make({}, 1, FIX + name + ".json")
@@ -149,7 +157,7 @@ func t_each_gift() -> void:
 	var raw: Array = JSON.parse_string(FileAccess.get_file_as_string(GIFTS))
 	var b := make({})
 	var base := snap(b)
-	var units := [b.infantry_type, b.archer_type]
+	var units := {"all_units": [b.infantry_type, b.archer_type], "infantry": [b.infantry_type], "archer": [b.archer_type]}
 	var all_types := range(b.type_hp.size())
 	b.free()
 	var none := make({})
@@ -160,12 +168,14 @@ func t_each_gift() -> void:
 			var v: float = g.levels[lvl - 1]
 			var k := 1.0 + v / 100.0
 			var want := base.duplicate(true)
-			match g.stat:
+			match "hidden" if g.get("hidden", false) else g.stat:
+				"hidden":
+					pass   # скрытый дар не действует: снимок как без даров
 				"damage":
-					want.type_damage = scaled(base.type_damage, units, k)
-					want.type_arrow_dmg = scaled(base.type_arrow_dmg, units, k)
+					want.type_damage = scaled(base.type_damage, units[g.target], k)
+					want.type_arrow_dmg = scaled(base.type_arrow_dmg, units[g.target], k)
 				"hp":
-					want.type_hp = scaled(base.type_hp, units, k)
+					want.type_hp = scaled(base.type_hp, units[g.target], k)
 				"bounty":
 					want.type_bounty_mult = scaled(base.type_bounty_mult, all_types, k)
 				"income":
@@ -174,18 +184,21 @@ func t_each_gift() -> void:
 					want.gate_hp = base.gate_hp * k
 					want.gate_hp_max = base.gate_hp_max * k
 				"start_units":
-					want.infantry = base.infantry + int(v)
-					want.archers = base.archers + int(v)
-					want.count = base.count + 2 * int(v)
-					want.squad_n = [base.squad_n[0] + int(v), base.squad_n[1] + int(v)]
+					var add := [maxi(1, floori(base.squad_n[0] * v / 100.0)), maxi(1, floori(base.squad_n[1] * v / 100.0))]
+					want.infantry = base.infantry + add[0]
+					want.archers = base.archers + add[1]
+					want.count = base.count + add[0] + add[1]
+					want.squad_n = [base.squad_n[0] + add[0], base.squad_n[1] + add[1]]
 			var m := make({g.id: lvl})
 			var got := snap(m)
 			var changed := diff(got, base)
 			var hp_ok := true
 			for i in m.count:
 				hp_ok = hp_ok and m.team[i] == 0 and m.hp[i] == m.type_hp[m.unit_type[i]]
-			check("%s, уровень %d (%s %s %s %s): меняется только своё — %s; юниты созданы с HP своего типа" % [g.id, lvl, g.stat, g.target, g.op, str(v), ", ".join(changed)],
-				diff(got, want).is_empty() and not changed.is_empty() and hp_ok, "не как ожидалось: " + ", ".join(diff(got, want)) if not diff(got, want).is_empty() else "")
+			var hid: bool = g.get("hidden", false)
+			check("%s, уровень %d (%s %s %s %s%s): меняется только своё — %s; юниты созданы с HP своего типа" % [g.id, lvl, g.stat, g.target, g.op, str(v),
+				", скрыт — не меняется ничего" if hid else "", ", ".join(changed)],
+				diff(got, want).is_empty() and changed.is_empty() == hid and hp_ok, "не как ожидалось: " + ", ".join(diff(got, want)) if not diff(got, want).is_empty() else "")
 			m.free()
 
 # Действие даров в бою: волна 1 с даром и без (seed один).
@@ -233,16 +246,17 @@ func t_battle() -> void:
 	var plain := make({})
 	for t2 in [plain.zombie_type, plain.runner_type, plain.knight_type]:
 		zombie_types = zombie_types and d.type_hp[t2] == plain.type_hp[t2] and d.type_damage[t2] == plain.type_damage[t2]
-	check("sturdy_shields 2: купленная пехота создаётся с HP x1.16 (%.2f), лечение после волны — до него же; HP и урон зомби прежние" % hp_inf,
-		bought_ok and healed and zombie_types and is_equal_approx(hp_inf, plain.type_hp[plain.infantry_type] * 1.16))
+	check("sturdy_shields 2: купленная пехота создаётся с HP x1.12 (%.2f), лечение после волны — до него же; HP и урон зомби прежние" % hp_inf,
+		bought_ok and healed and zombie_types and is_equal_approx(hp_inf, plain.type_hp[plain.infantry_type] * 1.12))
 	var e := make({"tempered_steel": 1})
 	var dmg0: float = e.type_damage[e.infantry_type]
 	e.gold = 1000.0
-	check("tempered_steel 1 и покупка оружия перемножаются: урон пехоты x1.08 x1.1", e._buy(2) and is_equal_approx(dmg0, plain.type_damage[plain.infantry_type] * 1.08)
-		and is_equal_approx(e.type_damage[e.infantry_type], dmg0 * e.shop_param[2]))
+	check("tempered_steel 1 и покупка оружия перемножаются: урон пехоты x1.06 x1.1, стрелы лучников только x1.1", e._buy(2) and is_equal_approx(dmg0, plain.type_damage[plain.infantry_type] * 1.06)
+		and is_equal_approx(e.type_damage[e.infantry_type], dmg0 * e.shop_param[2]) and is_equal_approx(e.type_arrow_dmg[e.archer_type], plain.type_arrow_dmg[plain.archer_type] * e.shop_param[2]))
 	var f := make({"fortress_walls": 3})
 	f.gold = 1000.0
-	check("fortress_walls 3 и ремонт ворот: 1500 x1.45 + прибавка магазина", f._buy(3) and is_equal_approx(f.gate_hp_max, plain.gate_hp_max * 1.45 + f.shop_param[3]) and f.gate_hp == f.gate_hp_max)
+	check("fortress_walls 3 скрыт: ворота как без даров, ремонт — 1500 + прибавка магазина", f.gate_hp_max == plain.gate_hp_max and f._buy(3)
+		and is_equal_approx(f.gate_hp_max, plain.gate_hp_max + f.shop_param[3]) and f.gate_hp == f.gate_hp_max)
 	for x in [d, plain, e, f]:
 		x.free()
 
@@ -257,7 +271,7 @@ func same(a: Node2D, b: Node2D) -> bool:
 
 func t_determinism() -> void:
 	print("(г) детерминизм")
-	var gifts := {"tempered_steel": 3, "sturdy_shields": 3, "spoils": 3, "mine": 3, "fortress_walls": 3, "reserve": 3}
+	var gifts := {"tempered_steel": 3, "sturdy_shields": 3, "marksmen": 3, "spoils": 3, "mine": 3, "fortress_walls": 3, "reserve": 3}
 	var a := make(gifts, 6)
 	var b := make(gifts, 6)
 	var first := -1
@@ -273,7 +287,7 @@ func t_determinism() -> void:
 			ticks += 1
 			if first < 0 and not same(a, b):
 				first = ticks
-	check("все 6 даров уровня 3, волны 1-3 с покупками (seed 6, %d тиков, юнитов на старте %d): два прогона бит в бит на каждом тике" % [ticks, 600],
+	check("все 7 даров уровня 3 (fortress_walls скрыт), волны 1-3 с покупками (seed 6, %d тиков, юнитов на старте %d): два прогона бит в бит на каждом тике" % [ticks, 460],
 		first < 0 and a.wave_number == 3 and b.wave_number == 3 and ticks > 300, "" if first < 0 else "первое расхождение: тик %d" % first)
 	a.free()
 	b.free()
@@ -302,12 +316,13 @@ func t_game() -> void:
 	g.start_run(1)
 	await step(3)
 	m = current_scene as Node2D
-	check("забег с купленными fortress_walls 2 и reserve 1 (Game.active_gifts собран из gift_levels): ворота 1950, пехоты 340, лучников 140", m != null and is_equal_approx(m.gate_hp_max, 1950.0)
-		and count_type(m, m.infantry_type) == 340 and count_type(m, m.archer_type) == 140 and g.active_gifts == {"fortress_walls": 2, "reserve": 1}, "" if m == null else "ворота %.0f" % m.gate_hp_max)
+	check("забег с купленными fortress_walls 2 (скрыт) и reserve 1 (Game.active_gifts собран из gift_levels): ворота 1500, пехоты 315, лучников 105, в наборе только reserve",
+		m != null and m.gate_hp_max == 1500.0 and count_type(m, m.infantry_type) == 315 and count_type(m, m.archer_type) == 105 and g.active_gifts == {"reserve": 1},
+		"" if m == null else "ворота %.0f, пехоты %d, лучников %d" % [m.gate_hp_max, count_type(m, m.infantry_type), count_type(m, m.archer_type)])
 	g.end_run("loss", 2, 5)
 	var text := FileAccess.get_file_as_string(g.save_path)
 	var saved = JSON.parse_string(text)
-	check("сохранение записано: в нём gift_levels с купленными уровнями, active_gifts нет", saved is Dictionary and saved.get("gift_levels") is Dictionary
+	check("сохранение записано: в нём gift_levels с купленными уровнями (и скрытого дара), active_gifts нет", saved is Dictionary and saved.get("gift_levels") is Dictionary
 		and saved.gift_levels.get("fortress_walls") == 2 and saved.gift_levels.get("reserve") == 1 and not "active_gifts" in text)
 	m.queue_free()
 	g.queue_free()

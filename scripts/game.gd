@@ -409,8 +409,9 @@ func gift_price(id: String, level: int) -> int:
 
 
 # Почему следующий уровень дара купить нельзя: ключ BLOCK_* (осада — уже переведённая строка с номером); пустая строка — можно.
+# Скрытый дар (hidden) не продаётся.
 func buy_block(id: String) -> String:
-	if not gift_defs.has(id):
+	if not gift_defs.has(id) or gift_defs[id].hidden:
 		return BLOCK_DATA
 	var next: int = gift_levels.get(id, 0) + 1
 	if next > gift_defs[id].levels.size():
@@ -437,11 +438,11 @@ func buy_gift(id: String) -> bool:
 	return true
 
 
-# Купленные дары: id -> уровень, только уровни от 1.
+# Купленные дары: id -> уровень, только уровни от 1. Скрытые дары не входят: купленный уровень лежит в gift_levels и сохранении, но не действует.
 func owned_gifts() -> Dictionary:
 	var out := {}
 	for id in gift_levels:
-		if gift_levels[id] > 0:
+		if gift_levels[id] > 0 and not (gift_defs.has(id) and gift_defs[id].hidden):
 			out[id] = gift_levels[id]
 	return out
 

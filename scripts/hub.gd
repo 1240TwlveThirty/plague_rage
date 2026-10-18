@@ -133,6 +133,8 @@ func _setup_gifts() -> void:
 	for head in ["", "HUB_GIFTS_HEAD_GIFT", "HUB_GIFTS_HEAD_LEVEL", "HUB_GIFTS_HEAD_NEXT", "HUB_GIFTS_HEAD_PRICE", "", ""]:
 		_cell(grid, head, Color(1.0, 1.0, 1.0, 0.6))
 	for id in game.gift_defs:
+		if game.gift_defs[id].hidden:
+			continue   # скрытый дар (hidden в gifts.json) в магазине не показывается
 		var own := "res://art/gift_%s.png" % id
 		grid.add_child(_icon(own if ResourceLoader.exists(own) else GIFT_ICON, GIFT_ICON_SIZE))
 		_cell(grid, game.gift_defs[id].name_key)
@@ -173,7 +175,7 @@ func _cell(grid: GridContainer, text := "", color := Color.WHITE) -> Label:
 	return l
 
 
-# Эффект уровня дара одной строкой по desc_key дара: «+8% к урону всех воинов», «+40 воинов в каждом стартовом отряде».
+# Эффект уровня дара одной строкой по desc_key дара: «+6% к урону пехоты», «+5% воинов в каждом стартовом отряде (не меньше +1)».
 static func effect_text(def: Dictionary, level: int) -> String:
 	var v: float = def.levels[level - 1]
 	var num := str(int(v)) if v == floorf(v) else String.num(v)   # 8, а не 8.0

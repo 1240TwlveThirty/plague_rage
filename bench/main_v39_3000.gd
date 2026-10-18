@@ -1443,10 +1443,10 @@ func _apply_mods() -> void:
 	income_pct = mods.get_mult("income", "player") - 1.0
 
 
-# Дар на стартовые юниты: прибавка каждому стартовому отряду, юниты выходят из ворот, как купленные.
+# Дар на стартовые юниты: прибавка каждому стартовому отряду (процент от его числа — вниз, не меньше +1), юниты выходят из ворот, как купленные.
 func _add_start_units() -> void:
 	for s in START_SQUADS:
-		var n := int(mods.get_flat("start_units", "player"))
+		var n: int = mods.get_count("start_units", "player", squad_n[s])
 		if n > 0:
 			_squad_add_units(s, squad_type[s], n)
 
