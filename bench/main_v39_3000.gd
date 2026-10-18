@@ -48,6 +48,8 @@ const ORDER_ATTACK := 0   # как раньше: юниты идут на вра
 const ORDER_HOLD := 1     # держать: к врагу не идут, бьют только в дальности атаки
 const ORDER_RETREAT := 2  # отход: врага не ищут, не бьют, лучники не стреляют; скорость x1.5 до прихода
 const RETREAT_SPEED_MULT := 1.5
+const GATE_SPOTS := [0, -1, 1, -2, 2, -3, 3, 0]   # точка у ворот по номеру отряда, в шагах GATE_SPOT_DX от центра ворот
+const GATE_SPOT_DX := 110.0
 const ORDER_NAMES := ["ORDER_ATTACK", "ORDER_HOLD", "ORDER_RETREAT"]   # ключи перевода
 const UNIT_TYPES_PATH := "res://data/unit_types.json"
 const CASTLE_PATH := "res://data/castle.json"
@@ -3894,7 +3896,15 @@ func _box_select(r: Rect2, add: bool) -> void:
 func _set_order(o: int) -> void:
 	for s in _sel_list():
 		squad_order[s] = o
+		if o == ORDER_RETREAT and squad_follow[s] < 0:
+			squad_target[s] = gate_spot(s)   # отход — к своей точке у ворот (ведомый идёт за ведущим)
 	_update_squad_panel()
+
+
+# Точка отряда s у ворот: отход и появление нового отряда. Точки разнесены по номеру отряда (GATE_SPOTS, шаг GATE_SPOT_DX),
+# чтобы отряды не сходились в одну.
+func gate_spot(s: int) -> Vector2:
+	return Vector2(GATE_POS.x + GATE_SPOTS[s % GATE_SPOTS.size()] * GATE_SPOT_DX, WALL_Y - 40.0)
 
 
 # Название отряда для панели и магазина: label типа, а если отрядов этого типа несколько — с номером по порядку.
