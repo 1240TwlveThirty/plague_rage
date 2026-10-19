@@ -296,6 +296,7 @@ COND_VENGEANCE,бонус растёт с каждым своим павшим �
 SHOP_SPEAR_PACK,+%d копейщиков,+%d spearmen
 UNIT_SPEARMAN,Копейщики,Spearmen
 UNIT_HERO,Командир,Commander
+HUD_HERO_FALLEN,Командир пал — приказы до конца волны недоступны,The Commander has fallen — no orders until the wave ends
 ACTION_BUY_SPEAR,Купить: копейщики,Buy: spearmen
 HUD_SHOP_NEW_SQUAD,→ новый отряд,→ new squad
 MSG_NO_SQUAD_FOR_SPEARMEN,Нет свободного отряда для копейщиков,No free squad for spearmen

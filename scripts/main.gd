@@ -683,6 +683,8 @@ var hero_move := Vector2.ZERO   # ввод движения этого тика 
 var hero_feed := Callable()     # тесты и бот: func(тик) -> Vector2 вместо клавиатуры (записанная последовательность ввода)
 var hero_face := 1.0            # взгляд спрайта по x: 1 — вправо, -1 — влево (только отрисовка)
 const HERO_SPAWN := Vector2(1010.0, 715.0)   # у ворот над стеной (GATE_POS.x, WALL_Y - 30): появление и возрождение
+var hero_dead := false   # герой пал в этой волне: приказы заблокированы до её конца, в начале передышки — возрождение
+var hero_fallen_label: Label   # «Командир пал» в HUD
 var hero_swings := 0   # статистика героя: ударов (с хоть одной целью) и попаданий за забег
 var hero_hits := 0
 const SIDE_TOP := 0     # стороны появления орды
@@ -1570,11 +1572,13 @@ func _setup_war_cry() -> void:
 
 # Можно ли активировать клич сейчас: дар куплен, идёт бой, перезарядка прошла (исполнится на следующем тике).
 func war_cry_can() -> bool:
-	return war_cry_level > 0 and wave_state == WS_BATTLE and not paused and tick_counter + 1 >= war_cry_ready
+	return war_cry_level > 0 and wave_state == WS_BATTLE and not paused and tick_counter + 1 >= war_cry_ready and not _orders_locked()
 
 
 # Команда игрока или бота: активировать клич на ближайшем тике симуляции. Нельзя — false, ничего не меняется.
 func request_war_cry() -> bool:
+	if _orders_locked():
+		return false   # командир пал: приказы до конца волны недоступны
 	if not war_cry_can():
 		return false
 	war_cry_request = true
@@ -2673,6 +2677,9 @@ func _wave_cleared() -> void:
 				hp[i] = type_hp[unit_type[i]]   # полное лечение
 			else:
 				hp[i] += (type_hp[unit_type[i]] - hp[i]) * heal   # возвращается доля heal потерянного HP
+	if hero_dead:   # начало передышки: герой возрождается у ворот, управление возвращается
+		hero_dead = false
+		_spawn_hero(hero_cfg.revive_hp_fraction)
 	wave_recovered = 0
 	_recover_fallen()
 	run_recovered += wave_recovered
@@ -2881,6 +2888,8 @@ func _free_empty_squads() -> void:
 
 # N: новый пустой отряд того же типа, что главный выбранный; выбор переходит на него.
 func _cmd_new_squad() -> bool:
+	if _orders_locked():
+		return false   # командир пал: приказы до конца волны недоступны
 	if wave_state != WS_RESPITE:
 		return false
 	if sel_primary < 0:
@@ -2899,6 +2908,8 @@ func _cmd_new_squad() -> bool:
 # split_mode 0 и 1 — с наибольшей / наименьшей local.y (правые / левые), 2 и 3 — с наименьшей / наибольшей
 # local.x (задние / передние ряды). В бою — только на паузе. Позиции юнитов не меняются. Выбран должен быть ровно один отряд.
 func _cmd_split() -> bool:
+	if _orders_locked():
+		return false   # командир пал: приказы до конца волны недоступны
 	if _run_over():
 		return false
 	if wave_state == WS_BATTLE and not paused:
@@ -2990,6 +3001,8 @@ func _set_paused(v: bool) -> void:
 # нынешней ширины; несколько — в одну линию длиной в сумму их ширин (_place_formation_multi).
 # Приказ не меняется; проверки пересечения и границ поля — как при расстановке протяжкой.
 func _cmd_side_post(side: int) -> bool:
+	if _orders_locked():
+		return false   # командир пал: приказы до конца волны недоступны
 	var list := _order_list()
 	if list.is_empty():
 		return false
@@ -3021,6 +3034,8 @@ func _side_post(side: int) -> Array:
 # выбор переходит на целевой. Отряды 0 и 1 не освобождаются: если выбран один из них, другой вливается в него.
 # Выбрано несколько отрядов одного типа: все вливаются в отряд с наименьшим индексом.
 func _cmd_merge() -> bool:
+	if _orders_locked():
+		return false   # командир пал: приказы до конца волны недоступны
 	if wave_state != WS_RESPITE:
 		return false
 	var srcs := _sel_list()
@@ -3181,6 +3196,8 @@ func _picking() -> bool:
 
 # F вне протяжки: каждый выбранный отряд разворачивается «кругом» на месте (слоты в мире не двигаются).
 func _cmd_about_face() -> bool:
+	if _orders_locked():
+		return false   # командир пал: приказы до конца волны недоступны
 	var list := _order_list()
 	for s in list:
 		_about_face(s)
@@ -3191,6 +3208,8 @@ func _cmd_about_face() -> bool:
 # Shift + колесо: каждый выбранный отряд поворачивается на месте на steps * 15° вокруг центра своих живых слотов
 # (squad_pos). Цель отряда не меняется; при «отходе» команда игнорируется.
 func _cmd_rotate(steps: int) -> bool:
+	if _orders_locked():
+		return false   # командир пал: приказы до конца волны недоступны
 	var any := false
 	for s in _order_list():
 		if squad_order[s] == ORDER_RETREAT:
@@ -3430,6 +3449,11 @@ func _spawn_hero(frac: float) -> void:
 	unit_shot_t[i] = 0.0
 	unit_dir[i] = 0
 	hero_face = 1.0
+
+
+# Командир пал в бою: приказы (клавиши, ПКМ, Клич, построения) не принимаются до конца волны; выбор, пауза и камера работают.
+func _orders_locked() -> bool:
+	return hero_dead and wave_state == WS_BATTLE
 
 
 # Ввод движения героя: hero_feed (тесты, бот) или действия move_* InputMap (WASD по умолчанию). Диагональ — длина 1.
@@ -3914,6 +3938,18 @@ func _setup_fps_label() -> void:
 	pause_label.add_theme_constant_override("outline_size", 8)
 	pause_label.visible = false
 	layer.add_child(pause_label)
+	hero_fallen_label = Label.new()   # «Командир пал» (задача 10): пока приказы заблокированы
+	hero_fallen_label.text = "HUD_HERO_FALLEN"
+	hero_fallen_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	hero_fallen_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hero_fallen_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	hero_fallen_label.position.y = 156.0   # под меткой паузы
+	hero_fallen_label.add_theme_font_size_override("font_size", 30)
+	hero_fallen_label.add_theme_color_override("font_color", Color("#e43b44"))   # Endesga 32
+	hero_fallen_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	hero_fallen_label.add_theme_constant_override("outline_size", 8)
+	hero_fallen_label.visible = false
+	layer.add_child(hero_fallen_label)
 	# Магазин справа (виден только в передышке)
 	shop_panel = VBoxContainer.new()
 	shop_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
@@ -4201,6 +4237,8 @@ func _box_select(r: Rect2, add: bool) -> void:
 
 # Приказ всем выбранным отрядам.
 func _set_order(o: int) -> void:
+	if _orders_locked():
+		return   # командир пал: приказы до конца волны недоступны
 	for s in _sel_list():
 		squad_order[s] = o
 		if o == ORDER_RETREAT and squad_follow[s] < 0:
@@ -4328,6 +4366,7 @@ func _update_war_cry_ui() -> void:
 func _update_ui() -> void:
 	if hud_label == null:
 		return
+	hero_fallen_label.visible = _orders_locked()
 	hud_label.text = tr("HUD_STATUS") % [
 		"%d/%d" % [wave_number, waves_per_run] if run_limit else str(wave_number), zombie_alive + wave_remaining, ceili(maxf(gate_hp, 0.0)), roundi(gate_hp_max), floori(gold)]
 	if scout_shown and waves_enabled and wave_state == WS_RESPITE:
@@ -4849,6 +4888,7 @@ func _remove_dead() -> void:
 				wave_kills_by_type[unit_type[i]] += 1
 			elif i == hero_idx:
 				hero_idx = -1   # пал герой: не считается павшим отряда (карточка 24, recover)
+				hero_dead = true
 			elif team[i] == 0:
 				wave_fallen += 1   # пал свой (карточка 24)
 				if unit_squad[i] >= 0:
@@ -5201,6 +5241,8 @@ func _live_block(s: int, boxes: Array, anchor: Vector2) -> PackedVector2Array:
 # и углы те же. Всё или ничего: набор должен поместиться в поле и не ниже WALL_Y - FORM_MARGIN (вылез — сдвигается
 # целиком на минимум), блоки у целей не пересекаются с невыбранными отрядами (между выбранными проверки нет).
 func _cmd_move_group(list: PackedInt32Array, p: Vector2) -> bool:
+	if _orders_locked():
+		return false   # командир пал: приказы до конца волны недоступны
 	var c := Vector2.ZERO
 	var mask := 0
 	for s in list:
@@ -5238,6 +5280,8 @@ func _cmd_move_group(list: PackedInt32Array, p: Vector2) -> bool:
 
 # Обычный клик: цель отряда s. Не задаётся, если блок отряда в точке цели слишком пересечётся с другим своим отрядом.
 func _cmd_move(s: int, target: Vector2) -> bool:
+	if _orders_locked():
+		return false   # командир пал: приказы до конца волны недоступны
 	var q := _target_overlap(s, target)
 	if q >= 0:
 		_say(tr("MSG_BLOCK_OVERLAP") % (q + 1), 2.0)   # цель не меняется
@@ -5418,6 +5462,8 @@ func _multi_geometry(list: PackedInt32Array, a: Vector2, b: Vector2, flip := fal
 # в поле или чей-то блок пересекается с невыбранным отрядом — отказ с сообщением, все на месте.
 # Один отряд — ровно _place_formation.
 func _place_formation_multi(list: PackedInt32Array, a: Vector2, b: Vector2, flip := false) -> bool:
+	if _orders_locked():
+		return false   # командир пал: приказы до конца волны недоступны
 	if list.is_empty():
 		return false
 	if list.size() == 1:
@@ -5834,7 +5880,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.pressed:
 			if box_active:
 				box_active = false   # ПКМ отменяет рамку
-			elif sel_mask != 0:
+			elif sel_mask != 0 and not _orders_locked():
 				drag_active = true
 				drag_flip = false
 				drag_start = p
@@ -5891,7 +5937,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			"banner_toggle":
 				_toggle_banner()
 			"auto_width":
-				for s in _sel_list():
+				for s in (PackedInt32Array() if _orders_locked() else _sel_list()):
 					squad_user_width[s] = 0   # ширина строя снова авто
 			"debug_restart":
 				if DEBUG_COLORS:

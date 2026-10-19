@@ -37,6 +37,8 @@ func _run() -> void:
 	await t_keys()
 	t_combat()
 	t_mods()
+	t_death()
+	await t_death_hud()
 	print("CHECK: провалов %d" % fails)
 	quit(1 if fails > 0 else 0)
 
@@ -256,3 +258,86 @@ func t_mods() -> void:
 		is_equal_approx(m.type_block_bonus[h], 0.15) and m.type_block_mult[h] == 1.0)
 	check("HP живого героя — по новому максимуму", is_equal_approx(m.hp[m.hero_idx], m.type_hp[h]))
 	m.free()
+
+func t_death() -> void:
+	print("смерть и возрождение (этап D)")
+	var m := make(1, "", 3, {"war_cry": 1})
+	m._select_only(0)
+	m._set_order(m.ORDER_HOLD)
+	m._start_wave()
+	for t in 30:
+		m._physics_process(DT)
+	var gold0: float = m.gold
+	var target0: Vector2 = m.squad_target[0]
+	m.hp[m.hero_idx] = 0.0
+	m._remove_dead()
+	check("герой пал: его нет в массивах, hero_dead, приказы заблокированы; золото то же (штрафа нет)", m.hero_idx == -1 and m.hero_dead and m._orders_locked()
+		and m.gold == gold0 and m.wave_fallen == 0)
+	m._set_order(m.ORDER_ATTACK)
+	check("смена приказа отклонена: отряд 0 по-прежнему «держать»", m.squad_order[0] == m.ORDER_HOLD)
+	check("Клич Благодати отклонён (кнопка неактивна: war_cry_can false)", not m.request_war_cry() and not m.war_cry_can())
+	check("ПКМ-цель, группа, построение, поворот, разворот, посты, деление отклонены; цель отряда прежняя", not m._cmd_move(0, target0 + Vector2(100, 0))
+		and not m._cmd_move_group(PackedInt32Array([0, 1]), target0 + Vector2(100, 0)) and not m._place_formation_multi(PackedInt32Array([0]), target0, target0 + Vector2(200, 0))
+		and not m._cmd_rotate(1) and not m._cmd_about_face() and not m._cmd_side_post(m.SIDE_LEFT) and not m._cmd_split() and m.squad_target[0] == target0)
+	m._select_only(1)
+	check("выбор отрядов работает", m.sel_primary == 1)
+	var n0: int = m.squad_n[0]
+	for t in 60:
+		m._physics_process(DT)
+	check("армия продолжает бой по последним приказам (отряд 0 на «держать», %d -> %d)" % [n0, m.squad_n[0]], m.squad_order[0] == m.ORDER_HOLD and m.hero_idx == -1)
+	m._wave_cleared()
+	var h: int = m.hero_idx
+	check("начало передышки: герой возрождён у ворот с полным HP (revive_hp_fraction 1.0), управление вернулось", h >= 0 and m.pos[h] == m.HERO_SPAWN
+		and is_equal_approx(m.hp[h], m.type_hp[m.hero_type]) and not m.hero_dead and not m._orders_locked())
+	m._select_only(0)
+	m._set_order(m.ORDER_ATTACK)
+	check("приказ снова принимается", m.squad_order[0] == m.ORDER_ATTACK)
+	m.free()
+	var half := make(1, FIX + "revive_half.json")
+	half._start_wave()
+	half.hp[half.hero_idx] = -1.0
+	half._remove_dead()
+	half._wave_cleared()
+	check("revive_hp_fraction 0.5: возрождение с половиной HP", is_equal_approx(half.hp[half.hero_idx], 0.5 * half.type_hp[half.hero_type]))
+	half.free()
+	var d := make(1)
+	d._start_wave()
+	d.hp[d.hero_idx] = 0.0
+	d._remove_dead()
+	d.gate_hp = 0.0
+	d._physics_process(DT)
+	check("поражение (ворота пали) — как раньше, при павшем герое", d._run_over())
+	d.free()
+	var alive := make(1)
+	alive._start_wave()
+	alive.hp[alive.hero_idx] = 5.0
+	alive._wave_cleared()
+	check("живой герой в передышке не возрождается: лечится, как все юниты (heal), остаётся на месте", alive.hero_idx >= 0 and alive.hp[alive.hero_idx] > 5.0
+		and alive.hp[alive.hero_idx] < alive.type_hp[alive.hero_type])
+	alive.free()
+
+func t_death_hud() -> void:
+	print("метка «Командир пал»")
+	var m: Node2D = load(MAIN).new()
+	m.spawn_seed = 3
+	m.debug_layer = 1
+	m.record_path = "user://record_bench.json"
+	m.hero_mode = 1
+	m.process_mode = Node.PROCESS_MODE_DISABLED
+	root.add_child(m)
+	await process_frame
+	m._update_ui()
+	var before: bool = m.hero_fallen_label.visible
+	m._start_wave()
+	m.hp[m.hero_idx] = 0.0
+	m._remove_dead()
+	m._update_ui()
+	check("после смерти в бою метка видна: «%s»" % tr(m.hero_fallen_label.text), not before and m.hero_fallen_label.visible and tr(m.hero_fallen_label.text).begins_with("Командир пал"))
+	TranslationServer.set_locale("en")
+	check("en: «%s»" % tr(m.hero_fallen_label.text), tr(m.hero_fallen_label.text).begins_with("The Commander has fallen"))
+	TranslationServer.set_locale("ru")
+	m._wave_cleared()
+	m._update_ui()
+	check("передышка: метки нет", not m.hero_fallen_label.visible)
+	m.queue_free()
+	await process_frame
