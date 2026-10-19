@@ -32,7 +32,44 @@ func zombie_near(m: Node2D) -> bool:
 				return true
 	return false
 const WAVE_CAP := 40
-const CYCLES := {"B1": [0, 2, 1, 3], "B2": [0, 2], "B3": [3], "B5": [0, 1], "B6": [2, 0, 2, 1], "B7": [0, 1], "B8": [0, 1, 4, 1]}
+const CYCLES := {"B1": [0, 2, 1, 3], "B2": [0, 2], "B3": [3], "B5": [0, 1], "B6": [2, 0, 2, 1], "B7": [0, 1], "B8": [0, 1, 4, 1], "B9": [0, 1]}
+# B9 (задача 10): армия как у B7 (покупки, ремонт ворот ниже 60%, «держать» пехоте) плюс герой (hero_mode 1): раз в HERO_REPLAN тиков
+# бот выбирает скопление зомби — клетку HERO_BIN px с наибольшим числом зомби / (1 + расстояние / HERO_DIST_K) — и ведёт героя
+# к её центру масс; зомби нет — к точке появления. Только нижняя граница вклада героя. В конце строка HERO: удары, попадания, добито, смертей.
+const HERO_BIN := 96.0
+const HERO_DIST_K := 300.0
+const HERO_REPLAN := 10
+var hero_goal := Vector2.ZERO
+
+# Цель героя B9: центр масс лучшего скопления (см. выше) или точка появления.
+func hero_cluster(m: Node2D) -> Vector2:
+	var h: Vector2 = m.pos[m.hero_idx]
+	var bins := {}
+	for i in m.count:
+		if m.team[i] == 1 and m.hp[i] > 0.0:
+			var key := Vector2i(floori(m.pos[i].x / HERO_BIN), floori(m.pos[i].y / HERO_BIN))
+			if not bins.has(key):
+				bins[key] = [0, Vector2.ZERO]
+			bins[key][0] += 1
+			bins[key][1] += m.pos[i]
+	var best := -1.0
+	var goal: Vector2 = m.HERO_SPAWN
+	for key in bins:
+		var c: Vector2 = bins[key][1] / bins[key][0]
+		var score: float = bins[key][0] / (1.0 + h.distance_to(c) / HERO_DIST_K)
+		if score > best:
+			best = score
+			goal = c
+	return goal
+
+# Ввод героя B9 на тик t (hero_feed): к цели, пересчёт раз в HERO_REPLAN тиков; в 6 px от цели — стоит.
+func hero_input(m: Node2D, t: int) -> Vector2:
+	if m.hero_idx < 0:
+		return Vector2.ZERO
+	if t % HERO_REPLAN == 0 or hero_goal == Vector2.ZERO:
+		hero_goal = hero_cluster(m)
+	var d: Vector2 = hero_goal - m.pos[m.hero_idx]
+	return d.normalized() if d.length() > 6.0 else Vector2.ZERO
 # B8 (задача 8): как B7, но по кругу пехота, лучники, копейщики, лучники — половина «пехотных» покупок уходит на копейщиков; «держать» —
 # отрядам пехоты и копейщиков. --army spear (равный бюджет): стартовые 300 пехоты заменяются копейщиками на ту же цену (200 при цене
 # 3 против 2 золота за юнита), а «пехотные» покупки бота (товар 0) идут на копейщиков (товар 4). --hold off — бот не ставит «держать».
@@ -74,6 +111,9 @@ func _initialize() -> void:
 	m.spawn_seed = seed
 	m.debug_layer = 1
 	m.active_gifts = gifts
+	if bot == "B9":
+		m.hero_mode = 1
+		m.hero_feed = func(t: int) -> Vector2: return hero_input(m, t)
 	var rng := RandomNumberGenerator.new()   # генератор забега бенча: результат карточки 30, тройки и выбор бота; не ГСЧ симуляции
 	rng.seed = seed
 	if opt.has("--variants"):
@@ -107,7 +147,7 @@ func _initialize() -> void:
 	if opt.has("--hp-spread") and not m.type_id.is_empty():
 		m.wave_cfg.hp_spread = float(opt["--hp-spread"])
 	var army_spear: bool = opt.get("--army", "inf") == "spear"
-	var holds: bool = bot in ["B7", "B8"] and opt.get("--hold", "on") != "off"
+	var holds: bool = bot in ["B7", "B8", "B9"] and opt.get("--hold", "on") != "off"
 	if army_spear and not m.type_id.is_empty():
 		var ki: int = m.SHOP_ITEMS.find("inf_pack")
 		var ks: int = m.SHOP_ITEMS.find("spear_pack")
@@ -149,7 +189,7 @@ func _initialize() -> void:
 			while m._buy(0):
 				pass
 		else:
-			if bot in ["B7", "B8"] and m.gate_hp < B7_REPAIR_BELOW * m.gate_hp_max:
+			if bot in ["B7", "B8", "B9"] and m.gate_hp < B7_REPAIR_BELOW * m.gate_hp_max:
 				var price: float = m._price(3)
 				var hp0: float = m.gate_hp
 				if m._buy(3):
@@ -204,6 +244,7 @@ func _initialize() -> void:
 	print("RUN,%s,%d,%d,%d,%d" % [bot, seed, defeat, full, floori(m.gold)])
 	print("WARCRY,%d,%d,%d" % [m.war_cry_uses, m.war_cry_active_ticks, battle_ticks])   # последнее поле — золото, не потраченное к концу забега
 	print("CARDS," + ",".join(m.active_cards.map(func(r): return r.id + ("" if not r.has("result") else ":" + r.result.good))))   # выбранные карточки (30 — с целью x1.5)
-	print("RECOVER,%d" % m.run_recovered)   # своих юнитов вернулось после волн за забег (стат recover, задача 6d)
+	print("RECOVER,%d" % m.run_recovered)
+	print("HERO,%d,%d,%d,%d" % [m.hero_swings, m.hero_hits, m.hero_kills, m.hero_deaths])   # B9: ударов, попаданий, добито героем, смертей героя   # своих юнитов вернулось после волн за забег (стат recover, задача 6d)
 	m.free()
 	quit()

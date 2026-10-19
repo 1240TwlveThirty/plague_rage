@@ -689,8 +689,10 @@ var hero_view: Node2D          # герой на экране: кольцо-ма
 var hero_sprite: Sprite2D
 var hero_drawn := Vector2(-1.0, -1.0)   # HP и зум, с которыми маркер нарисован (перерисовка только при смене)
 const HERO_RING_PX := 20.0     # радиус кольца на экране, px — постоянный при любом зуме камеры
-var hero_swings := 0   # статистика героя: ударов (с хоть одной целью) и попаданий за забег
+var hero_swings := 0   # статистика героя за забег: ударов (с хоть одной целью), попаданий, добитых им зомби, смертей
 var hero_hits := 0
+var hero_kills := 0
+var hero_deaths := 0
 const SIDE_TOP := 0     # стороны появления орды
 const SIDE_LEFT := 1
 const SIDE_RIGHT := 2
@@ -3565,6 +3567,8 @@ func _update_hero(delta: float) -> void:
 		return   # некого бить: удар готов и ждёт цель
 	for j in tj:
 		hp[j] -= type_damage[hero_type]   # у зомби нет щита и отряда: ни блока, ни снижения урона
+		if hp[j] <= 0.0:
+			hero_kills += 1
 	hero_swings += 1
 	hero_hits += tj.size()
 	cooldown[h] += type_cooldown[hero_type]   # остаток (до type_cd_floor) переносится, как у юнитов
@@ -4955,6 +4959,7 @@ func _remove_dead() -> void:
 			elif i == hero_idx:
 				hero_idx = -1   # пал герой: не считается павшим отряда (карточка 24, recover)
 				hero_dead = true
+				hero_deaths += 1
 			elif team[i] == 0:
 				wave_fallen += 1   # пал свой (карточка 24)
 				if unit_squad[i] >= 0:
