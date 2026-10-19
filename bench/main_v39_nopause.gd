@@ -683,6 +683,8 @@ var hero_move := Vector2.ZERO   # ввод движения этого тика 
 var hero_feed := Callable()     # тесты и бот: func(тик) -> Vector2 вместо клавиатуры (записанная последовательность ввода)
 var hero_face := 1.0            # взгляд спрайта по x: 1 — вправо, -1 — влево (только отрисовка)
 const HERO_SPAWN := Vector2(1010.0, 715.0)   # у ворот над стеной (GATE_POS.x, WALL_Y - 30): появление и возрождение
+var hero_swings := 0   # статистика героя: ударов (с хоть одной целью) и попаданий за забег
+var hero_hits := 0
 const SIDE_TOP := 0     # стороны появления орды
 const SIDE_LEFT := 1
 const SIDE_RIGHT := 2
@@ -1658,6 +1660,8 @@ func _apply_mods() -> void:
 # и числа те же бит в бит. Вызывается при старте забега и в начале каждой волны (_prepare_wave).
 func _apply_wave_data() -> void:
 	var names := {infantry_type: "infantry", archer_type: "archer", spearman_type: "spearman"}
+	if hero_type >= 0:
+		names[hero_type] = "hero"   # герой — юнит игрока: множители цели all_units (своей цели у героя нет, новых статов нет)
 	var hp_new := base_type_hp.duplicate()
 	var dmg_new := base_type_damage.duplicate()
 	var arrow_new := base_type_arrow_dmg.duplicate()
@@ -1707,6 +1711,9 @@ func _apply_wave_data() -> void:
 	type_cd_floor[infantry_type] = -CD_CARRY if inf_on else 0.0
 	type_cd_floor[spearman_type] = -CD_CARRY if spear_on else 0.0
 	type_cd_floor[archer_type] = -CD_CARRY if arch_on else 0.0
+	if hero_type >= 0:   # герой: attack_rate all_units; решает каждый тик — интервал без округления до 2 тиков, перенос до 1 тика
+		cd_new[hero_type] = base_type_cooldown[hero_type] / (1.0 + rate_all) if ar_all else base_type_cooldown[hero_type]
+		type_cd_floor[hero_type] = -1.0 / 30.0 if ar_all else 0.0
 	var bounty: float = mods.get_mult("bounty", "player")
 	for t in bounty_new.size():
 		bounty_new[t] *= bounty
@@ -3436,13 +3443,52 @@ func _hero_input() -> Vector2:
 	return v.normalized() if v.length_squared() > 1.0 else v
 
 
-# Тик героя: скорость из ввода (ход и границы — общий _move_units: поле и пол у стены, как у юнитов).
-func _update_hero(_delta: float) -> void:
+# Тик героя: скорость из ввода (ход и границы — общий _move_units: поле и пол у стены, как у юнитов) и автоатака:
+# раз в интервал удара — до targets_per_swing ближайших живых зомби в attack_range, все одним ударом. Поиск — по мелкой сетке
+# этого тика: окно ±ceil(attack_range / CELL_SIZE) клеток (при дальности до CELL_SIZE — те же 3x3, что у юнитов).
+func _update_hero(delta: float) -> void:
 	var h := hero_idx
 	vel[h] = hero_move * type_speed[hero_type]
 	if hero_move.x != 0.0:
 		hero_face = signf(hero_move.x)
 	unit_state[h] = ST_CHASE if hero_move != Vector2.ZERO else ST_IDLE
+	cooldown[h] = maxf(cooldown[h] - delta, type_cd_floor[hero_type])
+	if cooldown[h] > 0.0:
+		return
+	var p := pos[h]
+	var r2 := type_range_sq[hero_type]
+	var reach := ceili(sqrt(r2) / CELL_SIZE)
+	var cx := clampi(floori(p.x / CELL_SIZE), 0, GRID_W - 1)
+	var cy := clampi(floori(p.y / CELL_SIZE), 0, GRID_H - 1)
+	var k: int = hero_cfg.targets_per_swing
+	var tj := PackedInt32Array()     # цели по возрастанию расстояния (не больше k)
+	var td := PackedFloat32Array()
+	for ny in range(maxi(cy - reach, 0), mini(cy + reach, GRID_H - 1) + 1):
+		for nx in range(maxi(cx - reach, 0), mini(cx + reach, GRID_W - 1) + 1):
+			var c := nx + ny * GRID_W
+			for q in range(cell_start[c], cell_start[c + 1]):
+				var j := sorted_units[q]
+				if team[j] != 1 or hp[j] <= 0.0:
+					continue
+				var d2 := p.distance_squared_to(pos[j])
+				if d2 > r2 or (td.size() == k and d2 >= td[k - 1]):
+					continue
+				var at := td.size()
+				while at > 0 and td[at - 1] > d2:
+					at -= 1
+				tj.insert(at, j)
+				td.insert(at, d2)
+				if tj.size() > k:
+					tj.resize(k)
+					td.resize(k)
+	if tj.is_empty():
+		return   # некого бить: удар готов и ждёт цель
+	for j in tj:
+		hp[j] -= type_damage[hero_type]   # у зомби нет щита и отряда: ни блока, ни снижения урона
+	hero_swings += 1
+	hero_hits += tj.size()
+	cooldown[h] += type_cooldown[hero_type]   # остаток (до type_cd_floor) переносится, как у юнитов
+	unit_anim_t[h] = ATTACK_ANIM_T
 
 
 # Значение из JSON с множителем масштаба (SCALE_REL или SPEED_REL), округлённое до 0.01.

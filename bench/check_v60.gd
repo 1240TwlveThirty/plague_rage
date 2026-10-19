@@ -11,8 +11,10 @@ func check(what: String, ok: bool, info := "") -> void:
 		fails += 1
 	print("  %s: %s%s" % [what, "да" if ok else "НЕТ", "" if info == "" else " (" + info + ")"])
 
-func make(mode := 1, path := "", rng_seed := 3) -> Node2D:
+func make(mode := 1, path := "", rng_seed := 3, gifts := {}, cards: Array = []) -> Node2D:
 	var m: Node2D = load(MAIN).new()
+	m.active_gifts = gifts
+	m.active_cards = cards
 	m.spawn_seed = rng_seed
 	m.debug_layer = 1
 	m.record_path = "user://record_bench.json"
@@ -33,6 +35,8 @@ func _run() -> void:
 	t_data()
 	t_move()
 	await t_keys()
+	t_combat()
+	t_mods()
 	print("CHECK: провалов %d" % fails)
 	quit(1 if fails > 0 else 0)
 
@@ -164,3 +168,91 @@ func t_keys() -> void:
 	check("клавиатура: вправо + вверх -> ввод тика %s (длина 1), отпущены -> 0" % str(v), v.is_equal_approx(Vector2(1, -1).normalized()) and m.hero_move == Vector2.ZERO)
 	m.queue_free()
 	await process_frame
+
+# n новых зомби (крестьяне) в углу поля; их индексы. Создаются после героя — индекс героя не меняется.
+func zombies(m: Node2D, n: int) -> Array:
+	var out := []
+	for k in n:
+		out.append(m.count)
+		m._spawn_zombie(Vector2(5.0 + k, 5.0), m.zombie_type)
+	return out
+
+func t_combat() -> void:
+	print("бой героя (этап C)")
+	var m := make(1)
+	var h: int = m.hero_idx
+	var hp0: Vector2 = m.pos[h]
+	var z := zombies(m, 4)
+	var full: float = m.hp[z[0]]
+	m.pos[z[0]] = hp0 + Vector2(16, 0)
+	m.pos[z[1]] = hp0 + Vector2(0, -6)
+	m.pos[z[2]] = hp0 + Vector2(-10, 0)
+	m.pos[z[3]] = hp0 + Vector2(0, -22)   # дальше attack_range 21
+	m._build_grid()
+	m._update_hero(DT)
+	var lost := []
+	for j in z:
+		lost.append(full - m.hp[j])
+	var dmg: float = m.type_damage[m.hero_type]
+	check("удар: 2 ближайших в дальности (6 и 10 px) получают урон героя %.1f, третий (16 px) и дальний (22 px) — нет" % dmg, is_equal_approx(lost[1], dmg)
+		and is_equal_approx(lost[2], dmg) and lost[0] == 0.0 and lost[3] == 0.0, str(lost))
+	m._update_hero(DT)
+	check("сразу после удара — перезарядка, второго удара нет", is_equal_approx(full - m.hp[z[1]], dmg) and m.hero_swings == 1 and m.hero_hits == 2)
+	var ticks := 1
+	while m.hero_swings == 1 and ticks < 100:
+		m._update_hero(DT)
+		ticks += 1
+	check("следующий удар через %d тиков (attack_interval 0.8 с = 24 тика)" % ticks, ticks == 24 and m.hero_swings == 2)
+	m.hp[z[1]] = 0.0
+	m.hp[z[2]] = 0.0
+	m.cooldown[h] = 0.0
+	m._update_hero(DT)
+	check("мёртвые (HP <= 0, ещё не удалены) не цели: удар идёт по следующей ближайшей (16 px)", is_equal_approx(full - m.hp[z[0]], dmg))
+	# Окно сетки шире 3x3, если дальность больше клетки: дальность 60 px -> окно ±3 клетки.
+	m.type_range_sq[m.hero_type] = 60.0 * 60.0
+	m.pos[z[3]] = hp0 + Vector2(-55, 0)
+	var before: float = m.hp[z[3]]
+	m.cooldown[h] = 0.0
+	m._build_grid()
+	m._update_hero(DT)
+	check("дальность 60 px (больше клетки %.0f): окно обхода расширено только для героя, цель в 55 px задета" % m.CELL_SIZE, m.hp[z[3]] < before)
+	m.free()
+	# Зомби бьют героя через общий механизм (цель — ближайший враг в окне); вдали от героя орда идёт к воротам.
+	var b := make(1)
+	b.hero_feed = func(_t): return Vector2.ZERO
+	var zb := zombies(b, 2)
+	for i in b.count:
+		if b.team[i] == 1:
+			b.hp[i] = 1e6
+	var hh: int = b.hero_idx
+	b.pos[hh] = Vector2(500, 500)
+	b.pos[zb[0]] = Vector2(510, 500)
+	b.pos[zb[1]] = Vector2(500, 300)
+	var far0: Vector2 = b.pos[zb[1]]
+	b.wave_state = b.WS_BATTLE
+	for t in 60:
+		b._physics_process(DT)
+	var lost_hp: float = b.type_hp[b.hero_type] - b.hp[b.hero_idx]
+	var mv: Vector2 = b.pos[zb[1]] - far0
+	check("зомби рядом (10 px) бьёт героя: за 2 с герой потерял %.1f HP" % lost_hp, lost_hp > 0.0)
+	check("зомби в 200 px от героя идёт к воротам, а не к герою: сдвиг %s (к воротам — вправо-вниз)" % str(mv), mv.x > 5.0 and mv.y > 0.0)
+	b.free()
+
+func t_mods() -> void:
+	print("модификаторы героя (этап C)")
+	var base := make(1)
+	var h: int = base.hero_type
+	var hp0: float = base.type_hp[h]
+	var dmg0: float = base.type_damage[h]
+	var cd0: float = base.type_cooldown[h]
+	var sp0: float = base.type_speed[h]
+	base.free()
+	var m := make(1, "", 3, {"sturdy_shields": 3, "tempered_steel": 3, "marksmen": 3, "spear_wall": 3}, [{"id": "long_spears"}])
+	check("all_units: HP +18%% («Крепкие щиты» 3) — %.2f; враги крепче на 10%% (№27) на героя не действуют" % m.type_hp[h], is_equal_approx(m.type_hp[h], hp0 * 1.18))
+	check("all_units: скорость атаки +15%% (№27) — интервал %.4f = 0.8 / 1.15; пехотная «Закалённая сталь» на героя не действует" % m.type_cooldown[h],
+		is_equal_approx(m.type_cooldown[h], cd0 / 1.15))
+	check("урон лучников («Меткие стрелки») на героя не действует; скорость прежняя", is_equal_approx(m.type_damage[h], dmg0) and is_equal_approx(m.type_speed[h], sp0))
+	check("блок all_units («Сомкнутые щиты» 3): бонус начислен 0.15, но щита у героя нет (block_mult 1.0) — как у лучников, не действует",
+		is_equal_approx(m.type_block_bonus[h], 0.15) and m.type_block_mult[h] == 1.0)
+	check("HP живого героя — по новому максимуму", is_equal_approx(m.hp[m.hero_idx], m.type_hp[h]))
+	m.free()
