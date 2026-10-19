@@ -36,6 +36,7 @@ func _run() -> void:
 		await process_frame
 	if spear:
 		m.gold = 1e6
+		m.shop_enabled[m.SHOP_ITEMS.find("spear_pack")] = 1   # в данных v1 копейщики выключены (задача 9)
 		for k in 10:
 			m._buy(m.SHOP_ITEMS.find("spear_pack"))
 		m.squad_order[2] = m.ORDER_HOLD

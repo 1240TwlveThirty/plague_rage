@@ -36,6 +36,8 @@ const CYCLES := {"B1": [0, 2, 1, 3], "B2": [0, 2], "B3": [3], "B5": [0, 1], "B6"
 # B8 (задача 8): как B7, но по кругу пехота, лучники, копейщики, лучники — половина «пехотных» покупок уходит на копейщиков; «держать» —
 # отрядам пехоты и копейщиков. --army spear (равный бюджет): стартовые 300 пехоты заменяются копейщиками на ту же цену (200 при цене
 # 3 против 2 золота за юнита), а «пехотные» покупки бота (товар 0) идут на копейщиков (товар 4). --hold off — бот не ставит «держать».
+# Задача 9: копейщики в v1 выключены в данных (enabled: false) — B8 и --army spear отключены: без --spears on забег не идёт (код 2).
+# --spears on включает товар spear_pack в экземпляре (замеры отложенного кода копейщиков после релиза).
 # B7 (задача 6b): покупки как у B5 (по кругу пехота, лучники); перед ними — ремонт ворот, если их HP ниже B7_REPAIR_BELOW от максимума и хватает
 # золота; перед стартом каждой волны — приказ «держать» всем отрядам пехоты. На сигнал всплеска не реагирует. Пишет строки лога B7,...
 const B7_REPAIR_BELOW := 0.6
@@ -52,7 +54,7 @@ func _initialize() -> void:
 		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	var args := Array(OS.get_cmdline_user_args())
 	var opt := {}   # --gifts, --cards, --pick, --variants -> значение
-	for key in ["--gifts", "--cards", "--pick", "--variants", "--war-cry", "--hp-spread", "--army", "--hold", "--weapon-stat", "--weapons-free"]:
+	for key in ["--gifts", "--cards", "--pick", "--variants", "--war-cry", "--hp-spread", "--army", "--hold", "--weapon-stat", "--weapons-free", "--spears"]:
 		var at := args.find(key)
 		if at >= 0:
 			opt[key] = String(args[at + 1]) if at + 1 < args.size() else ""
@@ -62,6 +64,11 @@ func _initialize() -> void:
 		gifts[part.get_slice(":", 0)] = int(part.get_slice(":", 1))
 	var bot: String = args[0]
 	var seed := int(args[1])
+	var spears_on: bool = opt.get("--spears", "off") == "on"
+	if (bot == "B8" or opt.get("--army", "inf") == "spear") and not spears_on:
+		print("SKIP,%s: копейщики выключены в данных v1 (задача 9), B8 и --army spear отключены; включить: --spears on" % bot)
+		quit(2)
+		return
 	var m: Node2D = load("res://scripts/main.gd").new()
 	m.record_path = "user://record_bench.json"
 	m.spawn_seed = seed
@@ -88,6 +95,8 @@ func _initialize() -> void:
 		m.card_pick_auto = "random"
 		m.bench_card_rng = rng
 	m._setup_data()
+	if spears_on and not m.type_id.is_empty():
+		m.shop_enabled[m.SHOP_ITEMS.find("spear_pack")] = 1
 	if opt.has("--variants"):
 		DirAccess.remove_absolute(m.cards_path)
 	if (opt.has("--weapon-stat") or opt.has("--weapons-free")) and not m.type_id.is_empty():

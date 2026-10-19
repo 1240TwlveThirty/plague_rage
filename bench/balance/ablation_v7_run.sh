@@ -4,6 +4,8 @@
 # B8: без даров; дар «Стена щитов» (spear_wall) 1-3; карточки №9 «Строй щитов» и №11 «Подвижный резерв»; все видимые дары ур. 1-3 с «Стеной щитов»
 # (all_N) и без неё (allno_N). B7: без даров; карточки №9 и №11. Файлы bench/balance/ablation_v7_runs/, итоги bench/gift_ablation_v7.txt
 # и bench/card_ablation_v3.txt (bench/balance/v7_aggregate.gd).
+# Задача 9: копейщики выключены в данных v1 — воркер пропускает B8 и --army spear (строка SKIP, код 2); для повтора старых замеров
+# с B8 добавить воркеру --spears on (значения дара «Стена щитов» с задачи 9 другие: блок всем, а не копейщикам).
 GODOT="$1"; DIR="bench/balance/ablation_v7_runs"
 T0=$(date +%s)
 ALL="tempered_steel sturdy_shields marksmen spoils mine reserve armory smith_thomas repairers watch discipline radiance_reserve infirmary war_cry spear_wall"

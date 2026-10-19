@@ -3,6 +3,8 @@ extends SceneTree
 # отряд копейщиков создаётся при первой покупке у своей точки у ворот, точки новых отрядов разнесены, приказы, деление, слияние,
 # отдельный счёт, оружие, удар со второго ряда (в контакте участвует больше копейщиков, чем пехотинцев при равной численности).
 # Сохранения посреди забега в проекте нет — копейщики, как и остальная армия, в него не попадают (проверяется, что файл армии не хранит).
+# Задача 9: в v1 копейщики выключены в данных (enabled: false у типа и у товара) — t_parked проверяет, что их нет в игре; остальные
+# проверки — код для пост-релиза: в экземпляре товар включается вручную (spear(m)).
 const MAIN := "res://scripts/main.gd"
 const FIX := "res://bench/fixtures_gifts/stats_v47.json"
 const DT := 1.0 / 30.0
@@ -21,6 +23,20 @@ func make(gifts := {}) -> Node2D:
 	m.gifts_path = FIX
 	m.active_gifts = gifts
 	m._setup_data()
+	spear(m)
+	return m
+
+# Включить копейщиков в экземпляре (в данных v1 они выключены): товар spear_pack продаётся.
+func spear(m: Node2D) -> void:
+	m.shop_enabled[m.SHOP_ITEMS.find("spear_pack")] = 1
+
+# Экземпляр с данными как есть (копейщики выключены).
+func make_v1() -> Node2D:
+	var m: Node2D = load(MAIN).new()
+	m.spawn_seed = 3
+	m.debug_layer = 1
+	m.record_path = "user://record_bench.json"
+	m._setup_data()
 	return m
 
 func count_type(m: Node2D, type: int) -> int:
@@ -33,12 +49,34 @@ func count_type(m: Node2D, type: int) -> int:
 func _initialize() -> void:
 	if root.has_node("Game"):
 		root.get_node("Game").free()
+	t_parked()
 	t_data()
 	t_buy()
 	t_squads()
 	t_contact()
 	print("CHECK: провалов %d" % fails)
 	quit(1 if fails > 0 else 0)
+
+func t_parked() -> void:
+	print("v1: копейщики выключены в данных (задача 9)")
+	var tj = JSON.parse_string(FileAccess.get_file_as_string("res://data/unit_types.json"))
+	var sj = JSON.parse_string(FileAccess.get_file_as_string("res://data/shop.json"))
+	var te := true
+	for e in tj:
+		if e.name == "spearman":
+			te = e.get("enabled", true)
+	check("данные: unit_types.json spearman и shop.json spear_pack — enabled: false", te == false and sj.spear_pack.get("enabled", true) == false)
+	var m := make_v1()
+	var k: int = m.SHOP_ITEMS.find("spear_pack")
+	check("тип копейщиков загружен (код остаётся), товар выключен, остальные товары включены", m.spearman_type >= 0 and m.type_enabled[m.spearman_type] == 0
+		and m.shop_enabled[k] == 0 and m.shop_enabled.count(1) == m.SHOP_ITEMS.size() - 1)
+	m.gold = 1000.0
+	var used: int = m.squad_used.count(1)
+	check("покупка (кнопка или клавиша B — тот же _buy) отклонена: золото на месте, отряд не создан, копейщиков 0", not m._buy(k) and m.gold == 1000.0
+		and m.squad_used.count(1) == used and count_type(m, m.spearman_type) == 0)
+	check("пехота покупается как раньше", m._buy(m.SHOP_ITEMS.find("inf_pack")) and count_type(m, m.infantry_type) == 350)
+	m.free()
+	check("Settings.hidden_actions: buy_spear скрыт на вкладке «Управление»", preload("res://scripts/settings.gd").hidden_actions() == ["buy_spear"])
 
 func t_data() -> void:
 	print("данные")

@@ -163,6 +163,19 @@ const MOUSE_BINDABLE := {MOUSE_BUTTON_MIDDLE: "UI_MOUSE_MIDDLE", MOUSE_BUTTON_XB
 const MOUSE_TOKEN := "Mouse"   # в файле настроек кнопка мыши — «Mouse8» (номер кнопки Godot)
 
 
+# Переназначаемые действия, которых нет на вкладке «Управление»: покупка выключенного в данных товара (buy_spear — копейщики в v1:
+# shop.json spear_pack или unit_types.json spearman с enabled: false). Действие остаётся в InputMap, но ничего не покупает.
+static func hidden_actions() -> Array:
+	var shop = JSON.parse_string(FileAccess.get_file_as_string("res://data/shop.json"))
+	var types = JSON.parse_string(FileAccess.get_file_as_string("res://data/unit_types.json"))
+	var on: bool = shop is Dictionary and shop.get("spear_pack", {}).get("enabled", true)
+	if on and types is Array:
+		for e in types:
+			if e is Dictionary and e.get("name") == "spearman":
+				on = e.get("enabled", true)
+	return [] if on else ["buy_spear"]
+
+
 # Клавиша или кнопка мыши действия для подсказок: «Z», «Space», «Ctrl+A», «Мышь 4»; нет действия или привязки — «—».
 # Работает и без автозагрузки (бенчи без дерева): читает InputMap.
 static func key_label(action: String) -> String:
@@ -277,7 +290,8 @@ func rebind_event(action: String, e: InputEvent) -> Dictionary:
 	for r in REBINDABLE:
 		if r != action and _same(action_event(r), e):
 			_set_event(r, old)
-			msg = tr("MSG_KEY_SWAPPED") % [event_label(e), action_title(r)]
+			if not r in hidden_actions():   # скрытое действие молча забирает старую клавишу
+				msg = tr("MSG_KEY_SWAPPED") % [event_label(e), action_title(r)]
 	_set_event(action, e)
 	save_settings()
 	changed.emit("input")

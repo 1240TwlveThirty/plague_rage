@@ -3,6 +3,8 @@
 # Боты B2, B5, B7, B8, seed 1-5, осада I, волны без предела: без даров и карточек; «Лазарет» (recover +10/20/30%) 1-3;
 # карточка №40 «Полевой госпиталь» (recover +20%). Файлы bench/balance/ablation_v8_runs/, итоги bench/gift_ablation_v8.txt
 # и bench/card_ablation_v4.txt (bench/balance/abl6d_aggregate.gd v8).
+# Задача 9: копейщики выключены в данных v1 — воркер пропускает B8 и --army spear (строка SKIP, код 2); для повтора старых замеров
+# с B8 добавить воркеру --spears on (значения дара «Стена щитов» с задачи 9 другие: блок всем, а не копейщикам).
 GODOT="$1"; DIR="bench/balance/ablation_v8_runs"
 T0=$(date +%s)
 mkdir -p "$DIR"; rm -f "$DIR"/*.txt

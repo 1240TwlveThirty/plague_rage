@@ -81,6 +81,7 @@ func t_bonus() -> void:
 	check("пехота на «держать»: карточка №9 — +0.15, навыка у пехоты нет", is_equal_approx(m.squad_block_bonus[0], 0.15) and m.squad_skill_on[0] == 0)
 	m.gold = 1000.0
 	m.wave_state = m.WS_RESPITE
+	m.shop_enabled[m.SHOP_ITEMS.find("spear_pack")] = 1   # в данных v1 копейщики выключены (задача 9): включаем в экземпляре
 	m._buy(m.SHOP_ITEMS.find("spear_pack"))
 	var s := 2
 	m._start_wave()
@@ -172,6 +173,7 @@ func t_hud() -> void:
 	root.add_child(m)
 	await step(2)
 	m.gold = 1000.0
+	m.shop_enabled[m.SHOP_ITEMS.find("spear_pack")] = 1   # в данных v1 копейщики выключены (задача 9)
 	m._buy(m.SHOP_ITEMS.find("spear_pack"))
 	m._start_wave()
 	m.squad_order[2] = m.ORDER_HOLD

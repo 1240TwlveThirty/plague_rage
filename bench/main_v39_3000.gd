@@ -481,6 +481,7 @@ var type_cooldown := PackedFloat32Array()
 var type_speed := PackedFloat32Array()
 var type_block_mult := PackedFloat32Array()
 var type_block_chance := PackedFloat32Array()   # доля ударов, которые щит отражает по своему правилу (данные: block_chance; пехота ~0.6)
+var type_enabled := PackedByteArray()          # тип в игре (данные: enabled, по умолчанию да); копейщики в v1 выключены — их пакет не продаётся
 var type_hold_block := PackedFloat32Array()     # навык «Стена щитов»: прибавка к шансу блока отряда на приказе «держать» (данные: hold_block_bonus)
 var type_block_bonus := PackedFloat32Array()    # стат block (дары, карточки M) на тип, долей; пересчёт в _apply_wave_data   # множитель урона при блоке щитом; 1.0 = без щита
 # Мягкая привязь к слоту: до leash_start юнит гонится за врагом, к leash_end — только к слоту.
@@ -716,6 +717,7 @@ var shop_param := PackedFloat64Array()        # amount / dmg_mult / gate_max_gai
 var shop_bought := PackedInt32Array()
 var weapon_stat := "damage"                # что усиливает «Оружие» (shop.json weapons.stat): damage — урон, attack_rate — скорость боя; x dmg_mult за покупку
 var shop_cap := PackedInt32Array()          # inf_pack / archer_pack: максимум живых юнитов этого типа
+var shop_enabled := PackedByteArray()      # товар в игре (shop.json enabled, по умолчанию да; пакет выключенного типа — нет): иначе скрыт, клавиша не покупает
 var hud_label: Label
 var shop_panel: VBoxContainer
 var shop_buttons: Array[Button] = []
@@ -1443,6 +1445,7 @@ func _load_shop() -> bool:
 	shop_bought.resize(n)
 	shop_bought.fill(0)
 	shop_cap.resize(n)
+	shop_enabled.resize(n)
 	for k in n:
 		var id: String = SHOP_ITEMS[k]
 		var e = d.get(id)
@@ -1462,6 +1465,7 @@ func _load_shop() -> bool:
 		shop_growth[k] = e.growth
 		shop_param[k] = e[param_key[id]]
 		shop_cap[k] = e.get("cap", 0)   # только у отрядов; у остальных не используется
+		shop_enabled[k] = 1 if e.get("enabled", true) else 0
 		if id == "weapons":
 			weapon_stat = String(e.get("stat", "damage"))
 			if not weapon_stat in ["damage", "attack_rate"]:
@@ -2688,8 +2692,10 @@ func _at_cap(k: int) -> bool:
 	return alive + int(shop_param[k]) > shop_cap[k]
 
 
-# Покупка только в передышке, при достаточном золоте и не сверх cap. Возвращает, состоялась ли.
+# Покупка только включённого товара (shop_enabled), в передышке, при достаточном золоте и не сверх cap. Возвращает, состоялась ли.
 func _buy(k: int) -> bool:
+	if shop_enabled[k] == 0:   # товар выключен в данных (копейщики в v1): клавиша не действует, отряд не создаётся
+		return false
 	if wave_state != WS_RESPITE or gold < _price(k) or _at_cap(k):
 		return false
 	var spear_sq := -1
@@ -3276,6 +3282,7 @@ func _load_types() -> bool:
 	type_block_mult.resize(n)
 	type_block_chance.resize(n)
 	type_hold_block.resize(n)
+	type_enabled.resize(n)
 	type_leash_start.resize(n)
 	type_leash_start_sq.resize(n)
 	type_leash_end.resize(n)
@@ -3328,6 +3335,7 @@ func _load_types() -> bool:
 		type_block_mult[t] = e.block_mult
 		type_block_chance[t] = clampf(float(e.get("block_chance", 0.0)), 0.0, BLOCK_CAP)
 		type_hold_block[t] = maxf(float(e.get("hold_block_bonus", 0.0)), 0.0)
+		type_enabled[t] = 1 if e.get("enabled", true) else 0
 		type_leash_start[t] = e.leash_start
 		type_leash_start_sq[t] = e.leash_start * e.leash_start
 		type_leash_end[t] = e.leash_end
@@ -3380,6 +3388,8 @@ func _setup_data() -> void:
 	runner_type = runner
 	knight_type = knight
 	spearman_type = spearman
+	if type_enabled[spearman] == 0:   # выключенный тип не продаётся, даже если товар включён
+		shop_enabled[SHOP_ITEMS.find("spear_pack")] = 0
 	_apply_mods()
 	_read_wave_mods()
 	# Все массивы юнитов — один раз на MAX_UNITS; живые юниты всегда в [0, count).
@@ -4193,6 +4203,9 @@ func _update_ui() -> void:
 	if not shop_panel.visible:
 		return
 	for k in shop_buttons.size():
+		shop_buttons[k].visible = shop_enabled[k] == 1   # выключенный товар скрыт
+		if shop_enabled[k] == 0:
+			continue
 		var price := _price(k)
 		var capped := _at_cap(k)
 		shop_buttons[k].text = tr("HUD_SHOP_ROW") % [SETTINGS.key_label(SHOP_ACTIONS[k]), _shop_title(k), tr("HUD_SHOP_MAX") if capped else tr("HUD_SHOP_PRICE") % ceili(price), shop_bought[k]]

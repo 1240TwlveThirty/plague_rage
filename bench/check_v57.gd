@@ -115,6 +115,7 @@ func t_cap_and_wipe() -> void:
 	var m := make({"infirmary": 3}, [{"id": "field_kitchen"}])   # 50%
 	m.gold = 1000.0
 	m.wave_state = m.WS_RESPITE
+	m.shop_enabled[m.SHOP_ITEMS.find("spear_pack")] = 1   # в данных v1 копейщики выключены (задача 9): включаем в экземпляре
 	m._buy(m.SHOP_ITEMS.find("spear_pack"))   # отряд 2 — 30 копейщиков
 	m._start_wave()
 	kill(m, 0, 20)

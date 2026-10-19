@@ -132,7 +132,10 @@ func _setup_controls() -> void:
 	grid.add_theme_constant_override("h_separation", 32)
 	grid.add_theme_constant_override("v_separation", 8)
 	scroll.add_child(grid)
+	var hidden: Array = settings.hidden_actions()
 	for a in settings.REBINDABLE:
+		if a in hidden:   # покупка выключенного товара (копейщики в v1) не показывается
+			continue
 		var l := Label.new()
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		l.add_theme_font_size_override("font_size", 26)
