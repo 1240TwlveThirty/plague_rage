@@ -293,7 +293,7 @@ func test_cmds() -> void:
 	if m.sel_primary != 1:
 		bad.append("выбор 2")
 	key(m, KEY_1)
-	for q in [[KEY_W, m.ORDER_HOLD], [KEY_E, m.ORDER_RETREAT], [KEY_Q, m.ORDER_ATTACK], [KEY_W, m.ORDER_HOLD]]:
+	for q in [[KEY_Y, m.ORDER_HOLD], [KEY_E, m.ORDER_RETREAT], [KEY_Q, m.ORDER_ATTACK], [KEY_Y, m.ORDER_HOLD]]:
 		key(m, q[0])
 		if m.squad_order[0] != q[1]:
 			bad.append("приказ %d" % q[1])
@@ -590,7 +590,7 @@ func scenario(rng_seed: int) -> Array:
 	var splits := 0
 	var script := {
 		100: [KEY_SPACE, KEY_1, KEY_G, KEY_LEFT, KEY_1, KEY_RIGHT, KEY_SPACE],
-		250: [KEY_P, KEY_2, KEY_K, KEY_K, KEY_G, KEY_UP, KEY_W, KEY_P],
+		250: [KEY_P, KEY_2, KEY_K, KEY_K, KEY_G, KEY_UP, KEY_Y, KEY_P],
 		400: [KEY_SPACE, KEY_1, KEY_DOWN, KEY_Q, KEY_3, KEY_F, KEY_K, KEY_G, KEY_SPACE],
 		550: [KEY_P, KEY_4, KEY_K, KEY_G, KEY_UP, KEY_2, KEY_T, KEY_LEFT, KEY_P],
 		700: [KEY_SPACE, KEY_5, KEY_G, KEY_G, KEY_G, KEY_G, KEY_1, KEY_UP, KEY_SPACE]}
@@ -633,6 +633,7 @@ func test_scenario() -> void:
 func _initialize() -> void:
 	if root.has_node("Game"):
 		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
+	preload("res://scripts/settings.gd").ensure_code_actions()   # как Settings._ready (задача 10: «Держать» на Y) — до первых тестов
 	var args := OS.get_cmdline_user_args()
 	var which: String = args[0] if args.size() > 0 else "all"
 	if which in ["all", "ident"]:

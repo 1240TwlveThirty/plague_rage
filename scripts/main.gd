@@ -679,6 +679,10 @@ var hero_cfg := {}           # data/hero.json как есть (проверен 
 var hero_on := false         # герой в этом бою; без него ни одна ветка героя не выполняется — эталон бит в бит
 var hero_type := -1
 var hero_idx := -1           # индекс героя в массивах юнитов; -1 — нет (выключен или пал); переносится в _remove_dead
+var hero_move := Vector2.ZERO   # ввод движения этого тика (длина не больше 1), читается раз в тик в _physics_process
+var hero_feed := Callable()     # тесты и бот: func(тик) -> Vector2 вместо клавиатуры (записанная последовательность ввода)
+var hero_face := 1.0            # взгляд спрайта по x: 1 — вправо, -1 — влево (только отрисовка)
+const HERO_SPAWN := Vector2(1010.0, 715.0)   # у ворот над стеной (GATE_POS.x, WALL_Y - 30): появление и возрождение
 const SIDE_TOP := 0     # стороны появления орды
 const SIDE_LEFT := 1
 const SIDE_RIGHT := 2
@@ -3393,6 +3397,54 @@ func _hero_type_entry() -> Dictionary:
 		"chase": 1, "sprite": "", "recoil_px": 0.0}
 
 
+# Герой — последним юнитом у ворот (HERO_SPAWN) с долей frac от HP типа. ГСЧ не трогает: unit_rand фиксирован, порядок
+# случайных чисел остальных юнитов тот же.
+func _spawn_hero(frac: float) -> void:
+	if count >= MAX_UNITS:
+		return
+	var i := count
+	count += 1
+	hero_idx = i
+	pos[i] = HERO_SPAWN
+	prev_pos[i] = HERO_SPAWN
+	vel[i] = Vector2.ZERO
+	team[i] = 0
+	unit_type[i] = hero_type
+	unit_squad[i] = -1
+	unit_slot_idx[i] = -1
+	unit_slot[i] = Vector2.ZERO
+	unit_rand[i] = 0.5
+	unit_render_off[i] = Vector2.ZERO
+	hp[i] = type_hp[hero_type] * frac
+	cooldown[i] = 0.0
+	unit_state[i] = ST_IDLE
+	unit_slot_changed_t[i] = -1000.0
+	unit_anim_t[i] = 0.0
+	unit_shot_t[i] = 0.0
+	unit_dir[i] = 0
+	hero_face = 1.0
+
+
+# Ввод движения героя: hero_feed (тесты, бот) или действия move_* InputMap (WASD по умолчанию). Диагональ — длина 1.
+func _hero_input() -> Vector2:
+	var v := Vector2.ZERO
+	if hero_feed.is_valid():
+		v = hero_feed.call(tick_counter)
+	elif is_inside_tree() and not _run_over() and InputMap.has_action("move_up"):
+		v = Vector2(Input.get_action_strength("move_right") - Input.get_action_strength("move_left"),
+			Input.get_action_strength("move_down") - Input.get_action_strength("move_up"))
+	return v.normalized() if v.length_squared() > 1.0 else v
+
+
+# Тик героя: скорость из ввода (ход и границы — общий _move_units: поле и пол у стены, как у юнитов).
+func _update_hero(_delta: float) -> void:
+	var h := hero_idx
+	vel[h] = hero_move * type_speed[hero_type]
+	if hero_move.x != 0.0:
+		hero_face = signf(hero_move.x)
+	unit_state[h] = ST_CHASE if hero_move != Vector2.ZERO else ST_IDLE
+
+
 # Значение из JSON с множителем масштаба (SCALE_REL или SPEED_REL), округлённое до 0.01.
 func _scaled(v: float, rel: float) -> float:
 	return roundf(v * rel * 100.0) / 100.0
@@ -3620,6 +3672,8 @@ func _setup_data() -> void:
 	for r in _cards():   # карточки, заданные до старта (бенчи): разовые эффекты сразу
 		apply_on_pick(r)
 	_prepare_cards()
+	if hero_on:
+		_spawn_hero(1.0)
 
 
 func _setup_rendering() -> void:
@@ -4276,6 +4330,8 @@ func _physics_process(delta: float) -> void:
 	var t := Time.get_ticks_usec()
 	prev_pos = pos.duplicate()   # для интерполяции в _process
 	tick_counter += 1
+	if hero_on:
+		hero_move = _hero_input()   # ввод героя — раз в тик симуляции
 	if war_cry_level > 0:
 		_tick_war_cry()
 	if wave_state == WS_BATTLE and tick_counter % COND_EVERY == 0:
@@ -4306,6 +4362,8 @@ func _physics_process(delta: float) -> void:
 	var m2 := Time.get_ticks_usec() if profile else 0
 	_update_archers(delta)
 	_process_arrows()   # после _build_grid: мелкая сетка этого тика ещё актуальна
+	if hero_idx >= 0:
+		_update_hero(delta)   # каждый тик (не через половину, как юниты): ввод и удар героя
 	var m3 := Time.get_ticks_usec() if profile else 0
 	# За тик обновляется половина юнитов: чётные, затем нечётные.
 	# Направление (tick_parity) меняется раз в 2 тика, чтобы каждая половина
@@ -4582,6 +4640,8 @@ func _unit_color(i: int, now: float) -> Color:
 
 
 func _update_unit(i: int, delta: float) -> void:
+	if i == hero_idx:
+		return   # герой решает сам (_update_hero); без героя hero_idx -1
 	var t := unit_type[i]
 	var my_team := team[i]
 	var p := pos[i]
@@ -4741,6 +4801,8 @@ func _remove_dead() -> void:
 				run_kills += 1
 				gold += wave_cfg.gold_per_kill * type_bounty_mult[unit_type[i]]
 				wave_kills_by_type[unit_type[i]] += 1
+			elif i == hero_idx:
+				hero_idx = -1   # пал герой: не считается павшим отряда (карточка 24, recover)
 			elif team[i] == 0:
 				wave_fallen += 1   # пал свой (карточка 24)
 				if unit_squad[i] >= 0:
@@ -4749,6 +4811,8 @@ func _remove_dead() -> void:
 				squad_dirty[unit_squad[i]] = 1
 				squad_n[unit_squad[i]] -= 1
 			count -= 1
+			if count == hero_idx:
+				hero_idx = i   # герой был последним — переезжает на место удалённого
 			pos[i] = pos[count]
 			prev_pos[i] = prev_pos[count]   # та же перестановка, иначе lerp смешает разных юнитов
 			vel[i] = vel[count]

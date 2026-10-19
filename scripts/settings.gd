@@ -145,10 +145,15 @@ func _input(event: InputEvent) -> void:
 # Переназначаемые действия в порядке списка на вкладке «Управление» (подпись — action_title).
 const REBINDABLE := ["squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4", "squad_select_5", "squad_select_6",
 	"squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side", "wave_start", "buy_1", "buy_2",
-	"buy_3", "buy_4", "buy_spear", "war_cry"]
+	"buy_3", "buy_4", "buy_spear", "war_cry", "move_up", "move_down", "move_left", "move_right"]
 # Действия, которых нет в [input] project.godot: клавиша по умолчанию задаётся здесь, действие добавляется после каждой загрузки InputMap
-# (war_cry — «Клич Благодати»; R занята возвратом в хаб, T — авто-шириной строя, ближайшая свободная — D).
-const CODE_DEFAULTS := {"war_cry": KEY_D, "buy_spear": KEY_B}   # buy_spear — пакет копейщиков (B свободна)
+# (war_cry — «Клич Благодати»: с задачи 10 U, D занята движением героя; move_* — движение героя WASD, задача 10).
+const CODE_DEFAULTS := {"war_cry": KEY_U, "buy_spear": KEY_B, "move_up": KEY_W, "move_down": KEY_S, "move_left": KEY_A, "move_right": KEY_D}   # buy_spear — пакет копейщиков (B свободна)
+# Фиксированные действия, чья клавиша из [input] project.godot заменяется кодом после каждой загрузки InputMap (задача 10:
+# W занята героем — «Держать» на Y). project.godot не меняется.
+const CODE_REMAP := {"order_hold": KEY_Y}
+# Клавиша по умолчанию до задачи 10: в старом файле настроек (без move_up) такое значение считается старым умолчанием и не грузится.
+const OLD_DEFAULTS := {"war_cry": "D"}
 # Остальные действия игры: клавиши фиксированы (их нельзя занять переназначением).
 const FIXED_ACTIONS := ["order_attack", "order_hold", "order_retreat", "about_face", "banner_toggle", "auto_width", "pause",
 	"post_left", "post_top", "post_right", "post_back", "select_all", "to_hub", "debug_restart"]
@@ -163,7 +168,7 @@ const MOUSE_BINDABLE := {MOUSE_BUTTON_MIDDLE: "UI_MOUSE_MIDDLE", MOUSE_BUTTON_XB
 const MOUSE_TOKEN := "Mouse"   # в файле настроек кнопка мыши — «Mouse8» (номер кнопки Godot)
 
 
-# Переназначаемые действия, которых нет на вкладке «Управление»: покупка выключенного в данных товара (buy_spear — копейщики в v1:
+# Переназначаемые действия, которых нет на вкладке «Управление»: движение героя, если он выключен в data/hero.json; покупка выключенного в данных товара (buy_spear — копейщики в v1:
 # shop.json spear_pack или unit_types.json spearman с enabled: false). Действие остаётся в InputMap, но ничего не покупает.
 static func hidden_actions() -> Array:
 	var shop = JSON.parse_string(FileAccess.get_file_as_string("res://data/shop.json"))
@@ -173,7 +178,11 @@ static func hidden_actions() -> Array:
 		for e in types:
 			if e is Dictionary and e.get("name") == "spearman":
 				on = e.get("enabled", true)
-	return [] if on else ["buy_spear"]
+	var out := [] if on else ["buy_spear"]
+	var hero = JSON.parse_string(FileAccess.get_file_as_string("res://data/hero.json"))
+	if not (hero is Dictionary and hero.get("enabled", false) == true):   # герой выключен в данных: клавиш движения нет на вкладке
+		out.append_array(["move_up", "move_down", "move_left", "move_right"])
+	return out
 
 
 # Клавиша или кнопка мыши действия для подсказок: «Z», «Space», «Ctrl+A», «Мышь 4»; нет действия или привязки — «—».
@@ -309,10 +318,13 @@ func reset_keys() -> void:
 func _load_keys(cfg: ConfigFile) -> void:
 	InputMap.load_from_project_settings()
 	ensure_code_actions()
+	var old_file := not cfg.has_section_key("input", "move_up")   # файл до задачи 10
 	for r in REBINDABLE:
 		var v = cfg.get_value("input", r, "")
 		if not v is String or v == "":
 			continue
+		if old_file and OLD_DEFAULTS.get(r, "") == v:
+			continue   # Клич на D — прежнее умолчание; теперь D — движение героя вправо, Клич на U
 		if v.begins_with(MOUSE_TOKEN):
 			var b: int = v.trim_prefix(MOUSE_TOKEN).to_int()
 			if not MOUSE_BINDABLE.has(b):
@@ -333,6 +345,9 @@ static func ensure_code_actions() -> void:
 		if not InputMap.has_action(a):
 			InputMap.add_action(a)
 			_set_key(a, CODE_DEFAULTS[a])
+	for a in CODE_REMAP:
+		if InputMap.has_action(a) and action_key(a) != CODE_REMAP[a]:
+			_set_key(a, CODE_REMAP[a])
 
 
 # Клавиша — её имя («N», «Space»), кнопка мыши — «Mouse8».

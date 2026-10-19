@@ -31,6 +31,8 @@ func _run() -> void:
 		await process_frame
 	TranslationServer.set_locale("ru")
 	t_data()
+	t_move()
+	await t_keys()
 	print("CHECK: провалов %d" % fails)
 	quit(1 if fails > 0 else 0)
 
@@ -66,3 +68,99 @@ func t_data() -> void:
 		var b := make(1, FIX + f + ".json")
 		check("%s.json: данные не загружены" % f, b.type_id.is_empty() or not b.is_physics_processing())
 		b.free()
+
+func run_feed(m: Node2D, v: Vector2, ticks: int) -> void:
+	m.hero_feed = func(_t): return v
+	for t in ticks:
+		m._physics_process(DT)
+
+func t_move() -> void:
+	print("движение героя (этап B)")
+	var m := make(1)
+	var h: int = m.hero_idx
+	check("герой появился последним юнитом у ворот: команда игрока, без отряда, полное HP", h == m.count - 1 and m.pos[h] == m.HERO_SPAWN
+		and m.team[h] == 0 and m.unit_squad[h] == -1 and m.unit_type[h] == m.hero_type and m.hp[h] == m.type_hp[m.hero_type])
+	var p0: Vector2 = m.pos[m.hero_idx]
+	run_feed(m, Vector2(1, 0), 30)
+	var dx: float = m.pos[m.hero_idx].x - p0.x
+	check("вправо 30 тиков (1 с): сдвиг %.2f px = скорость %.0f px/с (толчки соседей героя не сдвигают)" % [dx, m.type_speed[m.hero_type]], absf(dx - m.type_speed[m.hero_type]) < 0.5
+		and absf(m.pos[m.hero_idx].y - p0.y) < 0.01)
+	p0 = m.pos[m.hero_idx]
+	run_feed(m, Vector2(-1, -1), 30)
+	var dd: float = m.pos[m.hero_idx].distance_to(p0)
+	check("диагональ (-1, -1) нормализуется: за 1 с %.2f px — та же скорость" % dd, absf(dd - m.type_speed[m.hero_type]) < 0.5)
+	p0 = m.pos[m.hero_idx]
+	run_feed(m, Vector2(3, 0), 10)
+	check("ввод длиннее 1 обрезается до 1", absf(m.pos[m.hero_idx].x - p0.x - m.type_speed[m.hero_type] / 3.0) < 0.5)
+	run_feed(m, Vector2(0, 1), 90)
+	check("вниз 3 с: не ниже стены WALL_Y (%.1f, пол юнитов)" % m.pos[m.hero_idx].y, m.pos[m.hero_idx].y <= m.WALL_Y)
+	run_feed(m, Vector2(-1, 0), 600)
+	check("влево 20 с: не за краем поля (x = %.1f)" % m.pos[m.hero_idx].x, m.pos[m.hero_idx].x >= 0.0)
+	run_feed(m, Vector2(0, -1), 600)
+	check("вверх 20 с: не за краем поля (y = %.1f)" % m.pos[m.hero_idx].y, m.pos[m.hero_idx].y >= 0.0)
+	m.free()
+	# Перенос индекса: удалённый юнит заменяется последним (героем) — индекс героя едет вместе с ним.
+	var r := make(1)
+	var hp_before: float = r.hp[r.hero_idx]
+	var pos_before: Vector2 = r.pos[r.hero_idx]
+	r.hp[0] = 0.0
+	r._remove_dead()
+	check("удаление юнита 0: герой переехал на индекс 0, его позиция и HP те же, счёт павших отрядов не считает героя", r.hero_idx == 0
+		and r.unit_type[0] == r.hero_type and r.pos[0] == pos_before and r.hp[0] == hp_before and r.wave_fallen == 1)
+	r.free()
+
+func t_keys() -> void:
+	print("клавиши (этап B)")
+	var ST := preload("res://scripts/settings.gd")
+	ST.ensure_code_actions()
+	check("движение WASD по умолчанию, подписи key_label", ST.key_label("move_up") == "W" and ST.key_label("move_left") == "A" and ST.key_label("move_down") == "S"
+		and ST.key_label("move_right") == "D")
+	check("конфликты сняты: Клич Благодати — U, «Держать» — Y (была W)", ST.key_label("war_cry") == "U" and ST.key_label("order_hold") == "Y")
+	check("движение переназначается (в REBINDABLE), «Держать» по-прежнему фиксирована", "move_up" in ST.REBINDABLE and "move_right" in ST.REBINDABLE
+		and "order_hold" in ST.FIXED_ACTIONS and ST._fixed_owner(KEY_W) == "" and ST._fixed_owner(KEY_Y) == "order_hold")
+	check("подписи действий ru: «Командир: вверх»", ST.action_title("move_up") == "Командир: вверх")
+	TranslationServer.set_locale("en")
+	check("подписи действий en: «Commander: right»", ST.action_title("move_right") == "Commander: right")
+	TranslationServer.set_locale("ru")
+	var keys := {}
+	var dup := []
+	for a in ST.REBINDABLE + ST.FIXED_ACTIONS:
+		var e = ST.action_key_event(a)
+		if e == null or e.ctrl_pressed:
+			continue
+		if keys.has(e.keycode):
+			dup.append("%s/%s" % [keys[e.keycode], a])
+		keys[e.keycode] = a
+	check("ни одна клавиша без модификатора не занята двумя действиями", dup.is_empty(), str(dup))
+	var cfg := ConfigFile.new()
+	cfg.set_value("input", "war_cry", "D")
+	var st: Node = root.get_node_or_null("Settings")
+	if st != null:
+		st._load_keys(cfg)
+		check("старый файл настроек (Клич на D, без move_*): Клич получает новое умолчание U, D — движение вправо", ST.key_label("war_cry") == "U" and ST.key_label("move_right") == "D")
+		var cfg2 := ConfigFile.new()
+		cfg2.set_value("input", "war_cry", "D")
+		cfg2.set_value("input", "move_right", "L")
+		cfg2.set_value("input", "move_up", "W")
+		st._load_keys(cfg2)
+		check("новый файл (с move_*): Клич на D из файла сохраняется, движение вправо — L", ST.key_label("war_cry") == "D" and ST.key_label("move_right") == "L")
+		st._load_keys(ConfigFile.new())
+	# Ввод с клавиатуры — раз в тик: действие нажато -> ввод тика.
+	var m: Node2D = load(MAIN).new()
+	m.spawn_seed = 3
+	m.debug_layer = 1
+	m.record_path = "user://record_bench.json"
+	m.hero_mode = 1
+	m.process_mode = Node.PROCESS_MODE_DISABLED
+	root.add_child(m)
+	await process_frame
+	Input.action_press("move_right")
+	Input.action_press("move_up")
+	m._physics_process(DT)
+	var v: Vector2 = m.hero_move
+	Input.action_release("move_right")
+	Input.action_release("move_up")
+	m._physics_process(DT)
+	check("клавиатура: вправо + вверх -> ввод тика %s (длина 1), отпущены -> 0" % str(v), v.is_equal_approx(Vector2(1, -1).normalized()) and m.hero_move == Vector2.ZERO)
+	m.queue_free()
+	await process_frame

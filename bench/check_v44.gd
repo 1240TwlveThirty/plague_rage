@@ -99,6 +99,10 @@ func count_type(m: Node2D, type: int) -> int:
 	return n
 
 # Числа старта забега, на которые действуют дары.
+# Юнитов без героя (задача 10: в игровом режиме герой — один юнит в общих массивах).
+func army(m: Node2D) -> int:
+	return m.count - (1 if m.hero_idx >= 0 else 0)
+
 # n — сколько типов сравнивать (у эталона нет типа героя задачи 10: в игровом режиме он последний); герой не входит в count.
 func start_numbers(m: Node2D, n := -1) -> Array:
 	var k: int = m.type_hp.size() if n < 0 else n
@@ -362,20 +366,20 @@ func t_active() -> void:
 	check("куплены fortress_walls 2 (скрыт), reserve 1, tempered_steel 3: active_gifts — reserve и tempered_steel (дары уровня 0 и скрытые не входят)",
 		g.active_gifts == {"reserve": 1, "tempered_steel": 3} and m.active_gifts == g.active_gifts, str(g.active_gifts))
 	check("в бою: ворота прежние, удары пехоты x1.18 (задача 6d: скорость атаки), урон прежний, +10% в стартовых отрядах (+30 и +10), HP прежние", m.gate_hp_max == base[5]
-		and absf(m._cd_actual(m.base_type_cooldown[m.infantry_type]) / m.type_cooldown[m.infantry_type] - 1.18) < 1e-4 and Array(m.type_damage) == base[1] and m.count == base[8] + 40
+		and absf(m._cd_actual(m.base_type_cooldown[m.infantry_type]) / m.type_cooldown[m.infantry_type] - 1.18) < 1e-4 and Array(m.type_damage) == base[1] and army(m) == base[8] + 40
 		and Array(m.type_hp) == base[0],
-		"ворота %.0f, юнитов %d" % [m.gate_hp_max, m.count])
+		"ворота %.0f, юнитов %d" % [m.gate_hp_max, army(m)])
 	g.gifts_override = gs.parse_gifts_arg(PackedStringArray(["B5", "1", "--gifts", "mine:2"]))
 	m = await run(1)
 	check("--gifts mine:2 важнее сохранения: active_gifts {mine 2}, купленные дары не действуют, gift_levels не тронут",
-		g.active_gifts == {"mine": 2} and m.active_gifts == {"mine": 2} and is_equal_approx(m.income_pct, 0.10) and m.gate_hp_max == base[5] and m.count == base[8]
+		g.active_gifts == {"mine": 2} and m.active_gifts == {"mine": 2} and is_equal_approx(m.income_pct, 0.10) and m.gate_hp_max == base[5] and army(m) == base[8]
 		and g.gift_levels["fortress_walls"] == 2 and g.gift_levels["mine"] == 0, str(g.active_gifts))
 	g.gifts_override = gs.parse_gifts_arg(PackedStringArray(["--gifts", ""]))
 	m = await run(1)
 	check("--gifts с пустым значением: забег без даров при купленных", g.active_gifts.is_empty() and start_numbers(m) == base)
 	g.gifts_override = null
 	m = await run(1)
-	check("без параметра снова действуют купленные", g.active_gifts.size() == 2 and m.count == base[8] + 40)
+	check("без параметра снова действуют купленные", g.active_gifts.size() == 2 and army(m) == base[8] + 40)
 	g.gifts_override = gs.parse_gifts_arg(PackedStringArray(["--gifts", "fortress_walls:3"]))
 	m = await run(1)
 	check("--gifts fortress_walls:3 (скрыт): забег идёт без ошибок, как без даров", m.type_id.size() > 0 and start_numbers(m) == base)

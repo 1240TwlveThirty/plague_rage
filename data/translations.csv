@@ -271,6 +271,10 @@ UI_BUILD_COMMON,Общая,Common
 GIFT_WAR_CRY_NAME,Клич Благодати,Call of Grace
 GIFT_WAR_CRY_DESC,"Кнопка в бою: всем +%s%% скорости ударов на %s с, перезарядка %s с","Battle button: +%s%% attack speed for all for %s s, cooldown %s s"
 ACTION_WAR_CRY,Клич Благодати,Call of Grace
+ACTION_MOVE_UP,Командир: вверх,Commander: up
+ACTION_MOVE_DOWN,Командир: вниз,Commander: down
+ACTION_MOVE_LEFT,Командир: влево,Commander: left
+ACTION_MOVE_RIGHT,Командир: вправо,Commander: right
 HUD_WAR_CRY_READY,[%s] Клич Благодати,[%s] Call of Grace
 HUD_WAR_CRY_ACTIVE,[%s] Клич: ещё %s с,[%s] Call: %s s left
 HUD_WAR_CRY_WAIT,[%s] Клич через %s с,[%s] Call in %s s

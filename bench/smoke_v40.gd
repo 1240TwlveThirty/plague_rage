@@ -189,7 +189,7 @@ func _run() -> void:
 		all and row_one and row_add and row_off and m.squad_target == t1 and not m.box_active and not m.drag_active)
 	# команды набора клавишами и бой с паузой
 	await key(KEY_A, false, true)
-	await key(KEY_W)
+	await key(KEY_Y)
 	var held := true
 	for s in 4:
 		held = held and m.squad_order[s] == m.ORDER_HOLD

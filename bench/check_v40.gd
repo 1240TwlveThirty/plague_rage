@@ -581,7 +581,7 @@ func test_cmds() -> void:
 	army(m)
 	sel(m, [0, 2, 1])
 	var bad := PackedStringArray()
-	for q in [[KEY_W, m.ORDER_HOLD], [KEY_E, m.ORDER_RETREAT], [KEY_Q, m.ORDER_ATTACK]]:
+	for q in [[KEY_Y, m.ORDER_HOLD], [KEY_E, m.ORDER_RETREAT], [KEY_Q, m.ORDER_ATTACK]]:
 		key(m, q[0])
 		if m.squad_order[0] != q[1] or m.squad_order[2] != q[1] or m.squad_order[1] != q[1] or m.squad_order[3] != (m.ORDER_ATTACK):
 			bad.append("приказ %d" % q[1])
@@ -699,7 +699,7 @@ func test_pause() -> void:
 	if m.squad_pos[2] == p0[2] or m.squad_pos[3] == p0[3] or m.squad_pos[0] != p0[0]:
 		bad.append("расстановка")
 	key(m, KEY_A, false, true)
-	key(m, KEY_W)
+	key(m, KEY_Y)
 	check("(ж) на паузе: клик, рамка, ПКМ-клик и расстановка группы меняют выбор, цели и строй", m.paused and bad.is_empty(), ", ".join(bad))
 	for t in 90:
 		m._physics_process(DT)
@@ -809,7 +809,7 @@ func scenario(rng_seed: int) -> Array:
 				key(m, KEY_SPACE)
 				lclick(m, m.squad_pos[0])
 				lclick(m, m.squad_pos[3], true)
-				key(m, KEY_W)
+				key(m, KEY_Y)
 				key(m, KEY_LEFT)
 				key(m, KEY_2)
 				rclick(m, Vector2(1000, 560))

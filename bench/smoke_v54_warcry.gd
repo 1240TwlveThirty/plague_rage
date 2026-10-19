@@ -74,7 +74,7 @@ func _run() -> void:
 	ticks(m, 30 * 14)   # орда подходит
 	m._update_ui()
 	await shot("warcry_ready.png")
-	check("бой, готов: «[D] Клич Благодати», кнопка активна, полоса полная, на экране", m.war_cry_button.text.begins_with("[D]") and not m.war_cry_button.disabled
+	check("бой, готов: «[U] Клич Благодати» (задача 10: D — движение героя), кнопка активна, полоса полная, на экране", m.war_cry_button.text.begins_with("[U]") and not m.war_cry_button.disabled
 		and m.war_cry_bar.value == 1.0 and fits(m), m.war_cry_button.text)
 	m.war_cry_button.pressed.emit()   # клик по кнопке
 	ticks(m, 30 * 3)
