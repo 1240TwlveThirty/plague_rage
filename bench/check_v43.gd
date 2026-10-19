@@ -137,7 +137,7 @@ func t_loader() -> void:
 		"spoils": ["bounty", "player", "add_pct"], "mine": ["income", "player", "add_pct"], "fortress_walls": ["gate_hp", "gate", "add_pct"], "reserve": ["start_units", "player", "add_pct"],
 		"armory": ["unit_cost", "player", "add_pct"], "smith_thomas": ["weapon_cost", "player", "add_pct"], "repairers": ["repair_cost", "player", "add_pct"],
 		"watch": ["signal_window", "player", "add_flat"], "discipline": ["spread", "archer", "add_pct"], "radiance_reserve": ["radiance_pct", "player", "add_pct"],
-		"infirmary": ["recover", "player", "add_pct"], "war_cry": ["", "", ""], "spear_wall": ["block", "spearman", "add_flat"]}
+		"infirmary": ["recover", "player", "add_pct"], "war_cry": ["", "", ""], "spear_wall": ["block", "all_units", "add_flat"]}
 	var ok := defs.size() == want.size()
 	for id in want:
 		ok = ok and defs.has(id) and [defs[id].stat, defs[id].target, defs[id].op] == want[id] and defs[id].levels.size() == 3 and defs[id].name_key != "" and defs[id].desc_key != ""

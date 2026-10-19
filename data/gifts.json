@@ -14,5 +14,5 @@
 	{"id": "radiance_reserve", "name_key": "GIFT_RADIANCE_RESERVE_NAME", "desc_key": "GIFT_RADIANCE_RESERVE_DESC", "stat": "radiance_pct", "target": "player", "op": "add_pct", "levels": [5, 10, 15], "req_sieges": [0, 1, 2]},
 	{"id": "infirmary", "name_key": "GIFT_INFIRMARY_NAME", "desc_key": "GIFT_INFIRMARY_DESC", "stat": "recover", "target": "player", "op": "add_pct", "levels": [10, 20, 30], "req_sieges": [0, 1, 2]},
 	{"id": "war_cry", "type": "ability", "name_key": "GIFT_WAR_CRY_NAME", "desc_key": "GIFT_WAR_CRY_DESC", "levels": [{"bonus_pct": 30, "duration_s": 8, "cooldown_s": 60}, {"bonus_pct": 30, "duration_s": 10, "cooldown_s": 50}, {"bonus_pct": 30, "duration_s": 12, "cooldown_s": 40}], "req_sieges": [0, 1, 2], "prices": [120, 240, 480]},
-	{"id": "spear_wall", "name_key": "GIFT_SPEAR_WALL_NAME", "desc_key": "GIFT_SPEAR_WALL_DESC", "stat": "block", "target": "spearman", "op": "add_flat", "levels": [0.05, 0.1, 0.15], "req_sieges": [0, 1, 2]}
+	{"id": "spear_wall", "name_key": "GIFT_SPEAR_WALL_NAME", "desc_key": "GIFT_SPEAR_WALL_DESC", "stat": "block", "target": "all_units", "op": "add_flat", "levels": [0.05, 0.1, 0.15], "req_sieges": [0, 1, 2]}
 ]

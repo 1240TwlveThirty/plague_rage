@@ -294,6 +294,6 @@ UNIT_SPEARMAN,Копейщики,Spearmen
 ACTION_BUY_SPEAR,Купить: копейщики,Buy: spearmen
 HUD_SHOP_NEW_SQUAD,→ новый отряд,→ new squad
 MSG_NO_SQUAD_FOR_SPEARMEN,Нет свободного отряда для копейщиков,No free squad for spearmen
-GIFT_SPEAR_WALL_NAME,Стена щитов,Wall of Shields
-GIFT_SPEAR_WALL_DESC,+%s п. п. к шансу блока у копейщиков,+%s pp block chance for spearmen
+GIFT_SPEAR_WALL_NAME,Сомкнутые щиты,Locked Shields
+GIFT_SPEAR_WALL_DESC,+%s п. п. к шансу блока у всех воинов со щитом,+%s pp block chance for all shield-bearing troops
 UI_SKILL_SHIELD_WALL,Стена щитов,Shield Wall
