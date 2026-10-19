@@ -32,10 +32,11 @@ func key(m: Node, code: Key, ctrl := false) -> void:
 	e.ctrl_pressed = ctrl
 	m._unhandled_input(e)
 
-# Сцена боя не тикает сама с момента входа в дерево: tick_counter остаётся 0 до ручных тиков.
+# Сцена боя не тикает сама с момента входа в дерево: tick_counter остаётся 0 до ручных тиков; героя нет.
 func _on_node_added(n: Node) -> void:
 	if n.get_parent() == root and n is Node2D and n.get_script() != null and n.get_script().resource_path == MAIN:
 		n.process_mode = Node.PROCESS_MODE_DISABLED
+		n.hero_mode = -1   # до _ready: забеги теста — без героя задачи 10 (сценарий победы на числах без него; герой — check_v60, smoke_v60)
 
 # Game.start_run(siege) и ожидание новой сцены боя.
 func run(siege := 1) -> Node2D:

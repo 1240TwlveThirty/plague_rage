@@ -682,9 +682,13 @@ var hero_idx := -1           # индекс героя в массивах юн�
 var hero_move := Vector2.ZERO   # ввод движения этого тика (длина не больше 1), читается раз в тик в _physics_process
 var hero_feed := Callable()     # тесты и бот: func(тик) -> Vector2 вместо клавиатуры (записанная последовательность ввода)
 var hero_face := 1.0            # взгляд спрайта по x: 1 — вправо, -1 — влево (только отрисовка)
-const HERO_SPAWN := Vector2(1010.0, 715.0)   # у ворот над стеной (GATE_POS.x, WALL_Y - 30): появление и возрождение
+const HERO_SPAWN := Vector2(1010.0, 680.0)   # у ворот над стеной (GATE_POS.x, WALL_Y - 65; ниже — на зубцах стены): появление и возрождение
 var hero_dead := false   # герой пал в этой волне: приказы заблокированы до её конца, в начале передышки — возрождение
 var hero_fallen_label: Label   # «Командир пал» в HUD
+var hero_view: Node2D          # герой на экране: кольцо-маркер и полоса HP (_draw_hero_marker), спрайт — дочерний; null в бенчах без дерева
+var hero_sprite: Sprite2D
+var hero_drawn := Vector2(-1.0, -1.0)   # HP и зум, с которыми маркер нарисован (перерисовка только при смене)
+const HERO_RING_PX := 20.0     # радиус кольца на экране, px — постоянный при любом зуме камеры
 var hero_swings := 0   # статистика героя: ударов (с хоть одной целью) и попаданий за забег
 var hero_hits := 0
 const SIDE_TOP := 0     # стороны появления орды
@@ -3451,6 +3455,58 @@ func _spawn_hero(frac: float) -> void:
 	hero_face = 1.0
 
 
+# Нода героя: спрайт (hero.json sprite; нет файла — квадрат цвета маркера) размером size_scale от юнита (SPRITE_PX), nearest.
+func _setup_hero_view() -> void:
+	hero_view = Node2D.new()
+	hero_view.visible = false
+	hero_view.z_index = LEAF_Z + 1   # над юнитами и над слоями замка и листвы (у ворот стена закрыла бы героя), ниже интерфейса
+	add_child(hero_view)
+	hero_sprite = Sprite2D.new()
+	var path: String = hero_cfg.sprite
+	var tex: Texture2D = load(path) as Texture2D if ResourceLoader.exists(path) else null
+	if tex == null:
+		push_warning("Спрайт героя %s не загрузился: герой рисуется квадратом" % path)
+		var img := Image.create(SPRITE_PX, SPRITE_PX, false, Image.FORMAT_RGBA8)
+		img.fill(Color(hero_cfg.marker_color))
+		tex = ImageTexture.create_from_image(img)
+	hero_sprite.texture = tex
+	hero_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	hero_sprite.scale = Vector2.ONE * hero_cfg.size_scale * SPRITE_PX / tex.get_height()
+	hero_view.add_child(hero_sprite)
+	hero_view.draw.connect(_draw_hero_marker)
+
+
+# Кольцо цвета маркера (Endesga 32, hero.json marker_color) с тёмной обводкой и полоса HP под ним; толщина и радиус
+# делятся на зум — на экране одного размера при любом зуме. Рисуется под спрайтом (своя отрисовка ноды раньше дочерних).
+func _draw_hero_marker() -> void:
+	var z := camera.zoom.x if camera != null else 1.0
+	var r := HERO_RING_PX / z
+	var dark := Color("#181425")
+	hero_view.draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, dark, 5.0 / z)
+	hero_view.draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, Color(hero_cfg.marker_color), 3.0 / z)
+	if hero_idx < 0:
+		return
+	var f := clampf(hp[hero_idx] / type_hp[hero_type], 0.0, 1.0)
+	var top := Vector2(-r, r + 4.0 / z)
+	var size := Vector2(2.0 * r, 4.0 / z)
+	hero_view.draw_rect(Rect2(top - Vector2.ONE / z, size + Vector2.ONE * 2.0 / z), dark)
+	hero_view.draw_rect(Rect2(top, Vector2(size.x * f, size.y)), Color("#63c74d") if f > 0.35 else Color("#e43b44"))
+
+
+# Каждый кадр: позиция между тиками (как у юнитов), взгляд по последнему движению; пал — нода скрыта.
+func _update_hero_view(frac: float, have_prev: bool) -> void:
+	hero_view.visible = hero_idx >= 0
+	if hero_idx < 0:
+		return
+	var h := hero_idx
+	hero_view.position = prev_pos[h].lerp(pos[h], frac) if have_prev else pos[h]
+	hero_sprite.flip_h = hero_face < 0.0
+	var key := Vector2(hp[h], camera.zoom.x if camera != null else 1.0)
+	if key != hero_drawn:
+		hero_drawn = key
+		hero_view.queue_redraw()
+
+
 # Командир пал в бою: приказы (клавиши, ПКМ, Клич, построения) не принимаются до конца волны; выбор, пауза и камера работают.
 func _orders_locked() -> bool:
 	return hero_dead and wave_state == WS_BATTLE
@@ -3829,6 +3885,8 @@ func _setup_rendering() -> void:
 	node.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	node.material = mat
 	add_child(node)
+	if hero_on:
+		_setup_hero_view()   # после MultiMesh: над юнитами; интерфейс — в CanvasLayer, выше
 
 
 func _setup_fps_label() -> void:
@@ -4555,6 +4613,12 @@ func _process(delta: float) -> void:
 			rp -= DIR_VEC[unit_dir[i]] * (type_recoil[ut] * anim / ATTACK_ANIM_T)
 		buf[o + 3] = rp.x
 		buf[o + 7] = rp.y
+		if i == hero_idx:   # герой рисуется своей нодой (hero_view): его ячейка буфера нулевого размера
+			buf[o + 0] = 0.0
+			buf[o + 1] = 0.0
+			buf[o + 4] = 0.0
+			buf[o + 5] = 0.0
+			continue
 		# матрицу, цвет и ячейку пишем каждый кадр: после _remove_dead на индекс i мог встать юнит другого типа.
 		var frames := type_sprite_frames[ut]
 		var sq := unit_squad[i]
@@ -4620,6 +4684,8 @@ func _process(delta: float) -> void:
 		buf[o + 12] = cell_white
 	multimesh.visible_instance_count = count
 	multimesh.buffer = buf          # один вызов вместо UNIT_COUNT
+	if hero_view != null:
+		_update_hero_view(frac, have_prev)
 	draw_ms = (Time.get_ticks_usec() - t) / 1000.0
 	fps_label.text = tr("DEBUG_FPS_LINE") % [
 		Engine.get_frames_per_second(), count, sim_avg, sim_peak, grid_ms, color_mode + 1, gate_hp, arrows_fired, arrows_hit]
