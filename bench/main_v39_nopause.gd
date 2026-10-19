@@ -55,6 +55,7 @@ const GATE_SPOTS := [0, -1, 1, -2, 2, -3, 3, 0]   # точка у ворот п�
 const GATE_SPOT_DX := 110.0
 const ORDER_NAMES := ["ORDER_ATTACK", "ORDER_HOLD", "ORDER_RETREAT"]   # ключи перевода
 const UNIT_TYPES_PATH := "res://data/unit_types.json"
+const HERO_PATH := "res://data/hero.json"   # герой (задача 10, эксперимент): параметры и enabled
 const CASTLE_PATH := "res://data/castle.json"
 const RECORD_PATH := "user://record.json"   # прежний рекорд best_wave: в игре не читается и не пишется (рекорды в Game)
 const RUN_PATH := "res://data/run.json"     # забег: waves_per_run, siege_count
@@ -670,6 +671,14 @@ var spearman_type := -1   # копейщики: свой товар (spear_pack)
 var zombie_type := -1
 var runner_type := -1
 var knight_type := -1
+# Герой (задача 10, эксперимент): одна сущность в общих массивах юнитов — тип hero (добавляется последним к типам из unit_types.json,
+# только когда герой включён), команда игрока, без отряда. Зомби видят и бьют его через общую сетку; сам он решает отдельно (_update_hero).
+var hero_path := HERO_PATH   # тесты подменяют
+var hero_mode := 0           # 0 — по данным (enabled) и только в игровом режиме (с синглтоном Game); 1 — включён (тесты, бот B9); -1 — выключен
+var hero_cfg := {}           # data/hero.json как есть (проверен _load_hero)
+var hero_on := false         # герой в этом бою; без него ни одна ветка героя не выполняется — эталон бит в бит
+var hero_type := -1
+var hero_idx := -1           # индекс героя в массивах юнитов; -1 — нет (выключен или пал); переносится в _remove_dead
 const SIDE_TOP := 0     # стороны появления орды
 const SIDE_LEFT := 1
 const SIDE_RIGHT := 2
@@ -3273,6 +3282,8 @@ func _load_types() -> bool:
 	if not data is Array or data.is_empty():
 		push_error("%s: ожидается непустой JSON-массив типов" % UNIT_TYPES_PATH)
 		return false
+	if hero_on:
+		data.append(_hero_type_entry())   # тип героя — последним: номера типов из файла не сдвигаются
 	var n: int = data.size()
 	type_hp.resize(n)
 	type_damage.resize(n)
@@ -3354,6 +3365,34 @@ func _load_types() -> bool:
 	return true
 
 
+# data/hero.json: числа и их пределы; hero_on — включён ли герой в этом бою (hero_mode, enabled, игровой режим).
+func _load_hero() -> bool:
+	hero_on = false
+	var d = _load_json(hero_path)
+	if d == null:
+		return false
+	if not d is Dictionary or not d.get("enabled") is bool or not d.get("label") is String or not d.get("sprite") is String 			or not d.get("marker_color") is String or not Color.html_is_valid(d.marker_color):
+		push_error("%s: нужен JSON-объект с enabled (bool), label, sprite и marker_color (hex)" % hero_path)
+		return false
+	if not _require_numbers(d, ["hp", "speed", "damage", "attack_interval", "attack_range", "targets_per_swing", "size_scale", "revive_hp_fraction"], hero_path):
+		return false
+	if d.hp <= 0.0 or d.speed <= 0.0 or d.damage < 0.0 or d.attack_interval <= 0.0 or d.attack_range <= 0.0 or d.size_scale <= 0.0 			or not _is_whole(d.targets_per_swing) or d.targets_per_swing < 1 or d.revive_hp_fraction <= 0.0 or d.revive_hp_fraction > 1.0:
+		push_error("%s: hp, speed, attack_interval, attack_range, size_scale больше 0; targets_per_swing целое от 1; revive_hp_fraction в (0, 1]" % hero_path)
+		return false
+	hero_cfg = d
+	hero_on = hero_mode == 1 or (hero_mode == 0 and d.enabled and _game() != null)
+	return true
+
+
+# Запись типа героя в формате unit_types.json. speed (px/с) и attack_range (px) в hero.json — уже мировые: делятся на масштаб,
+# чтобы _scaled вернул их как есть. Щита нет (block_mult 1.0), награды нет, ГСЧ и поводка нет.
+func _hero_type_entry() -> Dictionary:
+	return {"name": "hero", "label": hero_cfg.label, "hp": hero_cfg.hp, "damage": hero_cfg.damage, "range": hero_cfg.attack_range / SCALE_REL,
+		"cooldown": hero_cfg.attack_interval, "speed": hero_cfg.speed / SPEED_REL, "block_mult": 1.0, "leash_start": 100000.0, "leash_end": 100000.0,
+		"color": hero_cfg.marker_color, "range_far": 0.0, "volley_period": 0.0, "draw_time": 0.0, "spread": 0.0, "arrow_dmg": 0.0, "bounty_mult": 0.0,
+		"chase": 1, "sprite": "", "recoil_px": 0.0}
+
+
 # Значение из JSON с множителем масштаба (SCALE_REL или SPEED_REL), округлённое до 0.01.
 func _scaled(v: float, rel: float) -> float:
 	return roundf(v * rel * 100.0) / 100.0
@@ -3367,7 +3406,7 @@ func _type_of(type_name: String) -> int:
 
 
 func _setup_data() -> void:
-	if not _load_types():
+	if not _load_hero() or not _load_types():
 		set_physics_process(false)
 		set_process(false)
 		return
@@ -3388,6 +3427,7 @@ func _setup_data() -> void:
 	runner_type = runner
 	knight_type = knight
 	spearman_type = spearman
+	hero_type = _type_of("hero") if hero_on else -1
 	if type_enabled[spearman] == 0:   # выключенный тип не продаётся, даже если товар включён
 		shop_enabled[SHOP_ITEMS.find("spear_pack")] = 0
 	_apply_mods()

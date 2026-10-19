@@ -1,0 +1,14 @@
+{
+	"enabled": true,
+	"label": "UNIT_HERO",
+	"hp": 15.0,
+	"speed": 138.0,
+	"damage": 2.0,
+	"attack_interval": 0.8,
+	"attack_range": 21.0,
+	"targets_per_swing": 2,
+	"size_scale": 1.8,
+	"revive_hp_fraction": 1.0,
+	"sprite": "res://art/hero_placeholder.png",
+	"marker_color": "#feae34"
+}

@@ -291,6 +291,7 @@ COND_LOST_STEPS,бонус за каждые %s%% потерь отряда,bonu
 COND_VENGEANCE,бонус растёт с каждым своим павшим в волне,the bonus grows with every soldier lost this wave
 SHOP_SPEAR_PACK,+%d копейщиков,+%d spearmen
 UNIT_SPEARMAN,Копейщики,Spearmen
+UNIT_HERO,Командир,Commander
 ACTION_BUY_SPEAR,Купить: копейщики,Buy: spearmen
 HUD_SHOP_NEW_SQUAD,→ новый отряд,→ new squad
 MSG_NO_SQUAD_FOR_SPEARMEN,Нет свободного отряда для копейщиков,No free squad for spearmen

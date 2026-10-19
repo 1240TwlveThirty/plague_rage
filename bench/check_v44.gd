@@ -99,8 +99,12 @@ func count_type(m: Node2D, type: int) -> int:
 	return n
 
 # Числа старта забега, на которые действуют дары.
-func start_numbers(m: Node2D) -> Array:
-	return [Array(m.type_hp), Array(m.type_damage), Array(m.type_arrow_dmg), Array(m.type_bounty_mult), m.gate_hp, m.gate_hp_max, m.gold, m.income_pct, m.count]
+# n — сколько типов сравнивать (у эталона нет типа героя задачи 10: в игровом режиме он последний); герой не входит в count.
+func start_numbers(m: Node2D, n := -1) -> Array:
+	var k: int = m.type_hp.size() if n < 0 else n
+	var hero: int = 1 if "hero_idx" in m and m.hero_idx >= 0 else 0
+	return [Array(m.type_hp).slice(0, k), Array(m.type_damage).slice(0, k), Array(m.type_arrow_dmg).slice(0, k), Array(m.type_bounty_mult).slice(0, k),
+		m.gate_hp, m.gate_hp_max, m.gold, m.income_pct, m.count - hero]
 
 func state() -> Array:
 	return [g.radiance, g.gift_levels.duplicate()]
@@ -349,7 +353,7 @@ func t_active() -> void:
 	var m := await run(1)
 	var base := start_numbers(m)
 	var r := plain(REF, m.spawn_seed)
-	check("ничего не куплено: active_gifts пуст, старт забега через Game — те же числа, что у эталона", g.active_gifts.is_empty() and m.active_gifts.is_empty() and start_numbers(r) == base)
+	check("ничего не куплено: active_gifts пуст, старт забега через Game — те же числа, что у эталона", g.active_gifts.is_empty() and m.active_gifts.is_empty() and start_numbers(r) == start_numbers(m, r.type_hp.size()))
 	r.free()
 	g.gift_levels["fortress_walls"] = 2
 	g.gift_levels["reserve"] = 1
