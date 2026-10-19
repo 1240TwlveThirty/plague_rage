@@ -39,6 +39,8 @@ func _run() -> void:
 	t_mods()
 	t_death()
 	await t_death_hud()
+	t_replay()
+	t_reference()
 	print("CHECK: провалов %d" % fails)
 	quit(1 if fails > 0 else 0)
 
@@ -341,3 +343,65 @@ func t_death_hud() -> void:
 	check("передышка: метки нет", not m.hero_fallen_label.visible)
 	m.queue_free()
 	await process_frame
+
+# Один прогон волны 3 (seed 7) с героем: ввод — feed; журнал hero_move по тикам и хэши состояния по тикам.
+func battle_run(feed: Callable) -> Array:
+	var m := make(1, "", 7)
+	m.hero_feed = feed
+	m.wave_number = 2
+	m.wave_plan_for = -1
+	m._start_wave()
+	var log := []
+	var hashes := []
+	for t in 30 * 40:
+		m._physics_process(DT)
+		log.append(m.hero_move)
+		hashes.append(hash([m.count, m.pos.slice(0, m.count), m.hp.slice(0, m.count), m.cooldown.slice(0, m.count), m.gold, m.gate_hp, m.hero_idx]))
+	var out := [log, hashes, m.hero_swings, m.hero_kills, m.hero_deaths, m.wave_kills]
+	m.free()
+	return out
+
+func t_replay() -> void:
+	print("детерминизм: записанный ввод (этап G)")
+	# «Живой» ввод: смена направления по своему расписанию (как игрок), к орде и обратно.
+	var live := func(t: int) -> Vector2:
+		if t < 150:
+			return Vector2(0, -1)   # 5 с вверх — навстречу орде
+		return [Vector2(-1, 0), Vector2(1, -1), Vector2(1, 0), Vector2(0, 1), Vector2.ZERO, Vector2(-1, -1)][(t / 30) % 6]
+	var a := battle_run(live)
+	var rec: Array = a[0]
+	var b := battle_run(func(t: int) -> Vector2: return rec[t - 1] if t - 1 < rec.size() else Vector2.ZERO)
+	var first := -1
+	for t in a[1].size():
+		if a[1][t] != b[1][t]:
+			first = t
+			break
+	check("воспроизведение записанной последовательности (1200 тиков боя): то же состояние на каждом тике; герой ударил %d раз, добил %d, пал %d раз, волна: убито %d" % [a[2], a[3], a[4], a[5]],
+		first < 0 and a[2] > 0 and a.slice(2) == b.slice(2), "первое расхождение: тик %d" % first)
+	var c := battle_run(live)
+	check("тот же ввод ещё раз — тот же результат", c[1] == a[1])
+
+func t_reference() -> void:
+	print("эталон при выключенном герое (этап G)")
+	for mode in [-1, 0]:
+		var a: Node2D = load("res://bench/ref/main_ref.gd").new()
+		var b := make(mode, "", 7)
+		a.spawn_seed = 7
+		a.debug_layer = 1
+		a.record_path = "user://record_bench.json"
+		a._setup_data()
+		var first := -1
+		for w in 2:
+			for x in [a, b]:
+				x._buy(0)
+				x._start_wave()
+			var t := 0
+			while a.wave_state == a.WS_BATTLE and t < 30 * 300:
+				a._physics_process(DT)
+				b._physics_process(DT)
+				if first < 0 and (a.count != b.count or a.pos.slice(0, a.count) != b.pos.slice(0, b.count) or a.hp.slice(0, a.count) != b.hp.slice(0, b.count) or a.gold != b.gold):
+					first = t
+				t += 1
+		check("hero_mode %d (%s): 2 волны с покупками — бит в бит с эталоном" % [mode, "выключен" if mode < 0 else "по данным, без Game"], first < 0 and not b.hero_on, "расхождение на тике %d" % first)
+		a.free()
+		b.free()

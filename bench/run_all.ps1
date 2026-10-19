@@ -107,6 +107,7 @@ if (-not $Quick) {
 	Godot "тик: волна 20 слоя 1" "res://bench/time_v35.gd" "TIME\|" @("1", "20", "0", "caps", "1", "res://scripts/main.gd")
 	Godot "тик: 3000 юнитов, синтетика" "res://bench/time_v39.gd" "SYN\|" @("res://bench/main_v39_3000.gd")
 	Godot "тик: 3000 юнитов с копейщиками" "res://bench/time_v39.gd" "SYN\|" @("res://bench/main_v39_3000.gd", "spear")
+	Godot "тик: 3000 юнитов с героем" "res://bench/time_v39.gd" "SYN\|" @("res://bench/main_v39_3000.gd", "hero")
 }
 $total.Stop()
 if ($hungSteps.Count -gt 0) {

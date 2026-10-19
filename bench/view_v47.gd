@@ -3,6 +3,7 @@ extends SceneTree
 # Аргументы: <папка для PNG> [fx 1|0] [debug 1|0] [фильтр замка nearest|linear_mipmap] [warcry 1|0].
 # warcry 1 — дар «Клич Благодати» 3 и клич действует весь замер (кнопка и подсветка краёв на экране), суффикс _warcry.
 # [spear 1] (задача 8) — до волны 10 куплено 300 копейщиков (отряд у ворот, «держать»), снимок строя view_<тег>_spear_squad.png, суффикс _spear. fx задаёт fx_enabled до _ready;
+# [hero 1] (задача 10) — с героем (hero_mode 1, стоит у ворот), суффикс _hero.
 # debug — отладка масок эффектов (как F2), тогда PNG с суффиксом _debug; фильтр (castle_filter) не nearest — суффикс с его именем. PNG: весь кадр, у ворот, края и замок у ворот крупнее (_castle); печатает TORCHES|число факелов.
 # Печатает VIEW|fx|юнитов|тик|кадров|FPS|медиана кадра мс|95-й перцентиль мс; PNG: весь кадр, у ворот, левый и правый край.
 const WARM_TICKS := 480    # 16 с (ускоренно): орда подходит к строю, бой идёт во время замера
@@ -21,11 +22,14 @@ func _run() -> void:
 	var filter: String = args[3] if args.size() >= 4 else "nearest"
 	var warcry := args.size() >= 5 and args[4] == "1"
 	var spear := args.size() >= 6 and args[5] == "1"
+	var hero := args.size() >= 7 and args[6] == "1"   # задача 10: с героем (стоит у ворот, ввода нет), суффикс строки |hero
 	var m: Node2D = load("res://scenes/main.tscn").instantiate()
 	m.record_path = "user://record_bench.json"
 	m.spawn_seed = 3
 	if warcry:
 		m.active_gifts = {"war_cry": 3}
+	if hero:
+		m.hero_mode = 1
 	if "fx_enabled" in m:
 		m.fx_enabled = fx
 	if "castle_filter" in m:
@@ -79,7 +83,7 @@ func _run() -> void:
 	var fps := FRAMES / ((t_prev - t0) / 1e6)
 	var sorted := dts.duplicate()
 	sorted.sort()
-	print("VIEW|%s|%d|%d|%d|%.1f|%.3f|%.3f" % [("fx" if fx else "nofx") + ("_warcry" if warcry else "") + ("_spear" if spear else ""), m.count, m.tick_counter, FRAMES, fps, sorted[FRAMES / 2], sorted[FRAMES * 95 / 100]])
+	print("VIEW|%s|%d|%d|%d|%.1f|%.3f|%.3f" % [("fx" if fx else "nofx") + ("_warcry" if warcry else "") + ("_spear" if spear else "") + ("_hero" if hero else ""), m.count, m.tick_counter, FRAMES, fps, sorted[FRAMES / 2], sorted[FRAMES * 95 / 100]])
 	await RenderingServer.frame_post_draw
 	var img := root.get_texture().get_image()
 	var tag: String = ("fx" if fx else "nofx") + ("_debug" if debug else "") + ("" if filter == "nearest" else "_" + filter) + ("_warcry" if warcry else "") + ("_spear" if spear else "")
