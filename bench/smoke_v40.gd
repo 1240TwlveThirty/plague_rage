@@ -51,6 +51,20 @@ func click(btn: MouseButton, at: Vector2, shift := false, dbl := false) -> void:
 	await button(btn, at, false, shift)
 	await step(1)
 
+# Клик по кнопке интерфейса: нажатие и отпускание в одном кадре. Между кадрами окно может получить события ОС (потеря фокуса
+# окна, движение настоящей мыши) — GUI тогда сбрасывает фокус мыши (Viewport на NOTIFICATION_WM_WINDOW_FOCUS_OUT) и отпускание
+# уже не нажимает кнопку. Так падал пункт «б» в run_all (задачи 8–10); внутри одного кадра события ОС не обрабатываются.
+func tap(btn: MouseButton, at: Vector2, shift := false) -> void:
+	for pressed in [true, false]:
+		var e := InputEventMouseButton.new()
+		e.button_index = btn
+		e.pressed = pressed
+		e.shift_pressed = shift
+		e.position = at
+		e.global_position = at
+		root.push_input(e, true)
+	await step(2)
+
 func drag(btn: MouseButton, a: Vector2, b: Vector2, shift := false) -> void:
 	await button(btn, a, true, shift)
 	await move(a.lerp(b, 0.5))
@@ -178,15 +192,17 @@ func _run() -> void:
 	await key(KEY_A, false, true)
 	var all: bool = m.sel_mask == mask_of([0, 1, 2, 3])
 	var t1: PackedVector2Array = m.squad_target.duplicate()
-	await click(MOUSE_BUTTON_LEFT, m.squad_buttons[2].get_global_rect().get_center())
+	await tap(MOUSE_BUTTON_LEFT, m.squad_buttons[2].get_global_rect().get_center())
 	var row_one: bool = m.sel_mask == 4 and m.sel_primary == 2 and rows_match()
-	await click(MOUSE_BUTTON_LEFT, m.squad_buttons[0].get_global_rect().get_center(), true)
+	await tap(MOUSE_BUTTON_LEFT, m.squad_buttons[0].get_global_rect().get_center(), true)
 	var row_add: bool = m.sel_mask == 5 and m.sel_primary == 0 and rows_match()
-	await click(MOUSE_BUTTON_LEFT, m.squad_buttons[2].get_global_rect().get_center(), true)
+	await tap(MOUSE_BUTTON_LEFT, m.squad_buttons[2].get_global_rect().get_center(), true)
 	var row_off: bool = m.sel_mask == 1 and rows_match()
-	await click(MOUSE_BUTTON_RIGHT, m.squad_buttons[1].get_global_rect().get_center())
+	await tap(MOUSE_BUTTON_RIGHT, m.squad_buttons[1].get_global_rect().get_center())
 	check("(б) Ctrl+A выбирает все; клик по строке панели выбирает отряд, Shift+клик добавляет и убирает; цели отрядов не меняются (и ПКМ по панели карту не трогает)",
-		all and row_one and row_add and row_off and m.squad_target == t1 and not m.box_active and not m.drag_active)
+		all and row_one and row_add and row_off and m.squad_target == t1 and not m.box_active and not m.drag_active,
+		"все %s, строка %s, добавить %s, убрать %s, цели %s, рамка %s, протяжка %s, маска %d, мышь ОС %s, фокус окна %s" % [all, row_one, row_add, row_off,
+		m.squad_target == t1, m.box_active, m.drag_active, m.sel_mask, root.get_mouse_position(), DisplayServer.window_is_focused()])
 	# команды набора клавишами и бой с паузой
 	await key(KEY_A, false, true)
 	await key(KEY_Y)
