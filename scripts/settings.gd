@@ -15,6 +15,7 @@ const VOLUME_DEFAULT := 0.8
 var path := PATH
 var persist := true            # false — не писать файл (тестовый запуск)
 var fullscreen := false        # display/fullscreen: безрамочный полноэкранный режим
+var screen_shake := true       # display/screen_shake: тряска экрана при ударе героя (задача 12; ещё и data/fx.json screen_shake_enabled)
 var language := "ru"           # general/language: "ru" или "en"
 var music_volume := VOLUME_DEFAULT   # audio/music: линейная громкость шины Music, 0..1
 var sfx_volume := VOLUME_DEFAULT     # audio/sfx: шины SFX
@@ -41,6 +42,7 @@ func load_settings() -> void:
 		push_warning("%s не читается: настройки по умолчанию" % path)
 		cfg = ConfigFile.new()
 	fullscreen = bool(cfg.get_value("display", "fullscreen", false))
+	screen_shake = bool(cfg.get_value("display", "screen_shake", true))
 	language = str(cfg.get_value("general", "language", default_language()))
 	if not language in LANGUAGES:
 		language = default_language()
@@ -56,6 +58,7 @@ func save_settings() -> void:
 		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("display", "fullscreen", fullscreen)
+	cfg.set_value("display", "screen_shake", screen_shake)
 	cfg.set_value("general", "language", language)
 	cfg.set_value("audio", "music", music_volume)
 	cfg.set_value("audio", "sfx", sfx_volume)
@@ -71,6 +74,14 @@ func set_fullscreen(on: bool) -> void:
 	_apply_window(false)
 	save_settings()
 	changed.emit("display/fullscreen")
+
+
+func set_screen_shake(on: bool) -> void:
+	if on == screen_shake:
+		return
+	screen_shake = on
+	save_settings()
+	changed.emit("display/screen_shake")
 
 
 # Язык по умолчанию: русский, если язык системы русский, иначе английский.

@@ -90,6 +90,20 @@ func _run() -> void:
 	check("переключатель включает полный экран", st.fullscreen)
 	st.set_fullscreen(false)
 	check("переключатель следует за F11 и Settings", not sm.fullscreen_check.button_pressed)
+	check("«Тряска экрана» (задача 12) на вкладке «Видео» под полным экраном, по умолчанию включена", tr(sm.shake_check.text) == "Тряска экрана"
+		and sm.shake_check.get_parent() == sm.fullscreen_check.get_parent() and sm.shake_check.button_pressed and st.screen_shake)
+	sm.shake_check.button_pressed = false
+	var sc := ConfigFile.new()
+	check("переключатель выключает тряску и пишет display/screen_shake = false", not st.screen_shake and sc.load(path) == OK
+		and sc.get_value("display", "screen_shake", true) == false)
+	st.screen_shake = true
+	st.load_settings()
+	check("после «перезапуска» тряска выключена", not st.screen_shake)
+	st.set_screen_shake(true)
+	TranslationServer.set_locale("en")
+	var en := tr(sm.shake_check.text)
+	TranslationServer.set_locale("ru")
+	check("переключатель следует за Settings; en: «%s»" % en, sm.shake_check.button_pressed and en == "Screen shake")
 	sm._input(key(KEY_ESCAPE))
 	await step(1)
 	check("Esc закрывает настройки, меню на месте, фокус на «Настройки»", not sm.visible and mn.is_inside_tree() and mn.settings_button.has_focus())

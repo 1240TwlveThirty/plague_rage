@@ -7,7 +7,8 @@ const NEW := "res://scripts/main.gd"
 const DT := 1.0 / 30.0
 # не состояние симуляции: флаг паузы, отрисовка, замеры времени, таймеры интерфейса
 const SKIP := ["paused", "prev_pos", "buf", "sim_ms", "sim_avg", "sim_peak", "sim_max", "grid_ms", "draw_ms", "prof_acc", "prof_avg", "prof_n",
-	"ui_t", "panel_t", "hud_msg", "hud_msg_t", "squad_panel_sig", "drawn_gate_hp"]
+	"ui_t", "panel_t", "hud_msg", "hud_msg_t", "squad_panel_sig", "drawn_gate_hp",
+	"hit_rng"]   # hit_rng — генератор визуала эффектов попаданий (задача 12), не состояние симуляции
 var fails := 0
 
 func check(what: String, ok: bool, info := "") -> void:

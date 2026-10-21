@@ -11,6 +11,7 @@ signal closed
 var settings: Node
 var tabs: TabContainer
 var fullscreen_check: CheckButton
+var shake_check: CheckButton   # «Тряска экрана» (задача 12)
 var back_button: Button
 var key_titles := {}            # действие -> подпись строки на вкладке «Управление»
 var key_buttons := {}           # действие -> кнопка с клавишей на вкладке «Управление»
@@ -88,6 +89,12 @@ func _setup_video() -> void:
 	fullscreen_check.button_pressed = settings.fullscreen
 	fullscreen_check.toggled.connect(settings.set_fullscreen)
 	col.add_child(fullscreen_check)
+	shake_check = CheckButton.new()
+	shake_check.text = "UI_SETTINGS_SCREEN_SHAKE"
+	shake_check.add_theme_font_size_override("font_size", FONT)
+	shake_check.button_pressed = settings.screen_shake
+	shake_check.toggled.connect(settings.set_screen_shake)
+	col.add_child(shake_check)
 
 
 # Вкладка «Звук»: ползунки «Музыка» и «Эффекты» (линейная громкость 0..1, Settings переводит в dB).
@@ -210,6 +217,7 @@ func assign_key(event: InputEvent) -> void:
 
 func _on_changed(_key: String) -> void:
 	fullscreen_check.set_pressed_no_signal(settings.fullscreen)
+	shake_check.set_pressed_no_signal(settings.screen_shake)
 	music_slider.set_value_no_signal(settings.music_volume)
 	sfx_slider.set_value_no_signal(settings.sfx_volume)
 	for l in lang_buttons:

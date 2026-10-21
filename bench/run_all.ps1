@@ -104,6 +104,7 @@ Godot "смоук с окном: карточки в HUD (v51h)" "res://bench/sm
 Godot "смоук с окном: иконки в хабе (v56)" "res://bench/smoke_v56_icons.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: герой (v60)" "res://bench/smoke_v60.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: удар героя (v61)" "res://bench/smoke_v61.gd" "SMOKE: провалов 0" @("$tmp") -Window
+Godot "смоук с окном: кровь, искры, пятна (v62)" "res://bench/smoke_v62.gd" "SMOKE: провалов 0" @("$tmp") -Window
 if (-not $Quick) {
 	Godot "серия 50 боёв" "res://bench/series.gd" "SERIES\|"
 	Godot "тик: волна 20 слоя 1" "res://bench/time_v35.gd" "TIME\|" @("1", "20", "0", "caps", "1", "res://scripts/main.gd")

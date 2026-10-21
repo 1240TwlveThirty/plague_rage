@@ -46,7 +46,7 @@ func click(c: Control) -> void:
 func drawn_units(m: Node2D) -> int:
 	var mm: Node = null
 	for c in m.get_children():
-		if c is MultiMeshInstance2D:
+		if c is MultiMeshInstance2D and c.multimesh == m.multimesh:   # юниты; с задачи 12 есть и MultiMesh эффектов (частицы, пятна)
 			mm = c
 	await step(3)
 	var with: Image = root.get_texture().get_image()
