@@ -145,10 +145,11 @@ func _input(event: InputEvent) -> void:
 # Переназначаемые действия в порядке списка на вкладке «Управление» (подпись — action_title).
 const REBINDABLE := ["squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4", "squad_select_5", "squad_select_6",
 	"squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side", "wave_start", "buy_1", "buy_2",
-	"buy_3", "buy_4", "buy_spear", "war_cry", "move_up", "move_down", "move_left", "move_right"]
+	"buy_3", "buy_4", "buy_spear", "war_cry", "move_up", "move_down", "move_left", "move_right", "hero_attack"]
 # Действия, которых нет в [input] project.godot: клавиша по умолчанию задаётся здесь, действие добавляется после каждой загрузки InputMap
-# (war_cry — «Клич Благодати»: с задачи 10 U, D занята движением героя; move_* — движение героя WASD, задача 10).
-const CODE_DEFAULTS := {"war_cry": KEY_U, "buy_spear": KEY_B, "move_up": KEY_W, "move_down": KEY_S, "move_left": KEY_A, "move_right": KEY_D}   # buy_spear — пакет копейщиков (B свободна)
+# (war_cry — «Клич Благодати»: с задачи 10 U, D занята движением героя; move_* — движение героя WASD, задача 10; hero_attack — удар
+# героя J, задача 11).
+const CODE_DEFAULTS := {"war_cry": KEY_U, "buy_spear": KEY_B, "move_up": KEY_W, "move_down": KEY_S, "move_left": KEY_A, "move_right": KEY_D, "hero_attack": KEY_J}   # buy_spear — пакет копейщиков (B свободна)
 # Фиксированные действия, чья клавиша из [input] project.godot заменяется кодом после каждой загрузки InputMap (задача 10:
 # W занята героем — «Держать» на Y). project.godot не меняется.
 const CODE_REMAP := {"order_hold": KEY_Y}
@@ -168,7 +169,7 @@ const MOUSE_BINDABLE := {MOUSE_BUTTON_MIDDLE: "UI_MOUSE_MIDDLE", MOUSE_BUTTON_XB
 const MOUSE_TOKEN := "Mouse"   # в файле настроек кнопка мыши — «Mouse8» (номер кнопки Godot)
 
 
-# Переназначаемые действия, которых нет на вкладке «Управление»: движение героя, если он выключен в data/hero.json; покупка выключенного в данных товара (buy_spear — копейщики в v1:
+# Переназначаемые действия, которых нет на вкладке «Управление»: движение и удар героя, если он выключен в data/hero.json; покупка выключенного в данных товара (buy_spear — копейщики в v1:
 # shop.json spear_pack или unit_types.json spearman с enabled: false). Действие остаётся в InputMap, но ничего не покупает.
 static func hidden_actions() -> Array:
 	var shop = JSON.parse_string(FileAccess.get_file_as_string("res://data/shop.json"))
@@ -181,7 +182,7 @@ static func hidden_actions() -> Array:
 	var out := [] if on else ["buy_spear"]
 	var hero = JSON.parse_string(FileAccess.get_file_as_string("res://data/hero.json"))
 	if not (hero is Dictionary and hero.get("enabled", false) == true):   # герой выключен в данных: клавиш движения нет на вкладке
-		out.append_array(["move_up", "move_down", "move_left", "move_right"])
+		out.append_array(["move_up", "move_down", "move_left", "move_right", "hero_attack"])
 	return out
 
 

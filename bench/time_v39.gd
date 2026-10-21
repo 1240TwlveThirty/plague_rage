@@ -1,7 +1,8 @@
 extends SceneTree
 # Тик на 3000 юнитов, синтетика (v39): <main_*_3000.gd> [spear]. Без волн, 600 тиков; медиана и среднее тика, мс.
 # spear (задача 8) — пехотный отряд 0 превращается в копейщиков той же численности (дальность удара больше).
-# hero (задача 10) — с героем (hero_mode 1): ввод — круг радиусом ~130 px у ворот (cos, sin от тика), без клавиатуры.
+# hero (задача 10) — с героем (hero_mode 1): ввод — круг радиусом ~130 px у ворот (cos, sin от тика), без клавиатуры; с задачи 11
+# удар удержанием J (attack каждый тик — удар по перезарядке, как автоатака задачи 10).
 func _initialize() -> void:
 	if root.has_node("Game"):
 		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
@@ -12,7 +13,7 @@ func _initialize() -> void:
 	var hero := OS.get_cmdline_user_args().size() > 1 and OS.get_cmdline_user_args()[1] == "hero"
 	if hero:
 		m.hero_mode = 1
-		m.hero_feed = func(t: int) -> Vector2: return Vector2(cos(t * 0.03), sin(t * 0.03))
+		m.hero_feed = func(t: int) -> Dictionary: return {"move": Vector2(cos(t * 0.03), sin(t * 0.03)), "attack": true}
 	m._setup_data()
 	var spear := OS.get_cmdline_user_args().size() > 1 and OS.get_cmdline_user_args()[1] == "spear"
 	if spear:

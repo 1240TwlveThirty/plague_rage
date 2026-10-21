@@ -50,8 +50,8 @@ func t_data() -> void:
 	var m := make(1)
 	var i: int = m.infantry_type
 	var h: int = m.hero_type
-	check("hero.json: enabled true (игровой режим), targets_per_swing 2, size_scale 1.6-2, revive_hp_fraction 1.0", d.enabled == true
-		and d.targets_per_swing == 2 and d.size_scale >= 1.6 and d.size_scale <= 2.0 and d.revive_hp_fraction == 1.0)
+	check("hero.json: enabled true (игровой режим), автоатака выключена (задача 11), size_scale 1.6-2, revive_hp_fraction 1.0", d.enabled == true
+		and d.auto_attack == false and d.size_scale >= 1.6 and d.size_scale <= 2.0 and d.revive_hp_fraction == 1.0)
 	check("тип hero последним (номера типов из unit_types.json прежние), подпись «Командир»", h == m.type_hp.size() - 1 and h == m.type_id.size() - 1
 		and tr(m.type_label[h]) == "Командир")
 	check("урон x2 пехоты, интервал удара как у пехоты, HP x5 пехоты", is_equal_approx(m.base_type_damage[h], 2.0 * m.base_type_damage[i])
@@ -59,7 +59,7 @@ func t_data() -> void:
 	var k: float = m.base_type_speed[h] / m.base_type_speed[i]
 	check("скорость %.0f px/с (данные — мировые px/с) = %.2f пехоты (около 1.15)" % [m.base_type_speed[h], k], is_equal_approx(m.base_type_speed[h], d.speed) and absf(k - 1.15) < 0.02)
 	check("дальность удара %.1f px (данные — мировые px), больше пехотной %.1f; щита нет, награды нет" % [sqrt(m.type_range_sq[h]), sqrt(m.type_range_sq[i])],
-		is_equal_approx(sqrt(m.type_range_sq[h]), d.attack_range) and m.type_range_sq[h] > m.type_range_sq[i] and m.type_block_mult[h] == 1.0 and m.type_bounty_mult[h] == 0.0)
+		is_equal_approx(sqrt(m.type_range_sq[h]), d.arc_range) and m.type_range_sq[h] > m.type_range_sq[i] and m.type_block_mult[h] == 1.0 and m.type_bounty_mult[h] == 0.0)
 	m.free()
 	var off := make(0)
 	check("hero_mode 0 без синглтона Game (бенчи, регрессия): героя нет, типов столько же, сколько в unit_types.json", not off.hero_on and off.hero_type == -1
@@ -72,7 +72,7 @@ func t_data() -> void:
 	check("enabled false: героя нет и в игровом режиме (проверка флага без Game — hero_on false)", not dis.hero_on)
 	dis.free()
 	print("  ниже ожидаются строки ERROR от повреждённых файлов")
-	for f in ["no_hp", "bad_targets", "bad_revive", "bad_enabled"]:
+	for f in ["no_hp", "bad_targets", "bad_revive", "bad_enabled", "bad_arc"]:
 		var b := make(1, FIX + f + ".json")
 		check("%s.json: данные не загружены" % f, b.type_id.is_empty() or not b.is_physics_processing())
 		b.free()
@@ -182,8 +182,8 @@ func zombies(m: Node2D, n: int) -> Array:
 	return out
 
 func t_combat() -> void:
-	print("бой героя (этап C)")
-	var m := make(1)
+	print("бой героя (этап C): автоатака — fixtures_hero/auto.json (auto_attack true, дальность 21, 2 цели, как в задаче 10)")
+	var m := make(1, FIX + "auto.json")
 	var h: int = m.hero_idx
 	var hp0: Vector2 = m.pos[h]
 	var z := zombies(m, 4)
@@ -222,7 +222,7 @@ func t_combat() -> void:
 	check("дальность 60 px (больше клетки %.0f): окно обхода расширено только для героя, цель в 55 px задета" % m.CELL_SIZE, m.hp[z[3]] < before)
 	m.free()
 	# Зомби бьют героя через общий механизм (цель — ближайший враг в окне); вдали от героя орда идёт к воротам.
-	var b := make(1)
+	var b := make(1, FIX + "auto.json")
 	b.hero_feed = func(_t): return Vector2.ZERO
 	var zb := zombies(b, 2)
 	for i in b.count:
@@ -355,7 +355,7 @@ func battle_run(feed: Callable) -> Array:
 	var hashes := []
 	for t in 30 * 40:
 		m._physics_process(DT)
-		log.append(m.hero_move)
+		log.append({"move": m.hero_move, "attack": m.hero_attack_in})
 		hashes.append(hash([m.count, m.pos.slice(0, m.count), m.hp.slice(0, m.count), m.cooldown.slice(0, m.count), m.gold, m.gate_hp, m.hero_idx]))
 	var out := [log, hashes, m.hero_swings, m.hero_kills, m.hero_deaths, m.wave_kills]
 	m.free()
@@ -363,14 +363,15 @@ func battle_run(feed: Callable) -> Array:
 
 func t_replay() -> void:
 	print("детерминизм: записанный ввод (этап G)")
-	# «Живой» ввод: смена направления по своему расписанию (как игрок), к орде и обратно.
-	var live := func(t: int) -> Vector2:
+	# «Живой» ввод: смена направления по своему расписанию (как игрок), к орде и обратно; удар J (задача 11) — то нажатие, то удержание.
+	var live := func(t: int) -> Dictionary:
+		var at := t % 7 == 0 or (t / 45) % 3 == 1
 		if t < 150:
-			return Vector2(0, -1)   # 5 с вверх — навстречу орде
-		return [Vector2(-1, 0), Vector2(1, -1), Vector2(1, 0), Vector2(0, 1), Vector2.ZERO, Vector2(-1, -1)][(t / 30) % 6]
+			return {"move": Vector2(0, -1) if t < 45 else Vector2.ZERO, "attack": at}   # 1.5 с вверх, затем ждёт орду и бьёт вверх
+		return {"move": [Vector2(-1, 0), Vector2(1, -1), Vector2(1, 0), Vector2(0, 1), Vector2.ZERO, Vector2(-1, -1)][(t / 30) % 6], "attack": at}
 	var a := battle_run(live)
 	var rec: Array = a[0]
-	var b := battle_run(func(t: int) -> Vector2: return rec[t - 1] if t - 1 < rec.size() else Vector2.ZERO)
+	var b := battle_run(func(t: int) -> Dictionary: return rec[t - 1] if t - 1 < rec.size() else {})
 	var first := -1
 	for t in a[1].size():
 		if a[1][t] != b[1][t]:

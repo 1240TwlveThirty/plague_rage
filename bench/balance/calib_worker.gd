@@ -36,6 +36,7 @@ const CYCLES := {"B1": [0, 2, 1, 3], "B2": [0, 2], "B3": [3], "B5": [0, 1], "B6"
 # B9 (задача 10): армия как у B7 (покупки, ремонт ворот ниже 60%, «держать» пехоте) плюс герой (hero_mode 1): раз в HERO_REPLAN тиков
 # бот выбирает скопление зомби — клетку HERO_BIN px с наибольшим числом зомби / (1 + расстояние / HERO_DIST_K) — и ведёт героя
 # к её центру масс; зомби нет — к точке появления. Только нижняя граница вклада героя. В конце строка HERO: удары, попадания, добито, смертей.
+# Задача 11 (ручной удар): бот держит J всё время (hold_repeat — удар по перезарядке), взгляд — по движению к цели.
 const HERO_BIN := 96.0
 const HERO_DIST_K := 300.0
 const HERO_REPLAN := 10
@@ -62,14 +63,14 @@ func hero_cluster(m: Node2D) -> Vector2:
 			goal = c
 	return goal
 
-# Ввод героя B9 на тик t (hero_feed): к цели, пересчёт раз в HERO_REPLAN тиков; в 6 px от цели — стоит.
-func hero_input(m: Node2D, t: int) -> Vector2:
+# Ввод героя B9 на тик t (hero_feed): к цели, пересчёт раз в HERO_REPLAN тиков; в 6 px от цели — стоит; удар удержанием.
+func hero_input(m: Node2D, t: int) -> Dictionary:
 	if m.hero_idx < 0:
-		return Vector2.ZERO
+		return {}
 	if t % HERO_REPLAN == 0 or hero_goal == Vector2.ZERO:
 		hero_goal = hero_cluster(m)
 	var d: Vector2 = hero_goal - m.pos[m.hero_idx]
-	return d.normalized() if d.length() > 6.0 else Vector2.ZERO
+	return {"move": d.normalized() if d.length() > 6.0 else Vector2.ZERO, "attack": true}
 # B8 (задача 8): как B7, но по кругу пехота, лучники, копейщики, лучники — половина «пехотных» покупок уходит на копейщиков; «держать» —
 # отрядам пехоты и копейщиков. --army spear (равный бюджет): стартовые 300 пехоты заменяются копейщиками на ту же цену (200 при цене
 # 3 против 2 золота за юнита), а «пехотные» покупки бота (товар 0) идут на копейщиков (товар 4). --hold off — бот не ставит «держать».
@@ -113,7 +114,7 @@ func _initialize() -> void:
 	m.active_gifts = gifts
 	if bot == "B9":
 		m.hero_mode = 1
-		m.hero_feed = func(t: int) -> Vector2: return hero_input(m, t)
+		m.hero_feed = func(t: int) -> Dictionary: return hero_input(m, t)
 	var rng := RandomNumberGenerator.new()   # генератор забега бенча: результат карточки 30, тройки и выбор бота; не ГСЧ симуляции
 	rng.seed = seed
 	if opt.has("--variants"):

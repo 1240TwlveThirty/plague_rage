@@ -56,7 +56,7 @@ func _run() -> void:
 		if ST.key_label(a) != defaults[a]:
 			bad.append("%s=%s" % [a, ST.key_label(a)])
 	check("клавиши по умолчанию прежние (InputMap из project.godot)", bad.is_empty(), ", ".join(bad))
-	check("переназначаемых действий 23 (с buy_spear, war_cry и движением героя move_*), у всех есть клавиша", ST.REBINDABLE.size() == 23 and ST.REBINDABLE.all(func(r): return ST.action_key(r) != KEY_NONE))
+	check("переназначаемых действий 24 (с buy_spear, war_cry, движением героя move_* и ударом hero_attack), у всех есть клавиша", ST.REBINDABLE.size() == 24 and ST.REBINDABLE.all(func(r): return ST.action_key(r) != KEY_NONE))
 
 	print("игра по действиям")
 	var m: Node2D = load("res://scenes/main.tscn").instantiate()
@@ -79,19 +79,19 @@ func _run() -> void:
 	check("Ctrl+A выбирает все, A без Ctrl — ничего", all_sel != 1 and m.sel_mask == 1, "%d %d" % [all_sel, m.sel_mask])
 
 	print("переназначение")
-	var r: Dictionary = st.rebind("squad_new", KEY_J)
-	check("N -> J: назначено без сообщения", r.ok and r.msg == "" and ST.key_label("squad_new") == "J")
+	var r: Dictionary = st.rebind("squad_new", KEY_O)
+	check("N -> O: назначено без сообщения", r.ok and r.msg == "" and ST.key_label("squad_new") == "O")
 	await step(1)
 	m._update_squad_panel()
-	check("кнопка «+ Отряд (J)» показывает новую клавишу", tr(m.action_buttons[0].text) == "+ Отряд (J)", m.action_buttons[0].text)
+	check("кнопка «+ Отряд (O)» показывает новую клавишу", tr(m.action_buttons[0].text) == "+ Отряд (O)", m.action_buttons[0].text)
 	n0 = used_squads(m)
 	m._unhandled_input(ev(KEY_N))
 	check("N больше не создаёт отряд", used_squads(m) == n0)
 	m._unhandled_input(ev(KEY_1))
-	m._unhandled_input(ev(KEY_J))
-	check("J создаёт отряд", used_squads(m) == n0 + 1)
+	m._unhandled_input(ev(KEY_O))
+	check("O создаёт отряд", used_squads(m) == n0 + 1)
 	r = st.rebind("squad_new", KEY_G)
-	check("J -> G (занята «Разделить»): обмен, сообщение", r.ok and r.msg != "" and ST.key_label("squad_new") == "G" and ST.key_label("squad_split") == "J", r.msg)
+	check("O -> G (занята «Разделить»): обмен, сообщение", r.ok and r.msg != "" and ST.key_label("squad_new") == "G" and ST.key_label("squad_split") == "O", r.msg)
 	r = st.rebind("buy_1", KEY_Q)
 	check("Q (постоянный приказ «атака»): отказ, клавиша прежняя", not r.ok and r.msg != "" and ST.key_label("buy_1") == "Z", r.msg)
 	r = st.rebind("buy_1", KEY_ESCAPE)
@@ -112,10 +112,10 @@ func _run() -> void:
 	m.wave_state = m.WS_RESPITE
 	var cfg := ConfigFile.new()
 	check("файл: секция input с новыми клавишами", cfg.load(st.path) == OK and cfg.get_value("input", "squad_new", "") == "G"
-		and cfg.get_value("input", "squad_split", "") == "J" and cfg.get_value("input", "buy_1", "") == "B" and cfg.get_value("input", "wave_start", "") == "L")
+		and cfg.get_value("input", "squad_split", "") == "O" and cfg.get_value("input", "buy_1", "") == "B" and cfg.get_value("input", "wave_start", "") == "L")
 	InputMap.load_from_project_settings()
 	st.load_settings()
-	check("«перезапуск»: клавиши из файла", ST.key_label("squad_new") == "G" and ST.key_label("squad_split") == "J" and ST.key_label("buy_1") == "B" and ST.key_label("wave_start") == "L")
+	check("«перезапуск»: клавиши из файла", ST.key_label("squad_new") == "G" and ST.key_label("squad_split") == "O" and ST.key_label("buy_1") == "B" and ST.key_label("wave_start") == "L")
 	print("кнопки мыши")
 	r = st.rebind_event("squad_new", mb(MOUSE_BUTTON_XBUTTON1))
 	check("«Новый отряд» -> Мышь 4", r.ok and ST.key_label("squad_new") == "Мышь 4", ST.key_label("squad_new"))
@@ -127,7 +127,7 @@ func _run() -> void:
 	m._unhandled_input(mb(MOUSE_BUTTON_XBUTTON2, true))
 	check("Мышь 5 без привязки: ничего", used_squads(m) == n0 + 1)
 	r = st.rebind_event("squad_split", mb(MOUSE_BUTTON_XBUTTON1))
-	check("Мышь 4 у «Разделить»: обмен с «Новый отряд» (получает J)", r.ok and r.msg != "" and ST.key_label("squad_split") == "Мышь 4" and ST.key_label("squad_new") == "J", r.msg)
+	check("Мышь 4 у «Разделить»: обмен с «Новый отряд» (получает O)", r.ok and r.msg != "" and ST.key_label("squad_split") == "Мышь 4" and ST.key_label("squad_new") == "O", r.msg)
 	r = st.rebind_event("buy_1", mb(MOUSE_BUTTON_LEFT))
 	r2 = st.rebind_event("buy_1", mb(MOUSE_BUTTON_RIGHT))
 	check("ЛКМ и ПКМ: отказ", not r.ok and not r2.ok and ST.key_label("buy_1") == "B")
@@ -155,8 +155,8 @@ func _run() -> void:
 	var titles := []
 	for t in sm.tabs.get_tab_count():
 		titles.append(tr(sm.tabs.get_tab_title(t)))
-	check("вкладки «Видео», «Звук», «Управление», «Язык»; строк 22 (buy_spear скрыт: копейщики выключены в данных, задача 9; +4 движения героя, задача 10), кнопка «Сбросить»", titles == ["Видео", "Звук", "Управление", "Язык"]
-		and sm.key_buttons.size() == 22 and not sm.key_buttons.has("buy_spear") and sm.reset_keys_button != null, str(titles))
+	check("вкладки «Видео», «Звук», «Управление», «Язык»; строк 23 (buy_spear скрыт: копейщики выключены в данных, задача 9; +4 движения героя, задача 10; +удар героя, задача 11), кнопка «Сбросить»", titles == ["Видео", "Звук", "Управление", "Язык"]
+		and sm.key_buttons.size() == 23 and not sm.key_buttons.has("buy_spear") and sm.reset_keys_button != null, str(titles))
 	sm.key_buttons["buy_2"].pressed.emit()
 	check("клик по строке: ждёт клавишу", sm.waiting_action == "buy_2" and sm.key_buttons["buy_2"].text.begins_with("Нажмите"))
 	root.push_input(ev(KEY_ESCAPE))
