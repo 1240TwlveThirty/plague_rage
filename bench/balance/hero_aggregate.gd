@@ -1,8 +1,9 @@
 extends SceneTree
-# Замер героя v1 (задача 10): bench/balance/hero_v1_runs/ -> bench/hero_v1.txt. Аргумент: секунды прогона.
+# Замер героя v1 (задача 10): bench/balance/hero_v1_runs/ -> bench/hero_v1.txt. Аргументы: секунды прогона [версия v1|v2].
+# v2 (задача 11): то же с ручным ударом — бот B9 держит J (удар сектором по перезарядке), папка hero_v2_runs, итог bench/hero_v2.txt.
 # Метрика — непрерывная волна смерти (волна + доля убитых волны смерти, не больше 0.99), как в абляциях; медиана и среднее по seed 1-10,
 # разница B9 − B7 на каждом seed. Строка HERO воркера: ударов, попаданий, добито героем, смертей героя.
-const DIR := "res://bench/balance/hero_v1_runs/"
+var DIR := "res://bench/balance/hero_v1_runs/"
 const SEEDS := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 func death(name: String) -> float:
@@ -40,8 +41,11 @@ func _initialize() -> void:
 		root.get_node("Game").free()
 	var args := OS.get_cmdline_user_args()
 	var secs := int(args[0]) if args.size() > 0 else 0
-	var L: Array[String] = ["hero_v1: герой — B7 (без героя) против B9 (B7 + герой, бот ведёт его к ближайшему скоплению зомби) (задача 10, этап F). Только измерения.",
-		"Пересчёт (из корня проекта):  sh bench/balance/hero_v1_run.sh \"<путь к godot.exe>\"; время прогона %d мин %02d с, 20 забегов." % [secs / 60, secs % 60],
+	var ver: String = args[1] if args.size() > 1 else "v1"
+	DIR = "res://bench/balance/hero_%s_runs/" % ver
+	var what := "бот ведёт его к ближайшему скоплению зомби) (задача 10, этап F)" if ver == "v1" else 		"бот ведёт его к ближайшему скоплению зомби и держит J — ручной удар сектором) (задача 11)"
+	var L: Array[String] = ["hero_%s: герой — B7 (без героя) против B9 (B7 + герой, %s. Только измерения." % [ver, what],
+		"Пересчёт (из корня проекта):  sh bench/balance/hero_%s_run.sh \"<путь к godot.exe>\"; время прогона %d мин %02d с, 20 забегов." % [ver, secs / 60, secs % 60],
 		"Метрика — непрерывная волна смерти (волна + доля убитых), seed 1-10, осада I, без даров и карточек. B9 — нижняя граница вклада героя:",
 		"бот не уклоняется, не отступает и не выбирает момент, герой гибнет в каждой волне.", "",
 		"  seed | B7    | B9    | B9 − B7 | герой B9: ударов / попаданий / добито / смертей"]
@@ -68,7 +72,7 @@ func _initialize() -> void:
 	L.append("  медиана: B7 %.2f, B9 %.2f (сдвиг медиан %+.2f); среднее: B7 %.2f, B9 %.2f; разница по seed: медиана %+.2f, среднее %+.2f" % [sa[0], sb[0], sb[0] - sa[0], sa[1], sb[1], sd[0], sd[1]])
 	L.append("  B9 лучше на %d seed, хуже на %d, равно на %d" % [better, worse, SEEDS.size() - better - worse])
 	L.append("  герой за забег в среднем: ударов %.1f, попаданий %.1f, добито %.1f, смертей %.1f" % [tot[0] / 10.0, tot[1] / 10.0, tot[2] / 10.0, tot[3] / 10.0])
-	var f := FileAccess.open("res://bench/hero_v1.txt", FileAccess.WRITE)
+	var f := FileAccess.open("res://bench/hero_%s.txt" % ver, FileAccess.WRITE)
 	f.store_string("\n".join(L) + "\n")
 	f.close()
 	for l in L:
