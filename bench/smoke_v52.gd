@@ -48,7 +48,7 @@ func _run() -> void:
 	g.save_path = DIR + "/save.json"
 	g._setup()
 	check("шины Music и SFX есть, мастер под тестом приглушён", AudioServer.get_bus_index("Music") > 0 and AudioServer.get_bus_index("SFX") > 0 and AudioServer.is_bus_mute(0))
-	check("audio.json: 10 звуков, переход 1.5–2 с, pickupCoin не используется", au.sounds.size() == 10 and au.crossfade >= 1.5 and au.crossfade <= 2.0
+	check("audio.json: 11 звуков (с hero_swing, задача 11), переход 1.5–2 с, pickupCoin не используется", au.sounds.size() == 11 and au.crossfade >= 1.5 and au.crossfade <= 2.0
 		and not au.sounds.has("pickupCoin"), "%d, %.2f" % [au.sounds.size(), au.crossfade])
 	au.test_theme_len = THEME_LEN
 	au.crossfade = CROSSFADE

@@ -699,6 +699,19 @@ var hero_view: Node2D          # герой на экране: кольцо-ма
 var hero_sprite: Sprite2D
 var hero_drawn := Vector2(-1.0, -1.0)   # HP и зум, с которыми маркер нарисован (перерисовка только при смене)
 const HERO_RING_PX := 20.0     # радиус кольца на экране, px — постоянный при любом зуме камеры
+# Обратная связь на удар (задача 11; только отрисовка, время кадра — не тики и не ГСЧ симуляции): дуга-вспышка (hero.json arc_fx_color,
+# arc_fx_time), выпад героя вперёд, звук hero_swing, мигание белым задетых зомби.
+const HERO_LUNGE_PX := 2.0      # выпад героя по взгляду в начале вспышки, px мира (к её концу — 0)
+const HERO_FX_GROW_PX := 2.5    # кромка дуги расширяется наружу за вспышку, px мира
+const HERO_FX_GLOW_PX := 3.0    # свечение — шире основного сектора на столько px и на HERO_FX_GLOW_ANG по краям
+const HERO_FX_GLOW_ANG := 0.08
+const HIT_FLASH_FRAMES := 2     # задетые зомби белые столько кадров (custom.y инстанса, шейдер MultiMesh)
+var hero_fx: Node2D             # дуга-вспышка (_draw_hero_fx): над юнитами, под спрайтом героя; null в бенчах без дерева
+var hero_fx_seen := 0           # hero_swing_n, вспышка которого уже начата
+var hero_fx_age := -1.0         # с от начала вспышки (сумма delta кадров); < 0 — вспышки нет
+var hero_fx_ang := 0.0
+var hero_flash_left := 0        # кадров мигания задетых осталось
+var hero_flash_slots := PackedInt32Array()   # ячейки буфера, где мигание включено (в следующем кадре сбрасываются)
 var hero_swings := 0   # статистика героя за забег: ударов (с хоть одной целью), попаданий, добитых им зомби, смертей
 var hero_hits := 0
 var hero_kills := 0
@@ -3476,6 +3489,11 @@ func _spawn_hero(frac: float) -> void:
 
 # Нода героя: спрайт (hero.json sprite; нет файла — квадрат цвета маркера) размером size_scale от юнита (SPRITE_PX), nearest.
 func _setup_hero_view() -> void:
+	hero_fx = Node2D.new()   # дуга удара: тот же слой, что герой (над юнитами и замком, ниже интерфейса), раньше в дереве — под спрайтом
+	hero_fx.visible = false
+	hero_fx.z_index = LEAF_Z + 1
+	add_child(hero_fx)
+	hero_fx.draw.connect(_draw_hero_fx)
 	hero_view = Node2D.new()
 	hero_view.visible = false
 	hero_view.z_index = LEAF_Z + 1   # над юнитами и над слоями замка и листвы (у ворот стена закрыла бы героя), ниже интерфейса
@@ -3519,11 +3537,80 @@ func _update_hero_view(frac: float, have_prev: bool) -> void:
 		return
 	var h := hero_idx
 	hero_view.position = prev_pos[h].lerp(pos[h], frac) if have_prev else pos[h]
+	hero_fx.position = hero_view.position
+	if hero_fx_age >= 0.0:   # выпад: вперёд по направлению удара, к концу вспышки — на место
+		hero_view.position += Vector2.from_angle(hero_fx_ang) * HERO_LUNGE_PX * (1.0 - hero_fx_age / float(hero_cfg.arc_fx_time))
 	hero_sprite.flip_h = hero_face < 0.0
 	var key := Vector2(hp[h], camera.zoom.x if camera != null else 1.0)
 	if key != hero_drawn:
 		hero_drawn = key
 		hero_view.queue_redraw()
+
+
+# Кадр эффектов удара (до записи буфера MultiMesh): новый удар (hero_swing_n) — вспышка, звук, мигание задетых; вспышка живёт
+# arc_fx_time по времени кадра. Мигание — custom.y ячеек задетых зомби (в тот же индекс и рядом с позицией удара: после _remove_dead
+# на индекс мог встать другой юнит), через HIT_FLASH_FRAMES кадров сбрасывается. Горячий цикл отрисовки не меняется.
+func _hero_fx_frame(delta: float) -> void:
+	for j in hero_flash_slots:
+		buf[j * FLOATS_PER_UNIT + 13] = 0.0
+	hero_flash_slots.clear()
+	if hero_swing_n != hero_fx_seen:
+		hero_fx_seen = hero_swing_n
+		hero_fx_age = 0.0
+		hero_fx_ang = hero_swing_ang
+		hero_flash_left = HIT_FLASH_FRAMES
+		var au := get_node_or_null("/root/Audio")
+		if au != null:
+			au.play_sfx("hero_swing")
+	elif hero_fx_age >= 0.0:
+		hero_fx_age += delta
+		if hero_fx_age >= hero_cfg.arc_fx_time:
+			hero_fx_age = -1.0
+	if hero_flash_left > 0:
+		hero_flash_left -= 1
+		for n in hero_hit_idx.size():
+			var j := hero_hit_idx[n]
+			if j < count and team[j] == 1 and pos[j].distance_squared_to(hero_hit_pos[n]) < 64.0:
+				buf[j * FLOATS_PER_UNIT + 13] = 1.0
+				hero_flash_slots.append(j)
+	hero_fx.visible = hero_fx_age >= 0.0
+	if hero_fx.visible:
+		hero_fx.queue_redraw()
+
+
+# Сектор радиуса r вокруг направления ang, полуугол half (рад): центр и точки дуги; полный круг — без центра.
+func _sector(r: float, ang: float, half: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var full := half >= PI - 0.001
+	if not full:
+		pts.append(Vector2.ZERO)
+	var n := 24 if full else 16
+	for k in n + (0 if full else 1):
+		pts.append(Vector2.from_angle(ang - half + 2.0 * half * k / n) * r)
+	return pts
+
+
+# Дуга-вспышка удара: свечение (шире и прозрачнее) под полупрозрачной заливкой цвета arc_fx_color, поверх — яркая кромка по внешней
+# дуге (расширяется на HERO_FX_GROW_PX) и две боковые линии сектора; альфа плавно гаснет за arc_fx_time. Размер — arc_range, arc_angle.
+func _draw_hero_fx() -> void:
+	if hero_fx_age < 0.0:
+		return
+	var e := clampf(hero_fx_age / float(hero_cfg.arc_fx_time), 0.0, 1.0)
+	var a := 1.0 - e * e * (3.0 - 2.0 * e)
+	var col := Color(hero_cfg.arc_fx_color)
+	var edge := col.lerp(Color.WHITE, 0.6)
+	var r: float = hero_cfg.arc_range
+	var half := minf(deg_to_rad(float(hero_cfg.arc_angle)) * 0.5, PI)
+	var grow := HERO_FX_GROW_PX * e
+	var ang := hero_fx_ang
+	var full := half >= PI - 0.001
+	hero_fx.draw_colored_polygon(_sector(r + HERO_FX_GLOW_PX + grow, ang, minf(half + HERO_FX_GLOW_ANG, PI)), Color(col, 0.16 * a))
+	hero_fx.draw_colored_polygon(_sector(r, ang, half), Color(col, 0.38 * a))
+	hero_fx.draw_arc(Vector2.ZERO, r + grow, ang - half, ang + half, 24, Color(edge, 0.3 * a), 4.0)   # ореол кромки
+	hero_fx.draw_arc(Vector2.ZERO, r + grow, ang - half, ang + half, 24, Color(edge, 0.95 * a), 1.5)
+	if not full:
+		for sd in [-1.0, 1.0]:
+			hero_fx.draw_line(Vector2.ZERO, Vector2.from_angle(ang + sd * half) * (r + grow), Color(edge, 0.8 * a), 1.0)
 
 
 # Командир пал в бою: приказы (клавиши, ПКМ, Клич, построения) не принимаются до конца волны; выбор, пауза и камера работают.
@@ -3941,9 +4028,9 @@ func _setup_rendering() -> void:
 		buf[o + 12] = cell_white
 
 	# Шейдер: UV квадрата сдвигается в ячейку атласа custom.x; цвет инстанса умножается как обычно
-	# (спрайт — белый, квадрат — цвет типа по белой ячейке).
+	# (спрайт — белый, квадрат — цвет типа по белой ячейке). custom.y — мигание белым (удар героя, задача 11): 0 — как было, 1 — белый силуэт.
 	var shader := Shader.new()
-	shader.code = "shader_type canvas_item;\nuniform float cells = 1.0;\nvoid vertex() {\n\tUV.x = (UV.x + INSTANCE_CUSTOM.x) / cells;\n}\n"
+	shader.code = "shader_type canvas_item;\nuniform float cells = 1.0;\nvarying float flash;\nvoid vertex() {\n\tUV.x = (UV.x + INSTANCE_CUSTOM.x) / cells;\n\tflash = INSTANCE_CUSTOM.y;\n}\nvoid fragment() {\n\tCOLOR.rgb = mix(COLOR.rgb, vec3(1.0), flash);\n}\n"
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
 	mat.set_shader_parameter("cells", float(atlas_cells))
@@ -4750,6 +4837,8 @@ func _process(delta: float) -> void:
 		buf[o + 9] = c.g
 		buf[o + 10] = c.b
 		buf[o + 12] = cell_white
+	if hero_view != null:
+		_hero_fx_frame(delta)   # вспышка удара и мигание задетых (до записи буфера)
 	multimesh.visible_instance_count = count
 	multimesh.buffer = buf          # один вызов вместо UNIT_COUNT
 	if hero_view != null:

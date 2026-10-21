@@ -28,7 +28,7 @@ const ACTION_KEYS := ["squad_new", "squad_split", "squad_merge"]
 const KEY_ACTIONS := ["select_all", "debug_restart", "squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4",
 	"squad_select_5", "squad_select_6", "squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side",
 	"wave_start", "buy_1", "buy_2", "buy_3", "buy_4", "order_attack", "order_hold", "order_retreat", "about_face", "banner_toggle",
-	"auto_width", "pause", "post_left", "post_top", "post_right", "post_back", "war_cry", "buy_spear"]
+	"auto_width", "pause", "post_left", "post_top", "post_right", "post_back", "war_cry", "buy_spear", "hero_attack"]
 const ROWS_MAX := 20       # строй не глубже: при большом отряде растёт ширина
 const WIDTH_MAX := 100     # и не шире
 const WAVE_DMG_TO_UNITS := true   # урон зомби по юнитам растёт с волной (team_dmg_mult[1])
@@ -680,8 +680,18 @@ var hero_on := false         # герой в этом бою; без него н
 var hero_type := -1
 var hero_idx := -1           # индекс героя в массивах юнитов; -1 — нет (выключен или пал); переносится в _remove_dead
 var hero_move := Vector2.ZERO   # ввод движения этого тика (длина не больше 1), читается раз в тик в _physics_process
-var hero_feed := Callable()     # тесты и бот: func(тик) -> Vector2 вместо клавиатуры (записанная последовательность ввода)
-var hero_face := 1.0            # взгляд спрайта по x: 1 — вправо, -1 — влево (только отрисовка)
+var hero_attack_in := false     # ввод удара этого тика (J нажата с прошлого тика или удерживается при hold_repeat)
+var hero_face_in := NAN         # взгляд из ввода этого тика (hero_feed "face", рад); NAN — по движению
+# Тесты и бот: func(тик) вместо клавиатуры (записанная последовательность ввода). Возвращает Vector2 (только движение) или
+# Dictionary {"move": Vector2, "attack": bool, "face": угол в рад — необязательно, без него взгляд по движению}.
+var hero_feed := Callable()
+var hero_face := 1.0            # взгляд спрайта по x: 1 — вправо, -1 — влево (только отрисовка, по hero_face_ang)
+var hero_face_ang := -PI / 2.0  # направление взгляда героя (рад, состояние симуляции): удар — сектор вокруг него; старт — вверх, к зомби
+var hero_attack_latch := false  # J нажата между тиками (событие): попадёт во ввод ближайшего тика, короткое нажатие не теряется
+var hero_swing_n := 0           # всех ударов героя, и мимо (эффекты по кадрам замечают новый удар)
+var hero_swing_ang := 0.0       # направление последнего удара (рад)
+var hero_hit_idx := PackedInt32Array()     # зомби, задетые последним ударом (их индексы и позиции на тот тик): мигание белым
+var hero_hit_pos := PackedVector2Array()
 const HERO_SPAWN := Vector2(1010.0, 680.0)   # у ворот над стеной (GATE_POS.x, WALL_Y - 65; ниже — на зубцах стены): появление и возрождение
 var hero_dead := false   # герой пал в этой волне: приказы заблокированы до её конца, в начале передышки — возрождение
 var hero_fallen_label: Label   # «Командир пал» в HUD
@@ -689,6 +699,19 @@ var hero_view: Node2D          # герой на экране: кольцо-ма
 var hero_sprite: Sprite2D
 var hero_drawn := Vector2(-1.0, -1.0)   # HP и зум, с которыми маркер нарисован (перерисовка только при смене)
 const HERO_RING_PX := 20.0     # радиус кольца на экране, px — постоянный при любом зуме камеры
+# Обратная связь на удар (задача 11; только отрисовка, время кадра — не тики и не ГСЧ симуляции): дуга-вспышка (hero.json arc_fx_color,
+# arc_fx_time), выпад героя вперёд, звук hero_swing, мигание белым задетых зомби.
+const HERO_LUNGE_PX := 2.0      # выпад героя по взгляду в начале вспышки, px мира (к её концу — 0)
+const HERO_FX_GROW_PX := 2.5    # кромка дуги расширяется наружу за вспышку, px мира
+const HERO_FX_GLOW_PX := 3.0    # свечение — шире основного сектора на столько px и на HERO_FX_GLOW_ANG по краям
+const HERO_FX_GLOW_ANG := 0.08
+const HIT_FLASH_FRAMES := 2     # задетые зомби белые столько кадров (custom.y инстанса, шейдер MultiMesh)
+var hero_fx: Node2D             # дуга-вспышка (_draw_hero_fx): над юнитами, под спрайтом героя; null в бенчах без дерева
+var hero_fx_seen := 0           # hero_swing_n, вспышка которого уже начата
+var hero_fx_age := -1.0         # с от начала вспышки (сумма delta кадров); < 0 — вспышки нет
+var hero_fx_ang := 0.0
+var hero_flash_left := 0        # кадров мигания задетых осталось
+var hero_flash_slots := PackedInt32Array()   # ячейки буфера, где мигание включено (в следующем кадре сбрасываются)
 var hero_swings := 0   # статистика героя за забег: ударов (с хоть одной целью), попаданий, добитых им зомби, смертей
 var hero_hits := 0
 var hero_kills := 0
@@ -1721,9 +1744,10 @@ func _apply_wave_data() -> void:
 	type_cd_floor[infantry_type] = -CD_CARRY if inf_on else 0.0
 	type_cd_floor[spearman_type] = -CD_CARRY if spear_on else 0.0
 	type_cd_floor[archer_type] = -CD_CARRY if arch_on else 0.0
-	if hero_type >= 0:   # герой: attack_rate all_units; решает каждый тик — интервал без округления до 2 тиков, перенос до 1 тика
-		cd_new[hero_type] = base_type_cooldown[hero_type] / (1.0 + rate_all) if ar_all else base_type_cooldown[hero_type]
-		type_cd_floor[hero_type] = -1.0 / 30.0 if ar_all else 0.0
+	if hero_type >= 0:   # герой: attack_rate all_units и «Оружие»; решает каждый тик — интервал без округления до 2 тиков, перенос до 1 тика
+		var hero_rate := (1.0 + rate_all) * wrate
+		cd_new[hero_type] = base_type_cooldown[hero_type] / hero_rate if ar_all or w_on else base_type_cooldown[hero_type]
+		type_cd_floor[hero_type] = -1.0 / 30.0 if ar_all or w_on else 0.0
 	var bounty: float = mods.get_mult("bounty", "player")
 	for t in bounty_new.size():
 		bounty_new[t] *= bounty
@@ -2994,6 +3018,7 @@ func _set_paused(v: bool) -> void:
 	if v == paused:
 		return
 	paused = v
+	hero_attack_latch = false   # нажатие J до паузы не исполняется после неё
 	if paused:
 		prev_pos = pos.duplicate()
 	if pause_label != null:
@@ -3407,23 +3432,27 @@ func _load_hero() -> bool:
 	var d = _load_json(hero_path)
 	if d == null:
 		return false
-	if not d is Dictionary or not d.get("enabled") is bool or not d.get("label") is String or not d.get("sprite") is String 			or not d.get("marker_color") is String or not Color.html_is_valid(d.marker_color):
-		push_error("%s: нужен JSON-объект с enabled (bool), label, sprite и marker_color (hex)" % hero_path)
+	if not d is Dictionary or not d.get("enabled") is bool or not d.get("auto_attack") is bool or not d.get("hold_repeat") is bool \
+			or not d.get("label") is String or not d.get("sprite") is String or not d.get("marker_color") is String or not Color.html_is_valid(d.marker_color) \
+			or not d.get("arc_fx_color") is String or not Color.html_is_valid(d.arc_fx_color):
+		push_error("%s: нужен JSON-объект с enabled, auto_attack, hold_repeat (bool), label, sprite, marker_color и arc_fx_color (hex)" % hero_path)
 		return false
-	if not _require_numbers(d, ["hp", "speed", "damage", "attack_interval", "attack_range", "targets_per_swing", "size_scale", "revive_hp_fraction"], hero_path):
+	if not _require_numbers(d, ["hp", "speed", "damage", "attack_interval", "arc_angle", "arc_range", "max_targets", "arc_fx_time", "size_scale",
+			"revive_hp_fraction"], hero_path):
 		return false
-	if d.hp <= 0.0 or d.speed <= 0.0 or d.damage < 0.0 or d.attack_interval <= 0.0 or d.attack_range <= 0.0 or d.size_scale <= 0.0 			or not _is_whole(d.targets_per_swing) or d.targets_per_swing < 1 or d.revive_hp_fraction <= 0.0 or d.revive_hp_fraction > 1.0:
-		push_error("%s: hp, speed, attack_interval, attack_range, size_scale больше 0; targets_per_swing целое от 1; revive_hp_fraction в (0, 1]" % hero_path)
+	if d.hp <= 0.0 or d.speed <= 0.0 or d.damage < 0.0 or d.attack_interval <= 0.0 or d.arc_range <= 0.0 or d.arc_angle <= 0.0 or d.arc_angle > 360.0 \
+			or d.size_scale <= 0.0 or d.arc_fx_time <= 0.0 or not _is_whole(d.max_targets) or d.max_targets < 0 or d.revive_hp_fraction <= 0.0 or d.revive_hp_fraction > 1.0:
+		push_error("%s: hp, speed, attack_interval, arc_range, arc_fx_time, size_scale больше 0; arc_angle в (0, 360]; max_targets целое от 0 (0 — без лимита); revive_hp_fraction в (0, 1]" % hero_path)
 		return false
 	hero_cfg = d
 	hero_on = hero_mode == 1 or (hero_mode == 0 and d.enabled and _game() != null)
 	return true
 
 
-# Запись типа героя в формате unit_types.json. speed (px/с) и attack_range (px) в hero.json — уже мировые: делятся на масштаб,
+# Запись типа героя в формате unit_types.json. speed (px/с) и arc_range (px) в hero.json — уже мировые: делятся на масштаб,
 # чтобы _scaled вернул их как есть. Щита нет (block_mult 1.0), награды нет, ГСЧ и поводка нет.
 func _hero_type_entry() -> Dictionary:
-	return {"name": "hero", "label": hero_cfg.label, "hp": hero_cfg.hp, "damage": hero_cfg.damage, "range": hero_cfg.attack_range / SCALE_REL,
+	return {"name": "hero", "label": hero_cfg.label, "hp": hero_cfg.hp, "damage": hero_cfg.damage, "range": hero_cfg.arc_range / SCALE_REL,
 		"cooldown": hero_cfg.attack_interval, "speed": hero_cfg.speed / SPEED_REL, "block_mult": 1.0, "leash_start": 100000.0, "leash_end": 100000.0,
 		"color": hero_cfg.marker_color, "range_far": 0.0, "volley_period": 0.0, "draw_time": 0.0, "spread": 0.0, "arrow_dmg": 0.0, "bounty_mult": 0.0,
 		"chase": 1, "sprite": "", "recoil_px": 0.0}
@@ -3455,10 +3484,16 @@ func _spawn_hero(frac: float) -> void:
 	unit_shot_t[i] = 0.0
 	unit_dir[i] = 0
 	hero_face = 1.0
+	hero_face_ang = -PI / 2.0   # вверх, к зомби
 
 
 # Нода героя: спрайт (hero.json sprite; нет файла — квадрат цвета маркера) размером size_scale от юнита (SPRITE_PX), nearest.
 func _setup_hero_view() -> void:
+	hero_fx = Node2D.new()   # дуга удара: тот же слой, что герой (над юнитами и замком, ниже интерфейса), раньше в дереве — под спрайтом
+	hero_fx.visible = false
+	hero_fx.z_index = LEAF_Z + 1
+	add_child(hero_fx)
+	hero_fx.draw.connect(_draw_hero_fx)
 	hero_view = Node2D.new()
 	hero_view.visible = false
 	hero_view.z_index = LEAF_Z + 1   # над юнитами и над слоями замка и листвы (у ворот стена закрыла бы героя), ниже интерфейса
@@ -3502,6 +3537,9 @@ func _update_hero_view(frac: float, have_prev: bool) -> void:
 		return
 	var h := hero_idx
 	hero_view.position = prev_pos[h].lerp(pos[h], frac) if have_prev else pos[h]
+	hero_fx.position = hero_view.position
+	if hero_fx_age >= 0.0:   # выпад: вперёд по направлению удара, к концу вспышки — на место
+		hero_view.position += Vector2.from_angle(hero_fx_ang) * HERO_LUNGE_PX * (1.0 - hero_fx_age / float(hero_cfg.arc_fx_time))
 	hero_sprite.flip_h = hero_face < 0.0
 	var key := Vector2(hp[h], camera.zoom.x if camera != null else 1.0)
 	if key != hero_drawn:
@@ -3509,40 +3547,138 @@ func _update_hero_view(frac: float, have_prev: bool) -> void:
 		hero_view.queue_redraw()
 
 
+# Кадр эффектов удара (до записи буфера MultiMesh): новый удар (hero_swing_n) — вспышка, звук, мигание задетых; вспышка живёт
+# arc_fx_time по времени кадра. Мигание — custom.y ячеек задетых зомби (в тот же индекс и рядом с позицией удара: после _remove_dead
+# на индекс мог встать другой юнит), через HIT_FLASH_FRAMES кадров сбрасывается. Горячий цикл отрисовки не меняется.
+func _hero_fx_frame(delta: float) -> void:
+	for j in hero_flash_slots:
+		buf[j * FLOATS_PER_UNIT + 13] = 0.0
+	hero_flash_slots.clear()
+	if hero_swing_n != hero_fx_seen:
+		hero_fx_seen = hero_swing_n
+		hero_fx_age = 0.0
+		hero_fx_ang = hero_swing_ang
+		hero_flash_left = HIT_FLASH_FRAMES
+		var au := get_node_or_null("/root/Audio")
+		if au != null:
+			au.play_sfx("hero_swing")
+	elif hero_fx_age >= 0.0:
+		hero_fx_age += delta
+		if hero_fx_age >= hero_cfg.arc_fx_time:
+			hero_fx_age = -1.0
+	if hero_flash_left > 0:
+		hero_flash_left -= 1
+		for n in hero_hit_idx.size():
+			var j := hero_hit_idx[n]
+			if j < count and team[j] == 1 and pos[j].distance_squared_to(hero_hit_pos[n]) < 64.0:
+				buf[j * FLOATS_PER_UNIT + 13] = 1.0
+				hero_flash_slots.append(j)
+	hero_fx.visible = hero_fx_age >= 0.0
+	if hero_fx.visible:
+		hero_fx.queue_redraw()
+
+
+# Сектор радиуса r вокруг направления ang, полуугол half (рад): центр и точки дуги; полный круг — без центра.
+func _sector(r: float, ang: float, half: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var full := half >= PI - 0.001
+	if not full:
+		pts.append(Vector2.ZERO)
+	var n := 24 if full else 16
+	for k in n + (0 if full else 1):
+		pts.append(Vector2.from_angle(ang - half + 2.0 * half * k / n) * r)
+	return pts
+
+
+# Дуга-вспышка удара: свечение (шире и прозрачнее) под полупрозрачной заливкой цвета arc_fx_color, поверх — яркая кромка по внешней
+# дуге (расширяется на HERO_FX_GROW_PX) и две боковые линии сектора; альфа плавно гаснет за arc_fx_time. Размер — arc_range, arc_angle.
+func _draw_hero_fx() -> void:
+	if hero_fx_age < 0.0:
+		return
+	var e := clampf(hero_fx_age / float(hero_cfg.arc_fx_time), 0.0, 1.0)
+	var a := 1.0 - e * e * (3.0 - 2.0 * e)
+	var col := Color(hero_cfg.arc_fx_color)
+	var edge := col.lerp(Color.WHITE, 0.6)
+	var r: float = hero_cfg.arc_range
+	var half := minf(deg_to_rad(float(hero_cfg.arc_angle)) * 0.5, PI)
+	var grow := HERO_FX_GROW_PX * e
+	var ang := hero_fx_ang
+	var full := half >= PI - 0.001
+	hero_fx.draw_colored_polygon(_sector(r + HERO_FX_GLOW_PX + grow, ang, minf(half + HERO_FX_GLOW_ANG, PI)), Color(col, 0.16 * a))
+	hero_fx.draw_colored_polygon(_sector(r, ang, half), Color(col, 0.38 * a))
+	hero_fx.draw_arc(Vector2.ZERO, r + grow, ang - half, ang + half, 24, Color(edge, 0.3 * a), 4.0)   # ореол кромки
+	hero_fx.draw_arc(Vector2.ZERO, r + grow, ang - half, ang + half, 24, Color(edge, 0.95 * a), 1.5)
+	if not full:
+		for sd in [-1.0, 1.0]:
+			hero_fx.draw_line(Vector2.ZERO, Vector2.from_angle(ang + sd * half) * (r + grow), Color(edge, 0.8 * a), 1.0)
+
+
 # Командир пал в бою: приказы (клавиши, ПКМ, Клич, построения) не принимаются до конца волны; выбор, пауза и камера работают.
 func _orders_locked() -> bool:
 	return hero_dead and wave_state == WS_BATTLE
 
 
-# Ввод движения героя: hero_feed (тесты, бот) или действия move_* InputMap (WASD по умолчанию). Диагональ — длина 1.
-func _hero_input() -> Vector2:
+# Ввод героя на этот тик (раз в тик симуляции): hero_feed (тесты, бот) или клавиатура — движение move_* (WASD по умолчанию;
+# с зажатым Ctrl не читается: Ctrl+A — «выбрать все», а не шаг влево), удар hero_attack (J): нажатие с прошлого тика
+# (hero_attack_latch) или удержание при hold_repeat. Диагональ — длина 1.
+func _hero_input() -> void:
 	var v := Vector2.ZERO
+	hero_attack_in = false
+	hero_face_in = NAN
 	if hero_feed.is_valid():
-		v = hero_feed.call(tick_counter)
+		var f = hero_feed.call(tick_counter)
+		if f is Dictionary:
+			v = f.get("move", Vector2.ZERO)
+			hero_attack_in = f.get("attack", false)
+			hero_face_in = float(f.get("face", NAN))
+		else:
+			v = f
 	elif is_inside_tree() and not _run_over() and InputMap.has_action("move_up"):
-		v = Vector2(Input.get_action_strength("move_right") - Input.get_action_strength("move_left"),
-			Input.get_action_strength("move_down") - Input.get_action_strength("move_up"))
-	return v.normalized() if v.length_squared() > 1.0 else v
+		if not (Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)):
+			v = Vector2(Input.get_action_strength("move_right") - Input.get_action_strength("move_left"),
+				Input.get_action_strength("move_down") - Input.get_action_strength("move_up"))
+		hero_attack_in = hero_attack_latch or (hero_cfg.hold_repeat and InputMap.has_action("hero_attack") and Input.is_action_pressed("hero_attack"))
+	hero_attack_latch = false
+	hero_move = v.normalized() if v.length_squared() > 1.0 else v
 
 
-# Тик героя: скорость из ввода (ход и границы — общий _move_units: поле и пол у стены, как у юнитов) и автоатака:
-# раз в интервал удара — до targets_per_swing ближайших живых зомби в attack_range, все одним ударом. Поиск — по мелкой сетке
-# этого тика: окно ±ceil(attack_range / CELL_SIZE) клеток (при дальности до CELL_SIZE — те же 3x3, что у юнитов).
+# Тик героя: скорость из ввода (ход и границы — общий _move_units: поле и пол у стены, как у юнитов), взгляд — по вводу "face"
+# или по движению (в покое — прежний), удар. Ручной (по умолчанию): ввод удара и перезарядка прошла — удар сектором (_hero_swing),
+# и мимо. Автоатака (auto_attack true, задача 10): раз в интервал — ближайшие живые зомби в arc_range по кругу, если они есть.
 func _update_hero(delta: float) -> void:
 	var h := hero_idx
 	vel[h] = hero_move * type_speed[hero_type]
-	if hero_move.x != 0.0:
-		hero_face = signf(hero_move.x)
+	if not is_nan(hero_face_in):
+		hero_face_ang = hero_face_in
+	elif hero_move != Vector2.ZERO:
+		hero_face_ang = hero_move.angle()
+	var fx := cos(hero_face_ang)
+	if absf(fx) > 0.01:
+		hero_face = signf(fx)   # спрайт: отражение по x; вверх и вниз — прежнее
 	unit_state[h] = ST_CHASE if hero_move != Vector2.ZERO else ST_IDLE
 	cooldown[h] = maxf(cooldown[h] - delta, type_cd_floor[hero_type])
 	if cooldown[h] > 0.0:
 		return
-	var p := pos[h]
+	if hero_cfg.auto_attack:
+		var tj := _hero_targets(false)
+		if not tj.is_empty():
+			_hero_swing(tj)
+	elif hero_attack_in:
+		_hero_swing(_hero_targets(true))
+
+
+# Цели удара героя: живые зомби в arc_range, в секторе взгляда (угол до зомби не больше arc_angle / 2; arc false — по кругу),
+# не больше max_targets ближайших (0 — без лимита), по возрастанию расстояния. Поиск — по мелкой сетке этого тика: окно
+# ±ceil(arc_range / CELL_SIZE) клеток (28 px при клетке 24 — 5x5).
+func _hero_targets(arc: bool) -> PackedInt32Array:
+	var p := pos[hero_idx]
 	var r2 := type_range_sq[hero_type]
 	var reach := ceili(sqrt(r2) / CELL_SIZE)
 	var cx := clampi(floori(p.x / CELL_SIZE), 0, GRID_W - 1)
 	var cy := clampi(floori(p.y / CELL_SIZE), 0, GRID_H - 1)
-	var k: int = hero_cfg.targets_per_swing
+	var fwd := Vector2.from_angle(hero_face_ang)
+	var cos_half := cos(deg_to_rad(float(hero_cfg.arc_angle)) * 0.5) if arc else -2.0
+	var k: int = hero_cfg.max_targets
 	var tj := PackedInt32Array()     # цели по возрастанию расстояния (не больше k)
 	var td := PackedFloat32Array()
 	for ny in range(maxi(cy - reach, 0), mini(cy + reach, GRID_H - 1) + 1):
@@ -3553,25 +3689,40 @@ func _update_hero(delta: float) -> void:
 				if team[j] != 1 or hp[j] <= 0.0:
 					continue
 				var d2 := p.distance_squared_to(pos[j])
-				if d2 > r2 or (td.size() == k and d2 >= td[k - 1]):
+				if d2 > r2 or (k > 0 and td.size() == k and d2 >= td[k - 1]):
 					continue
+				if (pos[j] - p).dot(fwd) < cos_half * sqrt(d2):
+					continue   # вне сектора (зомби в той же точке, что герой, — в секторе)
 				var at := td.size()
 				while at > 0 and td[at - 1] > d2:
 					at -= 1
 				tj.insert(at, j)
 				td.insert(at, d2)
-				if tj.size() > k:
+				if k > 0 and tj.size() > k:
 					tj.resize(k)
 					td.resize(k)
-	if tj.is_empty():
-		return   # некого бить: удар готов и ждёт цель
+	return tj
+
+
+# Удар героя по целям tj (можно пустым — мимо): урон, перезарядка с переносом остатка (как у юнитов), Клич Благодати ускоряет
+# (у героя нет отряда — множитель клича напрямую). Задетые запоминаются для мигания (только отрисовка).
+func _hero_swing(tj: PackedInt32Array) -> void:
+	var h := hero_idx
 	for j in tj:
 		hp[j] -= type_damage[hero_type]   # у зомби нет щита и отряда: ни блока, ни снижения урона
 		if hp[j] <= 0.0:
 			hero_kills += 1
-	hero_swings += 1
-	hero_hits += tj.size()
-	cooldown[h] += type_cooldown[hero_type]   # остаток (до type_cd_floor) переносится, как у юнитов
+	hero_swing_n += 1
+	hero_swing_ang = hero_face_ang
+	hero_hit_idx = tj
+	hero_hit_pos.resize(tj.size())
+	for n in tj.size():
+		hero_hit_pos[n] = pos[tj[n]]
+	if not tj.is_empty():
+		hero_swings += 1
+		hero_hits += tj.size()
+	var cry := war_cry_mult if war_cry_until >= 0 else 1.0
+	cooldown[h] += type_cooldown[hero_type] / cry   # остаток (до type_cd_floor) переносится, как у юнитов
 	unit_anim_t[h] = ATTACK_ANIM_T
 
 
@@ -3877,9 +4028,9 @@ func _setup_rendering() -> void:
 		buf[o + 12] = cell_white
 
 	# Шейдер: UV квадрата сдвигается в ячейку атласа custom.x; цвет инстанса умножается как обычно
-	# (спрайт — белый, квадрат — цвет типа по белой ячейке).
+	# (спрайт — белый, квадрат — цвет типа по белой ячейке). custom.y — мигание белым (удар героя, задача 11): 0 — как было, 1 — белый силуэт.
 	var shader := Shader.new()
-	shader.code = "shader_type canvas_item;\nuniform float cells = 1.0;\nvoid vertex() {\n\tUV.x = (UV.x + INSTANCE_CUSTOM.x) / cells;\n}\n"
+	shader.code = "shader_type canvas_item;\nuniform float cells = 1.0;\nvarying float flash;\nvoid vertex() {\n\tUV.x = (UV.x + INSTANCE_CUSTOM.x) / cells;\n\tflash = INSTANCE_CUSTOM.y;\n}\nvoid fragment() {\n\tCOLOR.rgb = mix(COLOR.rgb, vec3(1.0), flash);\n}\n"
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
 	mat.set_shader_parameter("cells", float(atlas_cells))
@@ -4478,7 +4629,7 @@ func _physics_process(delta: float) -> void:
 	prev_pos = pos.duplicate()   # для интерполяции в _process
 	tick_counter += 1
 	if hero_on:
-		hero_move = _hero_input()   # ввод героя — раз в тик симуляции
+		_hero_input()   # ввод героя (движение, взгляд, удар) — раз в тик симуляции
 	if war_cry_level > 0:
 		_tick_war_cry()
 	if wave_state == WS_BATTLE and tick_counter % COND_EVERY == 0:
@@ -4686,6 +4837,8 @@ func _process(delta: float) -> void:
 		buf[o + 9] = c.g
 		buf[o + 10] = c.b
 		buf[o + 12] = cell_white
+	if hero_view != null:
+		_hero_fx_frame(delta)   # вспышка удара и мигание задетых (до записи буфера)
 	multimesh.visible_instance_count = count
 	multimesh.buffer = buf          # один вызов вместо UNIT_COUNT
 	if hero_view != null:
@@ -6046,6 +6199,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				_set_order(ORDER_RETREAT)
 			"war_cry":
 				request_war_cry()
+			"hero_attack":
+				if hero_idx >= 0 and not paused:
+					hero_attack_latch = true   # удар — во вводе ближайшего тика (_hero_input)
 		if key == null:
 			return
 		match key.keycode:
