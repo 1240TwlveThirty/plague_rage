@@ -4,6 +4,7 @@ extends SceneTree
 # warcry 1 — дар «Клич Благодати» 3 и клич действует весь замер (кнопка и подсветка краёв на экране), суффикс _warcry.
 # [spear 1] (задача 8) — до волны 10 куплено 300 копейщиков (отряд у ворот, «держать»), снимок строя view_<тег>_spear_squad.png, суффикс _spear. fx задаёт fx_enabled до _ready;
 # [hero 1] (задача 10) — с героем (hero_mode 1, стоит у ворот; с задачи 11 бьёт удержанием J, взгляд вверх), суффикс _hero.
+# [chase 1] (задача 13, 9-й аргумент, с hero 1) — герой идёт в орду и бьёт каждый тик (не гибнет): эффекты в реальном бою, суффикс _chase.
 # [fxstress 1] (задача 12, с hero 1) — худший случай эффектов попаданий: каждый кадр всплеск на 4 точки (кровь, искры, пятна) —
 # частицы и пятна весь замер на лимите data/fx.json; суффикс _fxstress. С героем печатает HEROFX|ударов|попаданий|пик частиц|пятен|пик пар кусков тела|всплесков (задача 13; в fxstress куски на лимите).
 # debug — отладка масок эффектов (как F2), тогда PNG с суффиксом _debug; фильтр (castle_filter) не nearest — суффикс с его именем. PNG: весь кадр, у ворот, края и замок у ворот крупнее (_castle); печатает TORCHES|число факелов.
@@ -26,6 +27,7 @@ func _run() -> void:
 	var spear := args.size() >= 6 and args[5] == "1"
 	var hero := args.size() >= 7 and args[6] == "1"   # задача 10: с героем (стоит у ворот, ввода нет), суффикс строки |hero
 	var stress := hero and args.size() >= 8 and args[7] == "1"
+	var chase := hero and args.size() >= 9 and args[8] == "1"   # задача 13: герой идёт к ближайшему зомби и бьёт каждый тик, не гибнет
 	var m: Node2D = load("res://scenes/main.tscn").instantiate()
 	m.record_path = "user://record_bench.json"
 	m.spawn_seed = 3
@@ -34,6 +36,8 @@ func _run() -> void:
 	if hero:
 		m.hero_mode = 1
 		m.hero_feed = func(_t): return {"attack": true}   # задача 11: удар удержанием J — вспышка и мигание каждые 0.8 с
+		if chase:
+			m.hero_feed = func(_t): return _chase(m)
 	if "fx_enabled" in m:
 		m.fx_enabled = fx
 	if "castle_filter" in m:
@@ -64,6 +68,8 @@ func _run() -> void:
 	m.gate_hp = 1e9
 	m.gate_hp_max = 1e9
 	m._start_wave()
+	if chase and m.hero_idx >= 0:
+		m.hp[m.hero_idx] = 1e6
 	Engine.time_scale = 4.0
 	while m.tick_counter < WARM_TICKS and m.wave_state == m.WS_BATTLE:
 		await process_frame
@@ -88,22 +94,23 @@ func _run() -> void:
 			m.hero_hit_pos = PackedVector2Array([c, c + Vector2(20, 5), c + Vector2(-20, 5), c + Vector2(0, -15)])
 			m.hero_hit_idx = PackedInt32Array([0, 0, 0, 0])
 			m.hero_hit_dead = PackedByteArray([i % 2, 0, 1, 0])
-			m.hero_hit_type = PackedInt32Array([m.zombie_type, m.zombie_type, m.knight_type, m.zombie_type])   # задача 13: куски тела добитых
-			m.hero_hit_dir = PackedByteArray([0, 1, 2, 3])
+			if "hero_hit_type" in m:
+				m.hero_hit_type = PackedInt32Array([m.zombie_type, m.zombie_type, m.knight_type, m.zombie_type])   # задача 13: куски тела добитых
+				m.hero_hit_dir = PackedByteArray([0, 1, 2, 3])
 			m.hero_swing_from = m.HERO_SPAWN
 			m._hit_fx_spawn()
 		if hero:
 			peak = maxi(peak, m.hit_n)
-			gpeak = maxi(gpeak, m.gib_n)
+			gpeak = maxi(gpeak, m.get("gib_n") if "gib_n" in m else 0)
 		var t := Time.get_ticks_usec()
 		dts.append((t - t_prev) / 1000.0)
 		t_prev = t
 	var fps := FRAMES / ((t_prev - t0) / 1e6)
 	var sorted := dts.duplicate()
 	sorted.sort()
-	print("VIEW|%s|%d|%d|%d|%.1f|%.3f|%.3f" % [("fx" if fx else "nofx") + ("_warcry" if warcry else "") + ("_spear" if spear else "") + ("_hero" if hero else "") + ("_fxstress" if stress else ""), m.count, m.tick_counter, FRAMES, fps, sorted[FRAMES / 2], sorted[FRAMES * 95 / 100]])
+	print("VIEW|%s|%d|%d|%d|%.1f|%.3f|%.3f" % [("fx" if fx else "nofx") + ("_warcry" if warcry else "") + ("_spear" if spear else "") + ("_hero" if hero else "") + ("_fxstress" if stress else "") + ("_chase" if chase else ""), m.count, m.tick_counter, FRAMES, fps, sorted[FRAMES / 2], sorted[FRAMES * 95 / 100]])
 	if hero:
-		print("HEROFX|%d|%d|%d|%d|%d|%d" % [m.hero_swing_n, m.hero_hits, peak, m.stain_used, gpeak, m.hit_bursts])
+		print("HEROFX|%d|%d|%d|%d|%d|%d|убито героем %d" % [m.hero_swing_n, m.hero_hits, peak, m.stain_used, gpeak, m.get("hit_bursts") if "hit_bursts" in m else -1, m.hero_kills])
 	await RenderingServer.frame_post_draw
 	var img := root.get_texture().get_image()
 	var tag: String = ("fx" if fx else "nofx") + ("_debug" if debug else "") + ("" if filter == "nearest" else "_" + filter) + ("_warcry" if warcry else "") + ("_spear" if spear else "")
@@ -117,3 +124,22 @@ func _run() -> void:
 	img.get_region(Rect2i(int(gate.x) - 240, int(gate.y) - 80, 480, 270)).save_png(out_dir.path_join("view_%s_castle.png" % tag))
 	print("TORCHES|%d" % m.fx_torches)
 	quit()
+
+
+# chase: к ближайшему живому зомби (стоит, если ближе 12 px), взгляд на него, удар каждый тик (как bench/regress_hero.gd).
+func _chase(m: Node2D) -> Dictionary:
+	var h: int = m.hero_idx
+	if h < 0:
+		return {"move": Vector2.ZERO}
+	var best := -1
+	var bd := INF
+	for j in m.count:
+		if m.team[j] == 1 and m.hp[j] > 0.0:
+			var d: float = m.pos[h].distance_squared_to(m.pos[j])
+			if d < bd:
+				bd = d
+				best = j
+	if best < 0:
+		return {"move": Vector2.ZERO, "attack": true}
+	var to: Vector2 = m.pos[best] - m.pos[h]
+	return {"move": to.normalized() if bd > 144.0 else Vector2.ZERO, "face": to.angle(), "attack": true}
