@@ -1,0 +1,4 @@
+{
+	"infantry": {"path": "res://art/infantry_art.png", "crop": [0, 330, 1536, 219]},
+	"archer": {"path": "res://art/bowman_art.png", "crop": [0, 330, 1536, 219]}
+}

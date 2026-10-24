@@ -68,6 +68,8 @@ const CARDS := preload("res://scripts/cards.gd")
 const CARD_PICK := preload("res://scripts/card_pick.gd")
 const ICONS := preload("res://scripts/icons.gd")   # иконки карточек (список в HUD)   # экран выбора карточки
 const CARD_RULES_PATH := "res://data/cards_rules.json"
+const PORTRAITS := preload("res://scripts/portraits.gd")   # иллюстрации отрядов в кнопках магазина и панели отрядов (data/unit_portraits.json)
+const SHOP_PORTRAIT := {"inf_pack": "infantry", "archer_pack": "archer", "spear_pack": "spearman"}   # товар -> тип юнита для иллюстрации
 const ESC_MENU := preload("res://scripts/esc_menu.gd")   # меню паузы по Esc: «Продолжить», «Выйти в меню», «Выход из игры»
 const ESC_NOTE := "UI_PAUSE_NOTE_LOSS"   # ключ перевода
 const BANNER_WIDTH := 700.0                   # ширина баннера, px: длинный текст переносится по словам
@@ -541,6 +543,7 @@ var blocked_hits := 0   # статистика: удары, ослабленны
 var total_hits := 0     # статистика: удары по юнитам со щитом (block_mult < 1.0)
 var leash_ticks := 0    # статистика: юнито-тики, где привязь перевешивает (w > 0.5)
 var type_id := {}   # имя -> номер
+var portraits = PORTRAITS.new()   # иллюстрации в кнопках (только интерфейс)
 var type_label := PackedStringArray()   # название типа для интерфейса
 
 # --- Ворота и поражение (data/castle.json) ---
@@ -703,6 +706,13 @@ var hero_taken_mult := 1.0   # множитель урона по герою п�
 var hero_fallen_label: Label   # «Командир пал» в HUD
 var hero_view: Node2D          # герой на экране: кольцо-маркер и полоса HP (_draw_hero_marker), спрайт — дочерний; null в бенчах без дерева
 var hero_sprite: Sprite2D
+# Спрайтшит героя (задача 15; hero.json sprite_path, frame_w, frame_h, frames, animations, body_px, pivot, orient; только отрисовка):
+# анимации idle, walk (герой сдвинулся за тик), attack (кадры растянуты на вспышку удара arc_fx_time). Один кадр или неверная
+# сетка — прежнее поведение: вся картинка, отражение по движению и выпад.
+var hero_anims := {}            # имя -> {"frames": PackedInt32Array, "fps": float}; пусто — без анимации
+var hero_rotate := false        # orient "rotate": кадр смотрит вправо и поворачивается по взгляду; "flip" — отражение по x
+var hero_anim := ""             # текущая анимация (idle / walk / attack)
+var hero_anim_t := 0.0          # с от начала текущей анимации (время кадра)
 var hero_drawn := Vector2(-1.0, -1.0)   # HP и зум, с которыми маркер нарисован (перерисовка только при смене)
 const HERO_RING_PX := 20.0     # радиус кольца на экране, px — постоянный при любом зуме камеры
 # Обратная связь на удар (задача 11; только отрисовка, время кадра — не тики и не ГСЧ симуляции): дуга-вспышка (hero.json arc_fx_color,
@@ -3506,9 +3516,9 @@ func _load_hero() -> bool:
 	if d == null:
 		return false
 	if not d is Dictionary or not d.get("enabled") is bool or not d.get("auto_attack") is bool or not d.get("hold_repeat") is bool \
-			or not d.get("label") is String or not d.get("sprite") is String or not d.get("marker_color") is String or not Color.html_is_valid(d.marker_color) \
-			or not d.get("arc_fx_color") is String or not Color.html_is_valid(d.arc_fx_color):
-		push_error("%s: нужен JSON-объект с enabled, auto_attack, hold_repeat (bool), label, sprite, marker_color и arc_fx_color (hex)" % hero_path)
+			or not d.get("label") is String or not (d.get("sprite_path", d.get("sprite")) is String) or not d.get("marker_color") is String \
+			or not Color.html_is_valid(d.marker_color) or not d.get("arc_fx_color") is String or not Color.html_is_valid(d.arc_fx_color):
+		push_error("%s: нужен JSON-объект с enabled, auto_attack, hold_repeat (bool), label, sprite_path, marker_color и arc_fx_color (hex)" % hero_path)
 		return false
 	if not _require_numbers(d, ["hp", "speed", "damage", "attack_interval", "arc_angle", "arc_range", "max_targets", "arc_fx_time", "size_scale",
 			"revive_hp_fraction"], hero_path):
@@ -3560,7 +3570,8 @@ func _spawn_hero(frac: float) -> void:
 	hero_face_ang = -PI / 2.0   # вверх, к зомби
 
 
-# Нода героя: спрайт (hero.json sprite; нет файла — квадрат цвета маркера) размером size_scale от юнита (SPRITE_PX), nearest.
+# Нода героя: спрайт (hero.json sprite_path; нет файла — квадрат цвета маркера) размером size_scale от юнита (SPRITE_PX), nearest.
+# Спрайтшит: body_px пикселей кадра по высоте = size_scale юнита (по умолчанию — вся высота кадра).
 func _setup_hero_view() -> void:
 	hero_fx = Node2D.new()   # дуга удара: тот же слой, что герой (над юнитами и замком, ниже интерфейса), раньше в дереве — под спрайтом
 	hero_fx.visible = false
@@ -3572,7 +3583,7 @@ func _setup_hero_view() -> void:
 	hero_view.z_index = LEAF_Z + 1   # над юнитами и над слоями замка и листвы (у ворот стена закрыла бы героя), ниже интерфейса
 	add_child(hero_view)
 	hero_sprite = Sprite2D.new()
-	var path: String = hero_cfg.sprite
+	var path: String = hero_cfg.get("sprite_path", hero_cfg.get("sprite"))
 	var tex: Texture2D = load(path) as Texture2D if ResourceLoader.exists(path) else null
 	if tex == null:
 		push_warning("Спрайт героя %s не загрузился: герой рисуется квадратом" % path)
@@ -3582,9 +3593,74 @@ func _setup_hero_view() -> void:
 	hero_sprite.texture = tex
 	hero_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	hero_sprite.scale = Vector2.ONE * hero_cfg.size_scale * SPRITE_PX / tex.get_height()
+	_setup_hero_sheet(tex)
 	hero_view.add_child(hero_sprite)
 	hero_view.draw.connect(_draw_hero_marker)
 	_setup_hit_fx()   # кровь и искры: тот же слой, позже героя — поверх него (попадания в 10–28 px, под спрайтом не видны); пятна — под юнитами
+
+
+# Сетка и анимации спрайтшита из hero.json. Ошибка в данных — предупреждение и прежнее поведение (вся картинка, отражение).
+func _setup_hero_sheet(tex: Texture2D) -> void:
+	hero_anims = {}
+	hero_rotate = false
+	hero_anim = ""
+	var nf = hero_cfg.get("frames", 1)
+	if not (nf is float or nf is int) or nf <= 1:
+		return
+	var fw = hero_cfg.get("frame_w")
+	var fh = hero_cfg.get("frame_h")
+	var anims = hero_cfg.get("animations")
+	var ok: bool = _is_whole(fw) and _is_whole(fh) and _is_whole(nf) and fw > 0 and fh > 0 and tex.get_width() % int(fw) == 0 \
+		and tex.get_height() % int(fh) == 0 and int(nf) <= (tex.get_width() / int(fw)) * (tex.get_height() / int(fh)) \
+		and anims is Dictionary and anims.get("idle") is Dictionary
+	var parsed := {}
+	if ok:
+		for name in anims:
+			var a = anims[name]
+			var fr = a.get("frames") if a is Dictionary else null
+			var fps = a.get("fps", 0.0) if a is Dictionary else null
+			if not fr is Array or fr.is_empty() or not (fps is float or fps is int) or fps < 0.0 \
+					or not fr.all(func(x): return _is_whole(x) and x >= 0 and x < nf):
+				ok = false
+				break
+			parsed[name] = {"frames": PackedInt32Array(fr.map(func(x): return int(x))), "fps": float(fps)}
+	var pv = hero_cfg.get("pivot", [fw / 2.0, fh / 2.0]) if ok else null
+	var body = hero_cfg.get("body_px", fh)
+	ok = ok and pv is Array and pv.size() == 2 and pv.all(func(x): return x is float or x is int) and (body is float or body is int) and body > 0 \
+		and hero_cfg.get("orient", "flip") in ["flip", "rotate"]
+	if not ok:
+		push_warning("%s: сетка спрайтшита героя неверна (frame_w и frame_h делят картинку, frames не больше кадров, есть animations.idle, " % hero_path
+			+ "кадры анимаций от 0 до frames - 1, fps от 0, pivot [x, y], body_px больше 0, orient flip или rotate): вся картинка, как раньше")
+		return
+	hero_sprite.hframes = tex.get_width() / int(fw)
+	hero_sprite.vframes = tex.get_height() / int(fh)
+	hero_sprite.offset = Vector2(fw / 2.0 - pv[0], fh / 2.0 - pv[1])   # точка pivot кадра — в позиции героя (кольцо, поворот)
+	hero_sprite.scale = Vector2.ONE * hero_cfg.size_scale * SPRITE_PX / float(body)
+	hero_rotate = hero_cfg.get("orient") == "rotate"
+	hero_anims = parsed
+	_hero_play("idle")
+
+
+# Кадр анимации name через t с её начала: attack — все кадры на одну вспышку удара (доля t от arc_fx_time), остальные — fps по кругу.
+func _hero_frame(name: String, t: float) -> int:
+	var a: Dictionary = hero_anims[name]
+	var fr: PackedInt32Array = a.frames
+	var k := 0
+	if name == "attack":
+		k = mini(int(t / float(hero_cfg.arc_fx_time) * fr.size()), fr.size() - 1)
+	elif a.fps > 0.0:
+		k = int(t * a.fps) % fr.size()
+	return fr[k]
+
+
+# Анимация name (нет в данных — idle) с текущим кадром; смена анимации — с её первого кадра.
+func _hero_play(name: String) -> void:
+	if not hero_anims.has(name):
+		name = "idle"
+	if name != hero_anim:
+		hero_anim = name
+		hero_anim_t = 0.0
+	hero_sprite.frame = _hero_frame(hero_anim, hero_anim_t)
 
 
 # Кольцо цвета маркера (Endesga 32, hero.json marker_color) с тёмной обводкой и полоса HP под ним; толщина и радиус
@@ -3604,8 +3680,10 @@ func _draw_hero_marker() -> void:
 	hero_view.draw_rect(Rect2(top, Vector2(size.x * f, size.y)), Color("#63c74d") if f > 0.35 else Color("#e43b44"))
 
 
-# Каждый кадр: позиция между тиками (как у юнитов), взгляд по последнему движению; пал — нода скрыта.
-func _update_hero_view(frac: float, have_prev: bool) -> void:
+# Каждый кадр: позиция между тиками (как у юнитов), взгляд по последнему движению; пал — нода скрыта. Спрайтшит: удар — пока
+# идёт вспышка, иначе ходьба, если герой сдвинулся за тик, иначе покой; orient rotate — поворот по взгляду (во время удара — по удару).
+# delta — время кадра (на паузе 0: анимация стоит).
+func _update_hero_view(frac: float, have_prev: bool, delta := 0.0) -> void:
 	hero_view.visible = hero_idx >= 0
 	if hero_idx < 0:
 		return
@@ -3614,7 +3692,16 @@ func _update_hero_view(frac: float, have_prev: bool) -> void:
 	hero_fx.position = hero_view.position
 	if hero_fx_age >= 0.0:   # выпад: вперёд по направлению удара, к концу вспышки — на место
 		hero_view.position += Vector2.from_angle(hero_fx_ang) * HERO_LUNGE_PX * (1.0 - hero_fx_age / float(hero_cfg.arc_fx_time))
-	hero_sprite.flip_h = hero_face < 0.0
+	if hero_anims.is_empty():
+		hero_sprite.flip_h = hero_face < 0.0
+	else:
+		hero_anim_t += delta
+		var moving := have_prev and prev_pos[h].distance_squared_to(pos[h]) > 0.01
+		_hero_play("attack" if hero_fx_age >= 0.0 else ("walk" if moving else "idle"))
+		if hero_rotate:
+			hero_sprite.rotation = hero_fx_ang if hero_fx_age >= 0.0 else hero_face_ang
+		else:
+			hero_sprite.flip_h = hero_face < 0.0
 	var key := Vector2(hp[h], camera.zoom.x if camera != null else 1.0)
 	if key != hero_drawn:
 		hero_drawn = key
@@ -4652,6 +4739,7 @@ func _setup_fps_label() -> void:
 	shop_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	shop_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	shop_panel.position.x -= 16.0
+	portraits.load_defs()
 	for k in SHOP_ITEMS.size():
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE   # иначе Space «нажимает» последнюю кнопку
@@ -4660,6 +4748,7 @@ func _setup_fps_label() -> void:
 		b.pressed.connect(_buy.bind(k))
 		shop_panel.add_child(b)
 		shop_buttons.append(b)
+		portraits.apply(b, SHOP_PORTRAIT.get(SHOP_ITEMS[k], ""))   # «Оружие» и «Ворота» — без иллюстрации
 	layer.add_child(shop_panel)
 	# Отряды слева: цветной квадрат, клавиша, название, живые, приказ; строки кликабельны
 	squad_panel = VBoxContainer.new()
@@ -4973,6 +5062,7 @@ func _update_squad_panel() -> void:
 			continue
 		sig |= 2 << s
 		squad_swatches[s].color = type_color[squad_type[s]]
+		portraits.apply(squad_buttons[s], type_id.find_key(squad_type[s]))   # тип отряда мог смениться (слияние, новый отряд)
 		squad_buttons[s].text = "%s  %s — %d — %s" % [SETTINGS.key_label("squad_select_%d" % (s + 1)), _squad_label(s), squad_n[s], tr(ORDER_NAMES[squad_order[s]])]
 		if squad_skill_on[s] == 1:   # навык «Стена щитов» действует — отметка и золотой цвет, как у горящих карточек
 			squad_buttons[s].text += "  ● " + tr("UI_SKILL_SHIELD_WALL")
@@ -5327,7 +5417,7 @@ func _process(delta: float) -> void:
 	multimesh.visible_instance_count = count
 	multimesh.buffer = buf          # один вызов вместо UNIT_COUNT
 	if hero_view != null:
-		_update_hero_view(frac, have_prev)
+		_update_hero_view(frac, have_prev, 0.0 if paused else delta)
 	draw_ms = (Time.get_ticks_usec() - t) / 1000.0
 	fps_label.text = tr("DEBUG_FPS_LINE") % [
 		Engine.get_frames_per_second(), count, sim_avg, sim_peak, grid_ms, color_mode + 1, gate_hp, arrows_fired, arrows_hit]

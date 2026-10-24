@@ -1,0 +1,20 @@
+{
+	"archer": {
+		"crop": [
+			0,
+			330,
+			1536,
+			219
+		],
+		"path": "res://art/bowman_art.png"
+	},
+	"infantry": {
+		"crop": [
+			0,
+			330,
+			1536,
+			219
+		],
+		"path": "res://art/infantry_art.png"
+	}
+}

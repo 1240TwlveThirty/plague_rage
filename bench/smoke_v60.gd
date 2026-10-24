@@ -42,6 +42,12 @@ func ring_pixels(m: Node2D, img: Image) -> int:
 			n += 1
 	return n
 
+# Спрайт смотрит в сторону dir по x: отражение (прежний вид) или поворот (спрайтшит с orient rotate, задача 15).
+func faces(m: Node2D, dir: float) -> bool:
+	if m.hero_rotate:
+		return not m.hero_sprite.flip_h and signf(cos(m.hero_sprite.rotation)) == dir
+	return m.hero_sprite.flip_h == (dir < 0.0)
+
 func key(m: Node2D, code: Key) -> void:
 	var e := InputEventKey.new()
 	e.keycode = code
@@ -76,7 +82,7 @@ func _run() -> void:
 	var img := await shot(m, "hero_start.png")
 	check("игровой режим: герой включён по данным, стоит у ворот, нода видна, спрайт nearest, размер x%.1f юнита" % m.hero_cfg.size_scale, m.hero_on and m.hero_idx >= 0
 		and m.pos[m.hero_idx] == m.HERO_SPAWN and m.hero_view != null and m.hero_view.visible and m.hero_sprite.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
-		and is_equal_approx(m.hero_sprite.texture.get_height() * m.hero_sprite.scale.y, m.SPRITE_PX * m.hero_cfg.size_scale))
+		and is_equal_approx(m.hero_sprite.scale.y * m.hero_cfg.get("body_px", m.hero_sprite.texture.get_height() / m.hero_sprite.vframes), m.SPRITE_PX * m.hero_cfg.size_scale))
 	check("камера — единственный (минимальный) зум: %.3f" % m.camera.zoom.x, is_equal_approx(m.camera.zoom.x, m.camera_min_zoom()))
 	var rp := ring_pixels(m, img)
 	check("кольцо-маркер видно при минимальном зуме: %d из 72 точек окружности цвета маркера" % rp, rp >= 30)
@@ -85,12 +91,12 @@ func _run() -> void:
 		m._physics_process(DT)
 	img = await shot(m, "hero_moved.png")
 	check("движение вправо: герой сместился, спрайт смотрит вправо; кольцо следует за героем (%d точек)" % ring_pixels(m, img), m.pos[m.hero_idx].x > m.HERO_SPAWN.x + 50.0
-		and not m.hero_sprite.flip_h and ring_pixels(m, img) >= 30)
+		and faces(m, 1.0) and ring_pixels(m, img) >= 30)
 	m.hero_feed = func(_t): return Vector2(-1, 0)
 	for t in 2:
 		m._physics_process(DT)
 	m._process(1.0 / 60.0)
-	check("движение влево: спрайт отражён", m.hero_sprite.flip_h)
+	check("движение влево: спрайт смотрит влево (отражение или поворот)", faces(m, -1.0))
 	m.hero_feed = func(_t): return Vector2.ZERO
 	m._select_only(0)
 	m._start_wave()
