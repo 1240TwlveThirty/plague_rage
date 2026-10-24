@@ -5,7 +5,7 @@ extends SceneTree
 # [spear 1] (задача 8) — до волны 10 куплено 300 копейщиков (отряд у ворот, «держать»), снимок строя view_<тег>_spear_squad.png, суффикс _spear. fx задаёт fx_enabled до _ready;
 # [hero 1] (задача 10) — с героем (hero_mode 1, стоит у ворот; с задачи 11 бьёт удержанием J, взгляд вверх), суффикс _hero.
 # [fxstress 1] (задача 12, с hero 1) — худший случай эффектов попаданий: каждый кадр всплеск на 4 точки (кровь, искры, пятна) —
-# частицы и пятна весь замер на лимите data/fx.json; суффикс _fxstress. С героем печатает HEROFX|ударов|попаданий|пик частиц|пятен.
+# частицы и пятна весь замер на лимите data/fx.json; суффикс _fxstress. С героем печатает HEROFX|ударов|попаданий|пик частиц|пятен|пик пар кусков тела|всплесков (задача 13; в fxstress куски на лимите).
 # debug — отладка масок эффектов (как F2), тогда PNG с суффиксом _debug; фильтр (castle_filter) не nearest — суффикс с его именем. PNG: весь кадр, у ворот, края и замок у ворот крупнее (_castle); печатает TORCHES|число факелов.
 # Печатает VIEW|fx|юнитов|тик|кадров|FPS|медиана кадра мс|95-й перцентиль мс; PNG: весь кадр, у ворот, левый и правый край.
 const WARM_TICKS := 480    # 16 с (ускоренно): орда подходит к строю, бой идёт во время замера
@@ -80,6 +80,7 @@ func _run() -> void:
 	var t_prev := Time.get_ticks_usec()
 	var t0 := t_prev
 	var peak := 0
+	var gpeak := 0
 	for i in FRAMES:
 		await process_frame
 		if stress:
@@ -87,10 +88,13 @@ func _run() -> void:
 			m.hero_hit_pos = PackedVector2Array([c, c + Vector2(20, 5), c + Vector2(-20, 5), c + Vector2(0, -15)])
 			m.hero_hit_idx = PackedInt32Array([0, 0, 0, 0])
 			m.hero_hit_dead = PackedByteArray([i % 2, 0, 1, 0])
+			m.hero_hit_type = PackedInt32Array([m.zombie_type, m.zombie_type, m.knight_type, m.zombie_type])   # задача 13: куски тела добитых
+			m.hero_hit_dir = PackedByteArray([0, 1, 2, 3])
 			m.hero_swing_from = m.HERO_SPAWN
 			m._hit_fx_spawn()
 		if hero:
 			peak = maxi(peak, m.hit_n)
+			gpeak = maxi(gpeak, m.gib_n)
 		var t := Time.get_ticks_usec()
 		dts.append((t - t_prev) / 1000.0)
 		t_prev = t
@@ -99,7 +103,7 @@ func _run() -> void:
 	sorted.sort()
 	print("VIEW|%s|%d|%d|%d|%.1f|%.3f|%.3f" % [("fx" if fx else "nofx") + ("_warcry" if warcry else "") + ("_spear" if spear else "") + ("_hero" if hero else "") + ("_fxstress" if stress else ""), m.count, m.tick_counter, FRAMES, fps, sorted[FRAMES / 2], sorted[FRAMES * 95 / 100]])
 	if hero:
-		print("HEROFX|%d|%d|%d|%d" % [m.hero_swing_n, m.hero_hits, peak, m.stain_used])
+		print("HEROFX|%d|%d|%d|%d|%d|%d" % [m.hero_swing_n, m.hero_hits, peak, m.stain_used, gpeak, m.hit_bursts])
 	await RenderingServer.frame_post_draw
 	var img := root.get_texture().get_image()
 	var tag: String = ("fx" if fx else "nofx") + ("_debug" if debug else "") + ("" if filter == "nearest" else "_" + filter) + ("_warcry" if warcry else "") + ("_spear" if spear else "")

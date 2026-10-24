@@ -694,6 +694,8 @@ var hero_swing_ang := 0.0       # направление последнего у
 var hero_hit_idx := PackedInt32Array()     # зомби, задетые последним ударом (их индексы и позиции на тот тик): мигание белым
 var hero_hit_pos := PackedVector2Array()
 var hero_hit_dead := PackedByteArray()     # 1 — этот удар его добил (крупный всплеск крови)
+var hero_hit_type := PackedInt32Array()    # тип и unit_dir задетых на тот тик (куски тела добитых)
+var hero_hit_dir := PackedByteArray()
 var hero_swing_from := Vector2.ZERO        # где стоял герой при ударе (направление всплеска)
 const HERO_SPAWN := Vector2(1010.0, 680.0)   # у ворот над стеной (GATE_POS.x, WALL_Y - 65; ниже — на зубцах стены): появление и возрождение
 var hero_dead := false   # герой пал в этой волне: приказы заблокированы до её конца, в начале передышки — возрождение
@@ -741,8 +743,28 @@ var stain_col := PackedColorArray()
 var stain_head := 0             # следующая ячейка кольцевого буфера (новое пятно заменяет самое старое)
 var stain_used := 0             # занятых ячеек (до max_stains)
 var stain_live := 0             # пятен, ещё не погасших (буфер обновляется, пока есть живые)
-var shake_t := 0.0              # осталось тряски экрана, с
-var shake_count := 0            # трясок за бой (статистика, тесты)
+var shake_t := 0.0              # осталось тряски экрана за добивание screen_shake_kills, с
+var shake_count := 0            # трясок за добивание за бой (статистика, тесты)
+var shake_hit_t := 0.0          # осталось тряски за попадание (задача 13: на каждый удар, задевший кого-то), с
+var shake_hit_count := 0
+var hit_bursts := 0             # всплесков (ударов героя с попаданием, замеченных кадром не на паузе; тесты)
+var hit_streak := 0             # добитых героем подряд (между добиваниями не больше big_drop_window с): крупные капли
+var hit_streak_t := 0.0         # с с последнего добивания (время кадра)
+# Куски тела (задача 13, data/fx.json gib_*): добитый героем зомби распадается на верх и низ (две картинки); пары в плоских массивах
+# (k — пара, 2k — верх, 2k + 1 — низ) и два MultiMesh (по текстуре), над пятнами и юнитами, ниже героя. Без вращения.
+var gib_top_mm: MultiMesh       # null — куски выключены
+var gib_bot_mm: MultiMesh
+var gib_top_buf := PackedFloat32Array()
+var gib_bot_buf := PackedFloat32Array()
+var gib_n := 0                  # живых пар
+var gib_pos := PackedVector2Array()
+var gib_vel := PackedVector2Array()
+var gib_age := PackedFloat32Array()      # с с появления пары
+var gib_dir := PackedByteArray()         # unit_dir зомби в момент смерти (ориентация обеих половин)
+var gib_scale := PackedFloat32Array()    # масштаб спрайта типа (рыцарь крупнее)
+var gib_tex_k: Array[Vector2] = [Vector2.ONE, Vector2.ONE]   # размер картинки верха и низа / SPRITE_PX (DIR_BASIS — под 16 px)
+var gib_col := PackedColorArray()        # перекраска по цвету типа (gib_type_tint)
+var gib_dropped := 0            # пар не создано из-за лимита max_gibs (статистика, тесты)
 var hero_swings := 0   # статистика героя за забег: ударов (с хоть одной целью), попаданий, добитых им зомби, смертей
 var hero_hits := 0
 var hero_kills := 0
@@ -3619,20 +3641,24 @@ func _load_hit_fx() -> Dictionary:
 		push_warning("Нет %s: эффекты попаданий героя выключены" % HIT_FX_PATH)
 		return {}
 	var d = JSON.parse_string(FileAccess.get_file_as_string(HIT_FX_PATH))
-	var nums := ["max_particles", "blood_drag", "blood_spread_deg", "spark_life", "spark_size", "screen_shake_px", "screen_shake_time",
-		"screen_shake_kills", "max_stains", "stain_life", "stain_alpha"]
-	var pairs := ["blood_hit", "blood_kill", "blood_life", "blood_speed", "blood_size", "stain_size"]
-	var ok: bool = d is Dictionary and d.get("screen_shake_enabled") is bool and d.get("stains_enabled") is bool
+	var nums := ["max_particles", "blood_drag", "blood_spread_deg", "spark_count", "spark_life", "spark_size",
+		"big_drop_streak", "big_drop_window", "big_drop_size", "big_drop_drag",
+		"screen_shake_px", "screen_shake_time", "screen_shake_kills", "screen_shake_per_hit_px", "screen_shake_per_hit_time", "screen_shake_max_px",
+		"max_stains", "stain_life", "stain_alpha", "max_gibs", "gib_life", "gib_fade", "gib_drag", "gib_type_tint"]
+	var pairs := ["blood_hit", "blood_kill", "blood_life", "blood_speed", "blood_size", "big_drop_count", "big_drop_life", "big_drop_speed",
+		"stain_size", "gib_top_fwd", "gib_top_side", "gib_bottom_side", "gib_bottom_back"]
+	var ok: bool = d is Dictionary and d.get("screen_shake_enabled") is bool and d.get("stains_enabled") is bool and d.get("gibs_enabled") is bool \
+		and d.get("gib_top_path") is String and d.get("gib_bottom_path") is String
 	for k in nums:
 		ok = ok and d.get(k) is float and d[k] >= 0.0
 	for k in pairs:
 		ok = ok and d.get(k) is Array and d[k].size() == 2 and d[k][0] is float and d[k][1] is float and d[k][0] <= d[k][1]
-	for k in ["blood_colors", "spark_colors", "stain_colors"]:
+	for k in ["blood_colors", "big_drop_colors", "spark_colors", "stain_colors"]:
 		ok = ok and d.get(k) is Array and not d[k].is_empty() and d[k].all(func(c): return c is String and Color.html_is_valid(c))
 	if not ok:
-		push_error("%s: нужны числа >= 0 (%s), пары [от, до] (%s), списки цветов hex, screen_shake_enabled и stains_enabled (bool) — эффекты выключены" % [HIT_FX_PATH, ", ".join(nums), ", ".join(pairs)])
+		push_error("%s: нужны числа >= 0 (%s), пары [от, до] (%s), списки цветов hex, screen_shake_enabled, stains_enabled и gibs_enabled (bool), gib_top_path и gib_bottom_path — эффекты выключены" % [HIT_FX_PATH, ", ".join(nums), ", ".join(pairs)])
 		return {}
-	for k in ["blood_colors", "spark_colors", "stain_colors"]:
+	for k in ["blood_colors", "big_drop_colors", "spark_colors", "stain_colors"]:
 		d[k] = d[k].map(func(c): return Color(c))
 	return d
 
@@ -3645,6 +3671,7 @@ func _fx_quad_mm(n: int) -> MultiMesh:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = PackedVector2Array([Vector2(-0.5, -0.5), Vector2(0.5, -0.5), Vector2(0.5, 0.5), Vector2(-0.5, 0.5)])
+	arrays[Mesh.ARRAY_TEX_UV] = PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])   # для кусков тела (текстура)
 	arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
 	var quad := ArrayMesh.new()
 	quad.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
@@ -3674,6 +3701,7 @@ func _setup_hit_fx() -> void:
 	pn.multimesh = hit_mm
 	pn.z_index = LEAF_Z + 1   # как герой: над юнитами и замком, ниже интерфейса; добавлена после героя — поверх спрайта
 	add_child(pn)
+	_setup_gibs()
 	if not hit_cfg.stains_enabled or int(hit_cfg.max_stains) <= 0:
 		return
 	var m := int(hit_cfg.max_stains)
@@ -3719,23 +3747,104 @@ func _hit_stain(p: Vector2) -> void:
 	stain_col[i] = cols[hit_rng.randi() % cols.size()]
 
 
-# Удар героя по кому-то: в точке каждого задетого — искра, всплеск крови от героя по направлению удара с разбросом (добитый — больше),
-# пятно на земле; добил не меньше screen_shake_kills — тряска экрана (если включена в fx.json и в настройках).
+# Картинка половины зомби (fx.json gib_top_path / gib_bottom_path): импортированный ресурс, иначе PNG с диска (файл подложен без
+# импорта); нет файла — половина первого кадра спрайта крестьянина, нарезанная в памяти (top: верх при взгляде вправо).
+func _gib_texture(path: String, top: bool) -> Texture2D:
+	if ResourceLoader.exists(path):
+		var tex := load(path) as Texture2D
+		if tex != null:
+			return tex
+	if FileAccess.file_exists(path):
+		var img := Image.load_from_file(path)
+		if img != null and not img.is_empty():
+			return ImageTexture.create_from_image(img)
+	push_warning("Нет картинки куска тела %s: половина спрайта зомби" % path)
+	var sp := type_sprite[zombie_type] if zombie_type >= 0 else ""
+	var src: Texture2D = load(sp) as Texture2D if sp != "" and ResourceLoader.exists(sp) else null
+	var half := Image.create(SPRITE_PX, SPRITE_PX, false, Image.FORMAT_RGBA8)
+	if src != null:
+		var sheet := src.get_image()
+		if sheet.is_compressed():
+			sheet.decompress()
+		sheet.convert(Image.FORMAT_RGBA8)
+		var y0 := 0 if top else SPRITE_PX / 2
+		half.blit_rect(sheet, Rect2i(0, y0, SPRITE_PX, SPRITE_PX / 2), Vector2i(0, y0))
+	else:
+		half.fill_rect(Rect2i(4, 4 if top else 8, 8, 4), Color(hit_cfg.blood_colors[0]))
+	return ImageTexture.create_from_image(half)
+
+
+# Куски тела: две ноды MultiMesh (верх и низ) сразу после юнитов в дереве — над пятнами и юнитами, ниже героя (z героя выше).
+func _setup_gibs() -> void:
+	var pairs := int(hit_cfg.max_gibs) / 2
+	if not hit_cfg.gibs_enabled or pairs <= 0:
+		return
+	gib_pos.resize(pairs * 2)
+	gib_vel.resize(pairs * 2)
+	gib_age.resize(pairs)
+	gib_dir.resize(pairs)
+	gib_scale.resize(pairs)
+	gib_col.resize(pairs)
+	gib_top_buf.resize(pairs * HIT_FPI)
+	gib_bot_buf.resize(pairs * HIT_FPI)
+	gib_top_mm = _fx_quad_mm(pairs)
+	gib_bot_mm = _fx_quad_mm(pairs)
+	var at := unit_node.get_index() + 1 if unit_node != null else -1
+	for k in 2:
+		var gn := MultiMeshInstance2D.new()
+		gn.multimesh = gib_top_mm if k == 0 else gib_bot_mm
+		gn.texture = _gib_texture(hit_cfg.gib_top_path if k == 0 else hit_cfg.gib_bottom_path, k == 0)
+		gib_tex_k[k] = gn.texture.get_size() / SPRITE_PX
+		gn.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		add_child(gn)
+		if at >= 0:
+			move_child(gn, at + k)
+
+
+# Пара кусков добитого в точке p: верх летит по удару (dir) и немного вбок, низ — в другую сторону вбок и чуть назад.
+func _hit_gib(p: Vector2, dir: Vector2, ut: int, udir: int) -> void:
+	if gib_top_mm == null:
+		return
+	if gib_n >= gib_age.size():
+		gib_dropped += 1
+		return
+	var c := hit_cfg
+	var k := gib_n
+	gib_n += 1
+	var side := dir.orthogonal() * (1.0 if hit_rng.randf() < 0.5 else -1.0)
+	gib_pos[2 * k] = p
+	gib_pos[2 * k + 1] = p
+	gib_vel[2 * k] = dir * hit_rng.randf_range(c.gib_top_fwd[0], c.gib_top_fwd[1]) + side * hit_rng.randf_range(c.gib_top_side[0], c.gib_top_side[1])
+	gib_vel[2 * k + 1] = -side * hit_rng.randf_range(c.gib_bottom_side[0], c.gib_bottom_side[1]) - dir * hit_rng.randf_range(c.gib_bottom_back[0], c.gib_bottom_back[1])
+	gib_age[k] = 0.0
+	gib_dir[k] = udir
+	gib_scale[k] = type_sprite_scale[ut] if ut < type_sprite_scale.size() else 1.0
+	gib_col[k] = Color.WHITE.lerp(type_color[ut], clampf(c.gib_type_tint, 0.0, 1.0)) if ut < type_color.size() else Color.WHITE
+
+
+# Удар героя по кому-то: в точке каждого задетого — искры (spark_count), всплеск крови от героя по направлению удара с разбросом
+# (добитый — больше), пятно на земле; добитый — пара кусков тела, а с big_drop_streak-го добитого подряд (между добиваниями не больше
+# big_drop_window с) — ещё крупные капли. Тряска экрана (fx.json screen_shake_enabled и настройка «Тряска экрана»): на каждый удар
+# с попаданием — screen_shake_per_hit_*, добил не меньше screen_shake_kills — ещё screen_shake_* (таймеры заводятся заново, не копятся).
 func _hit_fx_spawn() -> void:
 	if hit_cfg.is_empty() or hero_hit_idx.is_empty():
 		return
 	var c := hit_cfg
+	hit_bursts += 1
+	if hit_streak_t > float(c.big_drop_window):
+		hit_streak = 0
 	var spread := deg_to_rad(float(c.blood_spread_deg))
 	var bcols: Array = c.blood_colors
+	var dcols: Array = c.big_drop_colors
 	var scols: Array = c.spark_colors
 	var kills := 0
 	for n in hero_hit_pos.size():
 		var p := hero_hit_pos[n]
 		var dead := hero_hit_dead[n] == 1
-		kills += 1 if dead else 0
 		var d := p - hero_swing_from
 		var base := d.angle() if d.length_squared() > 0.01 else hero_swing_ang
-		_hit_particle(p, Vector2.ZERO, c.spark_life, c.spark_size, scols[hit_rng.randi() % scols.size()], 0.0)
+		for k in int(c.spark_count):
+			_hit_particle(p, Vector2.ZERO, c.spark_life, c.spark_size, scols[hit_rng.randi() % scols.size()], 0.0)
 		var rng_n: Array = c.blood_kill if dead else c.blood_hit
 		for k in hit_rng.randi_range(int(rng_n[0]), int(rng_n[1])):
 			var v := Vector2.from_angle(base + hit_rng.randf_range(-spread, spread)) * hit_rng.randf_range(c.blood_speed[0], c.blood_speed[1])
@@ -3743,11 +3852,26 @@ func _hit_fx_spawn() -> void:
 				bcols[hit_rng.randi() % bcols.size()], c.blood_drag)
 		for k in (3 if dead else 1):
 			_hit_stain(p + Vector2.from_angle(base + hit_rng.randf_range(-spread, spread)) * hit_rng.randf_range(1.0, 9.0))
+		if not dead:
+			continue
+		kills += 1
+		hit_streak += 1
+		_hit_gib(p, Vector2.from_angle(base), hero_hit_type[n], hero_hit_dir[n])
+		if hit_streak >= int(c.big_drop_streak):
+			for k in hit_rng.randi_range(int(c.big_drop_count[0]), int(c.big_drop_count[1])):
+				var v := Vector2.from_angle(base + hit_rng.randf_range(-spread, spread)) * hit_rng.randf_range(c.big_drop_speed[0], c.big_drop_speed[1])
+				_hit_particle(p, v, hit_rng.randf_range(c.big_drop_life[0], c.big_drop_life[1]), c.big_drop_size, dcols[hit_rng.randi() % dcols.size()], c.big_drop_drag)
+	if kills > 0:
+		hit_streak_t = 0.0
 	var st := get_node_or_null("/root/Settings")
 	var on: bool = c.screen_shake_enabled and (st == null or st.screen_shake)
-	if on and kills >= int(c.screen_shake_kills) and camera != null:
-		shake_t = c.screen_shake_time
-		shake_count += 1
+	if on and camera != null:
+		if c.screen_shake_per_hit_time > 0.0 and c.screen_shake_per_hit_px > 0.0:
+			shake_hit_t = c.screen_shake_per_hit_time
+			shake_hit_count += 1
+		if kills >= int(c.screen_shake_kills):
+			shake_t = c.screen_shake_time
+			shake_count += 1
 
 
 # Кадр эффектов (dt 0 — пауза: всё стоит): частицы летят с затуханием скорости и гаснут, погасшие удаляются (последняя на место);
@@ -3809,13 +3933,89 @@ func _hit_fx_frame(dt: float) -> void:
 				stain_live += 1
 		stain_mm.visible_instance_count = stain_used
 		stain_mm.buffer = stain_buf
-	if camera != null and (shake_t > 0.0 or camera.offset != Vector2.ZERO):
-		shake_t -= dt
-		if shake_t > 0.0:
-			camera.offset = Vector2.from_angle(hit_rng.randf() * TAU) * float(hit_cfg.screen_shake_px) * (shake_t / float(hit_cfg.screen_shake_time))
+	if gib_n > 0 or (gib_top_mm != null and gib_top_mm.visible_instance_count > 0):
+		_gib_frame(dt)
+	hit_streak_t += dt
+	if camera != null and (shake_t > 0.0 or shake_hit_t > 0.0 or camera.offset != Vector2.ZERO):
+		shake_t = maxf(shake_t - dt, 0.0)
+		shake_hit_t = maxf(shake_hit_t - dt, 0.0)
+		if shake_t > 0.0 or shake_hit_t > 0.0:
+			if dt > 0.0 or camera.offset == Vector2.ZERO:   # на паузе смещение стоит
+				var a := float(hit_cfg.screen_shake_px) * shake_t / maxf(float(hit_cfg.screen_shake_time), 0.001) 					+ float(hit_cfg.screen_shake_per_hit_px) * shake_hit_t / maxf(float(hit_cfg.screen_shake_per_hit_time), 0.001)
+				camera.offset = _shake_offset(a)
 		elif dt > 0.0:
-			shake_t = 0.0
 			camera.offset = Vector2.ZERO
+
+
+# Смещение камеры тряски силой a px (сумма видов): целые пиксели экрана (иначе пиксель-арт мылится), не меньше 1 px, не больше
+# screen_shake_max_px; направление случайное (hit_rng). Смещение камеры — в px мира, поэтому делится на зум.
+func _shake_offset(a: float) -> Vector2:
+	var r := clampf(roundf(a), 1.0, maxf(floorf(float(hit_cfg.screen_shake_max_px)), 1.0))
+	var v := Vector2.from_angle(hit_rng.randf() * TAU) * r
+	var px := Vector2(roundf(v.x), roundf(v.y))
+	if px.length() > r:   # диагональ после округления длиннее r — только по большей оси
+		px = Vector2(px.x, 0.0) if absf(v.x) >= absf(v.y) else Vector2(0.0, px.y)
+	return px / camera.zoom
+
+
+# Кадр кусков тела: полёт с затуханием скорости (gib_drag), жизнь gib_life, последние gib_fade с — плавно гаснут; погасшая пара
+# заменяется последней. Ориентация — DIR_BASIS по unit_dir зомби (как у спрайтов юнитов), размер — по картинке и типу; позиция — целые px.
+func _gib_frame(dt: float) -> void:
+	var life: float = hit_cfg.gib_life
+	var fade: float = maxf(float(hit_cfg.gib_fade), 0.001)
+	var damp := exp(-float(hit_cfg.gib_drag) * dt)
+	var k := 0
+	while k < gib_n:
+		gib_age[k] += dt
+		if gib_age[k] >= life:
+			gib_n -= 1
+			gib_pos[2 * k] = gib_pos[2 * gib_n]
+			gib_pos[2 * k + 1] = gib_pos[2 * gib_n + 1]
+			gib_vel[2 * k] = gib_vel[2 * gib_n]
+			gib_vel[2 * k + 1] = gib_vel[2 * gib_n + 1]
+			gib_age[k] = gib_age[gib_n]
+			gib_dir[k] = gib_dir[gib_n]
+			gib_scale[k] = gib_scale[gib_n]
+			gib_col[k] = gib_col[gib_n]
+			continue
+		var b := gib_dir[k] * 4
+		var al := clampf((life - gib_age[k]) / fade, 0.0, 1.0)
+		var col := gib_col[k]
+		var o := k * HIT_FPI
+		var q := 2 * k
+		gib_vel[q] *= damp
+		gib_pos[q] += gib_vel[q] * dt
+		var sk: Vector2 = gib_tex_k[0] * gib_scale[k]
+		gib_top_buf[o + 0] = DIR_BASIS[b] * sk.x
+		gib_top_buf[o + 1] = DIR_BASIS[b + 1] * sk.y
+		gib_top_buf[o + 3] = roundf(gib_pos[q].x)
+		gib_top_buf[o + 4] = DIR_BASIS[b + 2] * sk.x
+		gib_top_buf[o + 5] = DIR_BASIS[b + 3] * sk.y
+		gib_top_buf[o + 7] = roundf(gib_pos[q].y)
+		gib_top_buf[o + 8] = col.r
+		gib_top_buf[o + 9] = col.g
+		gib_top_buf[o + 10] = col.b
+		gib_top_buf[o + 11] = al
+		q += 1
+		gib_vel[q] *= damp
+		gib_pos[q] += gib_vel[q] * dt
+		sk = gib_tex_k[1] * gib_scale[k]
+		gib_bot_buf[o + 0] = DIR_BASIS[b] * sk.x
+		gib_bot_buf[o + 1] = DIR_BASIS[b + 1] * sk.y
+		gib_bot_buf[o + 3] = roundf(gib_pos[q].x)
+		gib_bot_buf[o + 4] = DIR_BASIS[b + 2] * sk.x
+		gib_bot_buf[o + 5] = DIR_BASIS[b + 3] * sk.y
+		gib_bot_buf[o + 7] = roundf(gib_pos[q].y)
+		gib_bot_buf[o + 8] = col.r
+		gib_bot_buf[o + 9] = col.g
+		gib_bot_buf[o + 10] = col.b
+		gib_bot_buf[o + 11] = al
+		k += 1
+	gib_top_mm.visible_instance_count = gib_n
+	gib_bot_mm.visible_instance_count = gib_n
+	if gib_n > 0:
+		gib_top_mm.buffer = gib_top_buf
+		gib_bot_mm.buffer = gib_bot_buf
 
 
 # Сектор радиуса r вокруг направления ang, полуугол half (рад): центр и точки дуги; полный круг — без центра.
@@ -3957,10 +4157,14 @@ func _hero_swing(tj: PackedInt32Array) -> void:
 	hero_hit_idx = tj
 	hero_hit_pos.resize(tj.size())
 	hero_hit_dead.resize(tj.size())
+	hero_hit_type.resize(tj.size())
+	hero_hit_dir.resize(tj.size())
 	hero_swing_from = pos[h]
 	for n in tj.size():
 		hero_hit_pos[n] = pos[tj[n]]
 		hero_hit_dead[n] = 1 if hp[tj[n]] <= 0.0 else 0
+		hero_hit_type[n] = unit_type[tj[n]]
+		hero_hit_dir[n] = unit_dir[tj[n]]
 	if not tj.is_empty():
 		hero_swings += 1
 		hero_hits += tj.size()

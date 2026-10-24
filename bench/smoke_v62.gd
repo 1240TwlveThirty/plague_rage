@@ -91,7 +91,7 @@ func _run() -> void:
 	m.pos[h] = P
 	m.prev_pos[h] = P
 	check("data/fx.json загружен: лимиты частиц %d и пятен %d, тряска %s (%.1f px, %.2f с)" % [m.hit_cfg.max_particles, m.hit_cfg.max_stains,
-		m.hit_cfg.screen_shake_enabled, m.hit_cfg.screen_shake_px, m.hit_cfg.screen_shake_time], not m.hit_cfg.is_empty() and m.hit_pos.size() == 300
+		m.hit_cfg.screen_shake_enabled, m.hit_cfg.screen_shake_px, m.hit_cfg.screen_shake_time], not m.hit_cfg.is_empty() and m.hit_pos.size() == int(m.hit_cfg.max_particles)
 		and m.stain_pos.size() == 100 and st.screen_shake)
 	var z := zombies(m, [Vector2(14, 0), Vector2(20, 9), Vector2(21, -8)], 100.0)
 	m.hp[z[1]] = 1.0   # этот удар его добьёт
@@ -115,7 +115,12 @@ func _run() -> void:
 			blood += 1
 			if m.hit_vel[i].x > 0.0:
 				away += 1
-	check("первый кадр: искр 3 (по одной на попадание), крови %d (2 задетых по 4–8, добитый 8–14 — от 16 до 30)" % blood, sparks == 3 and blood >= 16 and blood <= 30)
+	var bh: Array = m.hit_cfg.blood_hit
+	var bk: Array = m.hit_cfg.blood_kill
+	var lo := 2 * int(bh[0]) + int(bk[0])
+	var hi := 2 * int(bh[1]) + int(bk[1])
+	check("первый кадр: искр 3 (по одной на попадание), крови %d (2 задетых по %d–%d, добитый %d–%d — от %d до %d)" % [blood, bh[0], bh[1], bk[0], bk[1], lo, hi],
+		sparks == 3 * int(m.hit_cfg.spark_count) and blood >= lo and blood <= hi)
 	check("кровь летит от героя по направлению удара (вправо) с разбросом: %d из %d со скоростью вправо" % [away, blood], away == blood)
 	check("ГСЧ симуляции (unit_rng, arrow_rng) эффекты не трогают", rng_state == [m.unit_rng.state, m.arrow_rng.state])
 	check("задетые мигают белым (custom.y)", m.buf[z[0] * m.FLOATS_PER_UNIT + 13] == 1.0)
@@ -179,8 +184,9 @@ func _run() -> void:
 		swing(m)
 		m._process(0.0)
 	var oldest: float = m.stain_age[m.stain_head]   # следующая к замене — самая старая из оставшихся
-	check("лимит: живых частиц %d (не больше max_particles 300), не создано %d; пятен %d — кольцевой буфер max_stains: старые (7+ с) заменены, самое старое — %.2f с" % [m.hit_n, m.hit_dropped, m.stain_used, oldest],
-		m.hit_n <= 300 and m.hit_n > 250 and m.hit_dropped > 0 and m.stain_used == 100 and oldest < 1.0)
+	var cap := int(m.hit_cfg.max_particles)
+	check("лимит: живых частиц %d (не больше max_particles %d), не создано %d; пятен %d — кольцевой буфер max_stains: старые (7+ с) заменены, самое старое — %.2f с" % [m.hit_n, cap, m.hit_dropped, m.stain_used, oldest],
+		m.hit_n <= cap and m.hit_n > cap * 0.8 and m.hit_dropped > 0 and m.stain_used == 100 and oldest < 1.0)
 	for k in 10:
 		m._process(0.1)
 	for j in many:
@@ -195,8 +201,8 @@ func _run() -> void:
 	var off: Vector2 = m.camera.offset
 	var shake_img := await shot(m, "hit_shake.png", 0.02)
 	m._process(0.1)
-	check("добил 3 за удар: тряска экрана (смещение камеры %.2f px, не больше %.1f), через 0.08 с камера на месте" % [off.length(), m.hit_cfg.screen_shake_px],
-		m.shake_count == shakes + 1 and off.length() > 0.0 and off.length() <= m.hit_cfg.screen_shake_px + 0.001 and m.camera.offset == Vector2.ZERO)
+	check("добил 3 за удар: тряска экрана (смещение камеры %.2f px, не больше screen_shake_max_px %.1f), через 0.08 с камера на месте" % [off.length(), m.hit_cfg.screen_shake_max_px],
+		m.shake_count == shakes + 1 and off.length() > 0.0 and off.length() <= m.hit_cfg.screen_shake_max_px + 0.001 and m.camera.offset == Vector2.ZERO)
 	st.screen_shake = false
 	zz = zombies(m, [Vector2(10, 0), Vector2(14, 5), Vector2(15, -5)], 1.0)
 	swing(m)
@@ -206,7 +212,7 @@ func _run() -> void:
 	var two := zombies(m, [Vector2(10, 0), Vector2(14, 5)], 1.0)
 	swing(m)
 	m._process(0.0)
-	check("добил 2 — тряски нет", m.shake_count == shakes + 1)
+	check("добил 2 — тряски за добивание нет (только за попадание, задача 13)", m.shake_count == shakes + 1)
 	for k in 10:
 		m._process(0.1)
 	# Убийства армией частиц не создают: бой без ударов героя
@@ -219,7 +225,7 @@ func _run() -> void:
 		if t % 2 == 0:
 			m._process(1.0 / 60.0)
 		t += 1
-	check("армия убила %d зомби без ударов героя — частиц %d, пятен прибавилось 0" % [m.wave_kills - kills0, m.hit_n], m.wave_kills >= kills0 + 20 and m.hit_n == 0)
+	check("армия убила %d зомби без ударов героя — частиц %d, кусков тела %d" % [m.wave_kills - kills0, m.hit_n, m.gib_n], m.wave_kills >= kills0 + 20 and m.hit_n == 0 and m.gib_n == 0)
 	m.queue_free()
 	await step(2)
 	DirAccess.remove_absolute(g.save_path)
