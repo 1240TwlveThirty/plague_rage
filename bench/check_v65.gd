@@ -47,7 +47,7 @@ func sheet(m: Node2D, patch: Dictionary) -> Sprite2D:
 	m.hero_sprite = Sprite2D.new()
 	var tex: Texture2D = load(cfg.get("sprite_path", "res://art/knight_player.png"))
 	m.hero_sprite.texture = tex
-	m.hero_sprite.scale = Vector2.ONE * cfg.size_scale * m.SPRITE_PX / tex.get_height()
+	m.hero_sprite.scale = m._hero_sprite_scale(tex.get_height())
 	m._setup_hero_sheet(tex)
 	m.hero_cfg = keep
 	return m.hero_sprite
@@ -61,9 +61,11 @@ func t_sheet() -> void:
 		d.frames, ", ".join(d.animations.keys())], d.sprite_path == "res://art/knight_player.png" and not d.has("sprite") and d.animations.has("idle")
 		and d.animations.has("attack") and int(tex.get_width()) % int(d.frame_w) == 0 and int(tex.get_height()) % int(d.frame_h) == 0)
 	var s := sheet(m, {})
-	check("сетка: %d x %d кадров, анимаций %d, orient %s, на экране тело %s px кадра = %.1f px мира (size_scale x юнит)" % [s.hframes, s.vframes, m.hero_anims.size(),
-		d.orient, d.body_px, s.scale.y * d.body_px], s.hframes == tex.get_width() / int(d.frame_w) and s.vframes == tex.get_height() / int(d.frame_h)
-		and m.hero_anims.size() == d.animations.size() and m.hero_rotate == (d.orient == "rotate") and is_equal_approx(s.scale.y * d.body_px, m.SPRITE_PX * d.size_scale)
+	var knight_px: float = m.KNIGHT_SPRITE_SCALE * m.SPRITE_PX
+	check("сетка: %d x %d кадров, анимаций %d, orient %s; кадр %s px по высоте = %.1f px мира = рыцарь (%.1f) x hero_screen_scale_rel %s" % [s.hframes, s.vframes,
+		m.hero_anims.size(), d.orient, d.frame_h, s.scale.y * d.frame_h, knight_px, d.hero_screen_scale_rel], s.hframes == tex.get_width() / int(d.frame_w)
+		and s.vframes == tex.get_height() / int(d.frame_h) and m.hero_anims.size() == d.animations.size() and m.hero_rotate == (d.orient == "rotate")
+		and is_equal_approx(s.scale.y * d.frame_h, knight_px * d.hero_screen_scale_rel) and not d.has("size_scale") and not d.has("body_px")
 		and s.frame == int(d.animations.idle.frames[0]) and m.hero_anim == "idle")
 	check("pivot: смещение кадра %s" % str(s.offset), s.offset.is_equal_approx(Vector2(d.frame_w / 2.0 - d.pivot[0], d.frame_h / 2.0 - d.pivot[1])))
 	# удар: все кадры на одну вспышку
@@ -85,14 +87,24 @@ func t_sheet() -> void:
 	s = sheet(m, {"frames": null, "frame_w": null, "frame_h": null, "animations": null})
 	check("без полей сетки (как прежний hero.json): прежнее поведение", m.hero_anims.is_empty() and s.hframes == 1)
 	var bad := [{"frame_w": 27}, {"frames": 5}, {"frame_h": 0}, {"animations": {"walk": {"frames": [0]}}}, {"animations": {"idle": {"frames": [4]}}},
-		{"animations": {"idle": {"frames": []}}}, {"animations": {"idle": {"frames": [0], "fps": -1}}}, {"pivot": [1]}, {"body_px": 0}, {"orient": "spin"}]
+		{"animations": {"idle": {"frames": []}}}, {"animations": {"idle": {"frames": [0], "fps": -1}}}, {"pivot": [1]}, {"orient": "spin"}]
 	var wrong := []
 	for p in bad:
 		s = sheet(m, p)
 		if not m.hero_anims.is_empty() or s.hframes != 1:
 			wrong.append(str(p))
-	check("неверная сетка (%d вариантов: кадр не делит картинку, кадров больше, нет idle, кадр вне frames, fps < 0, pivot, body_px, orient) — прежнее поведение" % bad.size(),
+	check("неверная сетка (%d вариантов: кадр не делит картинку, кадров больше, нет idle, кадр вне frames, fps < 0, pivot, orient) — прежнее поведение" % bad.size(),
 		wrong.is_empty(), ", ".join(wrong))
+	# высота на экране не зависит от размера кадра: другая сетка того же листа и другой множитель
+	s = sheet(m, {"frame_w": 52, "frame_h": 26, "frames": 2, "animations": {"idle": {"frames": [0]}}})
+	var h1 := s.scale.y * 26.0
+	s = sheet(m, {"frame_w": 13, "frame_h": 13, "frames": 16, "animations": {"idle": {"frames": [0]}}})
+	var h2 := s.scale.y * 13.0
+	s = sheet(m, {"hero_screen_scale_rel": 1.5})
+	check("кадр 26 и кадр 13 px — одна высота на экране (%.1f, %.1f px мира); hero_screen_scale_rel 1.5 — %.1f; без сетки (вся картинка) — %.1f" % [h1, h2,
+		s.scale.y * d.frame_h, sheet(m, {"frames": 1}).scale.y * tex.get_height()], is_equal_approx(h1, knight_px) and is_equal_approx(h2, knight_px)
+		and is_equal_approx(sheet(m, {"hero_screen_scale_rel": 1.5}).scale.y * d.frame_h, knight_px * 1.5)
+		and is_equal_approx(sheet(m, {"frames": 1}).scale.y * tex.get_height(), knight_px))
 	s = sheet(m, {"orient": "flip"})
 	check("orient flip — анимации есть, поворота нет", not m.hero_anims.is_empty() and not m.hero_rotate)
 	var old := {"enabled": true}

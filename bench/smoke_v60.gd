@@ -42,6 +42,14 @@ func ring_pixels(m: Node2D, img: Image) -> int:
 			n += 1
 	return n
 
+# Высота кадра героя и спрайта павшего рыцаря на экране, px окна (с зумом камеры).
+func hero_screen_h(m: Node2D) -> float:
+	var s: Sprite2D = m.hero_sprite
+	return s.texture.get_height() / float(s.vframes) * s.get_global_transform_with_canvas().get_scale().y
+
+func knight_screen_h(m: Node2D) -> float:
+	return m.KNIGHT_SPRITE_SCALE * m.SPRITE_PX * m.get_global_transform_with_canvas().get_scale().y
+
 # Спрайт смотрит в сторону dir по x: отражение (прежний вид) или поворот (спрайтшит с orient rotate, задача 15).
 func faces(m: Node2D, dir: float) -> bool:
 	if m.hero_rotate:
@@ -80,9 +88,10 @@ func _run() -> void:
 	var m := current_scene as Node2D
 	m.banner.visible = false   # дневник на старте закрывает ворота
 	var img := await shot(m, "hero_start.png")
-	check("игровой режим: герой включён по данным, стоит у ворот, нода видна, спрайт nearest, размер x%.1f юнита" % m.hero_cfg.size_scale, m.hero_on and m.hero_idx >= 0
+	check("игровой режим: герой включён по данным, стоит у ворот, нода видна, спрайт nearest, на экране %.1f px — рыцарь %.1f px x %s" % [hero_screen_h(m),
+		knight_screen_h(m), m.hero_cfg.get("hero_screen_scale_rel", 1.0)], m.hero_on and m.hero_idx >= 0
 		and m.pos[m.hero_idx] == m.HERO_SPAWN and m.hero_view != null and m.hero_view.visible and m.hero_sprite.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
-		and is_equal_approx(m.hero_sprite.scale.y * m.hero_cfg.get("body_px", m.hero_sprite.texture.get_height() / m.hero_sprite.vframes), m.SPRITE_PX * m.hero_cfg.size_scale))
+		and is_equal_approx(hero_screen_h(m), knight_screen_h(m) * m.hero_cfg.get("hero_screen_scale_rel", 1.0)))
 	check("камера — единственный (минимальный) зум: %.3f" % m.camera.zoom.x, is_equal_approx(m.camera.zoom.x, m.camera_min_zoom()))
 	var rp := ring_pixels(m, img)
 	check("кольцо-маркер видно при минимальном зуме: %d из 72 точек окружности цвета маркера" % rp, rp >= 30)

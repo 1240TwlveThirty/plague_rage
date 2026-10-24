@@ -50,8 +50,8 @@ func t_data() -> void:
 	var m := make(1)
 	var i: int = m.infantry_type
 	var h: int = m.hero_type
-	check("hero.json: enabled true (игровой режим), автоатака выключена (задача 11), size_scale 1.6-2, revive_hp_fraction 1.0", d.enabled == true
-		and d.auto_attack == false and d.size_scale >= 1.6 and d.size_scale <= 2.0 and d.revive_hp_fraction == 1.0)
+	check("hero.json: enabled true (игровой режим), автоатака выключена (задача 11), hero_screen_scale_rel больше 0, revive_hp_fraction 1.0", d.enabled == true
+		and d.auto_attack == false and float(d.get("hero_screen_scale_rel", 1.0)) > 0.0 and d.revive_hp_fraction == 1.0)
 	check("тип hero последним (номера типов из unit_types.json прежние), подпись «Командир»", h == m.type_hp.size() - 1 and h == m.type_id.size() - 1
 		and tr(m.type_label[h]) == "Командир")
 	# Балансные значения не фиксируются (задача 14): тип героя берёт числа из hero.json как есть.

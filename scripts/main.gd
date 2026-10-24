@@ -706,7 +706,7 @@ var hero_taken_mult := 1.0   # множитель урона по герою п�
 var hero_fallen_label: Label   # «Командир пал» в HUD
 var hero_view: Node2D          # герой на экране: кольцо-маркер и полоса HP (_draw_hero_marker), спрайт — дочерний; null в бенчах без дерева
 var hero_sprite: Sprite2D
-# Спрайтшит героя (задача 15; hero.json sprite_path, frame_w, frame_h, frames, animations, body_px, pivot, orient; только отрисовка):
+# Спрайтшит героя (задача 15; hero.json sprite_path, frame_w, frame_h, frames, animations, pivot, orient; только отрисовка):
 # анимации idle, walk (герой сдвинулся за тик), attack (кадры растянуты на вспышку удара arc_fx_time). Один кадр или неверная
 # сетка — прежнее поведение: вся картинка, отражение по движению и выпад.
 var hero_anims := {}            # имя -> {"frames": PackedInt32Array, "fps": float}; пусто — без анимации
@@ -3520,12 +3520,16 @@ func _load_hero() -> bool:
 			or not Color.html_is_valid(d.marker_color) or not d.get("arc_fx_color") is String or not Color.html_is_valid(d.arc_fx_color):
 		push_error("%s: нужен JSON-объект с enabled, auto_attack, hold_repeat (bool), label, sprite_path, marker_color и arc_fx_color (hex)" % hero_path)
 		return false
-	if not _require_numbers(d, ["hp", "speed", "damage", "attack_interval", "arc_angle", "arc_range", "max_targets", "arc_fx_time", "size_scale",
+	if not _require_numbers(d, ["hp", "speed", "damage", "attack_interval", "arc_angle", "arc_range", "max_targets", "arc_fx_time",
 			"revive_hp_fraction"], hero_path):
 		return false
 	if d.hp <= 0.0 or d.speed <= 0.0 or d.damage < 0.0 or d.attack_interval <= 0.0 or d.arc_range <= 0.0 or d.arc_angle <= 0.0 or d.arc_angle > 360.0 \
-			or d.size_scale <= 0.0 or d.arc_fx_time <= 0.0 or not _is_whole(d.max_targets) or d.max_targets < 0 or d.revive_hp_fraction <= 0.0 or d.revive_hp_fraction > 1.0:
-		push_error("%s: hp, speed, attack_interval, arc_range, arc_fx_time, size_scale больше 0; arc_angle в (0, 360]; max_targets целое от 0 (0 — без лимита); revive_hp_fraction в (0, 1]" % hero_path)
+			or d.arc_fx_time <= 0.0 or not _is_whole(d.max_targets) or d.max_targets < 0 or d.revive_hp_fraction <= 0.0 or d.revive_hp_fraction > 1.0:
+		push_error("%s: hp, speed, attack_interval, arc_range, arc_fx_time больше 0; arc_angle в (0, 360]; max_targets целое от 0 (0 — без лимита); revive_hp_fraction в (0, 1]" % hero_path)
+		return false
+	var rel = d.get("hero_screen_scale_rel", 1.0)
+	if not (rel is float or rel is int) or rel <= 0.0:
+		push_error("%s: hero_screen_scale_rel — число больше 0 (1.0 — герой на экране ростом с павшего рыцаря)" % hero_path)
 		return false
 	hero_cfg = d
 	hero_on = hero_mode == 1 or (hero_mode == 0 and d.enabled and _game() != null)
@@ -3570,8 +3574,8 @@ func _spawn_hero(frac: float) -> void:
 	hero_face_ang = -PI / 2.0   # вверх, к зомби
 
 
-# Нода героя: спрайт (hero.json sprite_path; нет файла — квадрат цвета маркера) размером size_scale от юнита (SPRITE_PX), nearest.
-# Спрайтшит: body_px пикселей кадра по высоте = size_scale юнита (по умолчанию — вся высота кадра).
+# Нода героя: спрайт (hero.json sprite_path; нет файла — квадрат цвета маркера), nearest. Высота кадра на экране — как у павшего
+# рыцаря (KNIGHT_SPRITE_SCALE x SPRITE_PX) x hero_screen_scale_rel при любом размере кадра (_hero_sprite_scale).
 func _setup_hero_view() -> void:
 	hero_fx = Node2D.new()   # дуга удара: тот же слой, что герой (над юнитами и замком, ниже интерфейса), раньше в дереве — под спрайтом
 	hero_fx.visible = false
@@ -3592,11 +3596,17 @@ func _setup_hero_view() -> void:
 		tex = ImageTexture.create_from_image(img)
 	hero_sprite.texture = tex
 	hero_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	hero_sprite.scale = Vector2.ONE * hero_cfg.size_scale * SPRITE_PX / tex.get_height()
+	hero_sprite.scale = _hero_sprite_scale(tex.get_height())
 	_setup_hero_sheet(tex)
 	hero_view.add_child(hero_sprite)
 	hero_view.draw.connect(_draw_hero_marker)
 	_setup_hit_fx()   # кровь и искры: тот же слой, позже героя — поверх него (попадания в 10–28 px, под спрайтом не видны); пятна — под юнитами
+
+
+# Масштаб спрайта героя: кадр высотой frame_h px — на экране ростом с павшего рыцаря (KNIGHT_SPRITE_SCALE x SPRITE_PX px мира),
+# умноженным на hero_screen_scale_rel (по умолчанию 1.0).
+func _hero_sprite_scale(frame_h: float) -> Vector2:
+	return Vector2.ONE * KNIGHT_SPRITE_SCALE * SPRITE_PX * float(hero_cfg.get("hero_screen_scale_rel", 1.0)) / frame_h
 
 
 # Сетка и анимации спрайтшита из hero.json. Ошибка в данных — предупреждение и прежнее поведение (вся картинка, отражение).
@@ -3625,17 +3635,15 @@ func _setup_hero_sheet(tex: Texture2D) -> void:
 				break
 			parsed[name] = {"frames": PackedInt32Array(fr.map(func(x): return int(x))), "fps": float(fps)}
 	var pv = hero_cfg.get("pivot", [fw / 2.0, fh / 2.0]) if ok else null
-	var body = hero_cfg.get("body_px", fh)
-	ok = ok and pv is Array and pv.size() == 2 and pv.all(func(x): return x is float or x is int) and (body is float or body is int) and body > 0 \
-		and hero_cfg.get("orient", "flip") in ["flip", "rotate"]
+	ok = ok and pv is Array and pv.size() == 2 and pv.all(func(x): return x is float or x is int) and hero_cfg.get("orient", "flip") in ["flip", "rotate"]
 	if not ok:
 		push_warning("%s: сетка спрайтшита героя неверна (frame_w и frame_h делят картинку, frames не больше кадров, есть animations.idle, " % hero_path
-			+ "кадры анимаций от 0 до frames - 1, fps от 0, pivot [x, y], body_px больше 0, orient flip или rotate): вся картинка, как раньше")
+			+ "кадры анимаций от 0 до frames - 1, fps от 0, pivot [x, y], orient flip или rotate): вся картинка, как раньше")
 		return
 	hero_sprite.hframes = tex.get_width() / int(fw)
 	hero_sprite.vframes = tex.get_height() / int(fh)
 	hero_sprite.offset = Vector2(fw / 2.0 - pv[0], fh / 2.0 - pv[1])   # точка pivot кадра — в позиции героя (кольцо, поворот)
-	hero_sprite.scale = Vector2.ONE * hero_cfg.size_scale * SPRITE_PX / float(body)
+	hero_sprite.scale = _hero_sprite_scale(fh)
 	hero_rotate = hero_cfg.get("orient") == "rotate"
 	hero_anims = parsed
 	_hero_play("idle")

@@ -173,9 +173,12 @@ func t_hero(m: Node2D) -> void:
 	var h: int = m.hero_idx
 	var img := await shot(m, "")
 	var s: Sprite2D = m.hero_sprite
-	check("герой: спрайтшит %s, кадр %dx%d, nearest, тело на экране %.1f px мира" % [m.hero_cfg.sprite_path, s.texture.get_width() / s.hframes, s.texture.get_height() / s.vframes,
-		s.scale.y * m.hero_cfg.body_px], s.hframes * s.vframes >= int(m.hero_cfg.frames) and s.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
-		and is_equal_approx(s.scale.y * m.hero_cfg.body_px, m.SPRITE_PX * m.hero_cfg.size_scale))
+	var hero_h: float = s.texture.get_height() / float(s.vframes) * s.get_global_transform_with_canvas().get_scale().y
+	var knight_h: float = m.KNIGHT_SPRITE_SCALE * m.SPRITE_PX * m.get_global_transform_with_canvas().get_scale().y
+	check("герой: спрайтшит %s, кадр %dx%d, nearest, высота на экране %.1f px = рыцарь %.1f px x %s" % [m.hero_cfg.sprite_path, s.texture.get_width() / s.hframes,
+		s.texture.get_height() / s.vframes, hero_h, knight_h, m.hero_cfg.hero_screen_scale_rel], s.hframes * s.vframes >= int(m.hero_cfg.frames)
+		and s.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST and is_equal_approx(hero_h, knight_h * m.hero_cfg.hero_screen_scale_rel))
+	check("кольцо-маркер: радиус %.0f px на экране при любом зуме (прежний)" % m.HERO_RING_PX, m.HERO_RING_PX == 20.0)
 	img = await shot(m, "hero_idle_full.png")
 	hero_crop(m, img, "hero_idle.png")
 	check("покой: анимация idle, кадр %d, поворот к зомби (вверх) %.2f" % [s.frame, s.rotation], m.hero_anim == "idle" and s.frame == int(m.hero_cfg.animations.idle.frames[0])
