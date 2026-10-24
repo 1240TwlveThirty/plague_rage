@@ -1,4 +1,7 @@
 {
+	"gradient_left_alpha": 0.45,
+	"gradient_right_alpha": 0.0,
+	"gradient_width": 0.6,
 	"infantry": {"path": "res://art/infantry_art.png", "crop": [0, 330, 1536, 219]},
 	"archer": {"path": "res://art/bowman_art.png", "crop": [0, 330, 1536, 219]}
 }

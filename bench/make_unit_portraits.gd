@@ -1,10 +1,11 @@
 extends SceneTree
 # Уменьшенные копии иллюстраций отрядов для кнопок (задача 15): из data/unit_portraits.json (path, crop) — полосы с пропорциями
-# кнопок, уменьшенные до 2x их размера (Lanczos): art/ui/<тип>_640x88.png (магазин 320x44) и <тип>_520x80.png (отряд 260x40),
-# и art/ui/unit_portraits_made.json — из чего сделаны. Оригиналы не трогаются. После crop в данных — запустить снова:
+# кнопок, уменьшенные до 2x их размера (Lanczos): art/ui/<тип>_<2w>x<2h>.png для кнопки магазина и кнопки отряда
+# (размеры — data/ui_layout.json: shop_button_size, squad_button_size), и art/ui/unit_portraits_made.json — из чего сделаны.
+# Оригиналы не трогаются. После crop или размеров кнопок в данных — запустить снова:
 #   godot --headless --path . -s res://bench/make_unit_portraits.gd   (новые PNG — затем godot --headless --path . --import)
 const PORTRAITS := preload("res://scripts/portraits.gd")
-const BUTTONS := [Vector2i(320, 44), Vector2i(260, 40)]   # кнопка магазина, кнопка отряда (main.gd)
+const LAYOUT := "res://data/ui_layout.json"
 
 func _initialize() -> void:
 	if root.has_node("Game"):
@@ -12,12 +13,16 @@ func _initialize() -> void:
 	var p := PORTRAITS.new()
 	p.load_defs()
 	DirAccess.make_dir_recursive_absolute(PORTRAITS.UI_DIR)
+	var lay = JSON.parse_string(FileAccess.get_file_as_string(LAYOUT))
+	var buttons := []   # кнопка магазина, кнопка отряда
+	for key in ["shop_button_size", "squad_button_size"]:
+		buttons.append(Vector2i(int(lay[key][0]), int(lay[key][1])))
 	var made := {}
 	var fails := 0
 	for t in p.defs:
 		var d: Dictionary = p.defs[t]
 		var src := PORTRAITS.source_image(d.path)
-		for bs in BUTTONS:
+		for bs in buttons:
 			var size: Vector2i = bs * 2
 			var img := PORTRAITS.strip(src, d.crop, size)
 			if img == null:

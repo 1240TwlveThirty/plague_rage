@@ -43,5 +43,5 @@
 	{"id": "quick_hands", "num": 42, "name_key": "CARD_QUICK_HANDS_NAME", "desc_key": "CARD_QUICK_HANDS_DESC", "builds": ["hero"], "kind": "M", "mods": [{"stat": "attack_rate", "target": "hero", "op": "add_pct", "value": 20}]},
 	{"id": "commander_temper", "num": 43, "name_key": "CARD_COMMANDER_TEMPER_NAME", "desc_key": "CARD_COMMANDER_TEMPER_DESC", "builds": ["hero"], "kind": "M", "mods": [{"stat": "hp", "target": "hero", "op": "add_pct", "value": 50}]},
 	{"id": "last_bastion", "num": 44, "name_key": "CARD_LAST_BASTION_NAME", "desc_key": "CARD_LAST_BASTION_DESC", "builds": ["hero"], "kind": "C", "mods": [{"stat": "damage_taken", "target": "hero", "op": "add_pct", "value": -30}], "when": {"cond": "hero_low", "frac": 0.4}},
-	{"id": "commander_banner", "num": 45, "name_key": "CARD_COMMANDER_BANNER_NAME", "desc_key": "CARD_COMMANDER_BANNER_DESC", "builds": ["hero"], "kind": "C", "mods": [{"stat": "attack_rate", "target": "all_units", "op": "add_pct", "value": 15}], "when": {"cond": "hero_near", "radius": 150}}
+	{"id": "commander_banner", "num": 45, "name_key": "CARD_COMMANDER_BANNER_NAME", "desc_key": "CARD_COMMANDER_BANNER_DESC", "builds": ["hero"], "kind": "C", "mods": [{"stat": "attack_rate", "target": "all_units", "op": "add_pct", "value": 15}], "when": {"cond": "hero_near"}}
 ]

@@ -69,8 +69,24 @@ func t_data() -> void:
 		and defs.commander_temper.mods == [{"stat": "hp", "target": "hero", "op": "add_pct", "value": 50.0}])
 	check("44: hero_low frac 0.4, damage_taken hero −30%", defs.last_bastion.when == {"cond": "hero_low", "frac": 0.4}
 		and defs.last_bastion.mods == [{"stat": "damage_taken", "target": "hero", "op": "add_pct", "value": -30.0}])
-	check("45: hero_near radius 150, attack_rate all_units +15%", defs.commander_banner.when == {"cond": "hero_near", "radius": 150.0}
+	var hd: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/hero.json"))
+	check("45: hero_near без параметров в карточке, радиус — hero.json hero_near_radius %s (> 0), attack_rate all_units +15%%" % hd.get("hero_near_radius"),
+		defs.commander_banner.when == {"cond": "hero_near"} and float(hd.get("hero_near_radius", 0)) > 0.0
 		and defs.commander_banner.mods == [{"stat": "attack_rate", "target": "all_units", "op": "add_pct", "value": 15.0}])
+	var names := {}
+	for loc in ["ru", "en"]:
+		TranslationServer.set_locale(loc)
+		var own := tr("CARD_LAST_BASTION_NAME")
+		var dup := defs.keys().filter(func(id): return id != "last_bastion" and tr(defs[id].name_key) == own)
+		names[loc] = own
+		check("44 на %s: «%s», ни с одной карточкой не совпадает" % [loc, own], own == ("Из последних сил" if loc == "ru" else "Against the Odds") and dup.is_empty(), str(dup))
+	TranslationServer.set_locale("ru")
+	var m0 := make([])
+	m0._load_hero()
+	var desc: String = CARDS.fill_desc(tr("CARD_COMMANDER_BANNER_DESC"))
+	check("описание 45 и подсказка условия — с радиусом из hero.json (%s)" % desc, ("%d px" % int(m0.hero_near_r)) in desc and not "{" in desc
+		and ("%d" % int(m0.hero_near_r)) in m0.cond_text({"cond": "hero_near"}) and m0.hero_near_r == float(hd.hero_near_radius))
+	m0.free()
 	var rules := CARDS.load_rules("res://data/cards_rules.json")
 	check("cards_rules.json: hero_guaranteed_slots 1, прежние поля те же", rules.get("hero_guaranteed_slots") == 1 and rules.offer_count == 3
 		and rules.pick_build_continue_chance == 0.5 and Array(rules.pick_after_waves) == [2, 5, 8])
@@ -116,7 +132,7 @@ func t_validator() -> void:
 		"mods": [{"stat": "hp", "target": "hero", "op": "add_pct", "value": 10}]}))
 	check("hero_low frac больше 1 — ошибка", bad_card({"builds": ["hero"], "kind": "C", "when": {"cond": "hero_low", "frac": 1.5},
 		"mods": [{"stat": "damage_taken", "target": "hero", "op": "add_pct", "value": -10}]}))
-	check("hero_near без radius — ошибка", bad_card({"builds": ["hero"], "kind": "C", "when": {"cond": "hero_near"},
+	check("hero_near с radius в карточке (радиус теперь в hero.json) — ошибка", bad_card({"builds": ["hero"], "kind": "C", "when": {"cond": "hero_near", "radius": 150},
 		"mods": [{"stat": "attack_rate", "target": "all_units", "op": "add_pct", "value": 10}]}))
 	check("arc_angle add_pct (только add_flat) — ошибка", bad_card({"builds": ["hero"], "mods": [{"stat": "arc_angle", "target": "hero", "op": "add_pct", "value": 10}]}))
 	check("hero_guaranteed_slots: -1, 1.5, 4 (больше offer_count) — ошибка", bad_rules(-1) and bad_rules(1.5) and bad_rules(4))
@@ -256,22 +272,27 @@ func lost(ids: Array, frac := 0.3) -> float:
 	return out
 
 func t_banner() -> void:
-	print("45 «Знамя командира» (hero_near): центр отряда ближе 150 px к живому герою")
 	var m := make(["commander_banner"])
+	var r: float = m.hero_near_r
+	print("45 «Знамя командира» (hero_near): центр отряда ближе hero_near_radius (%s px) к живому герою" % r)
 	m._start_wave()
 	var h: int = m.hero_idx
 	var c0: Vector2 = m.squad_pos[0]
-	m.pos[h] = c0 + Vector2(149, 0)
+	m.pos[h] = c0 + Vector2(r - 1.0, 0)
 	m._update_card_conditions()
 	var in0: float = m.squad_rate_mult[0]
 	var arch: float = m.squad_rate_mult[1]
-	check("пехота: центр в 149 px — скорость боя x%.2f, индикатор +15%%" % in0, near(in0, 1.15) and m.card_state.commander_banner.on and near(m.card_state.commander_banner.pct, 15.0))
-	m.pos[h] = c0 + Vector2(151, 0)
+	check("пехота: центр в radius − 1 px — скорость боя x%.2f, индикатор +15%%" % in0, near(in0, 1.15) and m.card_state.commander_banner.on and near(m.card_state.commander_banner.pct, 15.0))
+	m.pos[h] = c0 + Vector2(r + 1.0, 0)
 	m._update_card_conditions()
-	check("151 px — не действует", m.squad_rate_mult[0] == 1.0)
+	check("radius + 1 px — не действует", m.squad_rate_mult[0] == 1.0)
+	m.hero_near_r = r * 2.0
+	m._update_card_conditions()
+	check("радиус вдвое больше (как из hero.json) — снова действует", near(m.squad_rate_mult[0], 1.15))
+	m.hero_near_r = r
 	m.pos[h] = m.squad_pos[1] + Vector2(0, 100)
 	m._update_card_conditions()
-	var far0: bool = m.squad_pos[0].distance_to(m.pos[h]) >= 150.0
+	var far0: bool = m.squad_pos[0].distance_to(m.pos[h]) >= r
 	check("герой у лучников (100 px от их центра): лучники x1.15%s" % ("" if far0 else ", пехота тоже рядом"), near(m.squad_rate_mult[1], 1.15) and (not far0 or m.squad_rate_mult[0] == 1.0))
 	m.hp[h] = 0.0
 	m._update_card_conditions()
@@ -298,7 +319,7 @@ func t_banner() -> void:
 		changes.count(true) == 1 and changes[-1] and n.tick_counter % n.COND_EVERY == 0)
 	n.free()
 	var p := make([], -1)
-	check("без героя (hero_mode -1) карточка не нужна: pool без карточек героя (см. ниже), условие не выполняется", p.hero_idx == -1 and p.cond_factor("hero_near", {"radius": 150}, 0) == 0.0)
+	check("без героя (hero_mode -1) карточка не нужна: pool без карточек героя (см. ниже), условие не выполняется", p.hero_idx == -1 and p.cond_factor("hero_near", {"cond": "hero_near"}, 0) == 0.0)
 	p.free()
 
 func t_offer() -> void:

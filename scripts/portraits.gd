@@ -4,13 +4,14 @@ extends RefCounted
 # и уменьшается до 2x размера кнопки (Lanczos). Готовые уменьшенные копии — art/ui/<тип>_<w>x<h>.png (bench/make_unit_portraits.gd);
 # в art/ui/unit_portraits_made.json записано, из каких path и crop они сделаны. Данные поменяли, а копии нет — полоса
 # режется из исходника при запуске (с предупреждением). Типа нет в файле — кнопка обычная.
-# Вид кнопки: картинка и тёмный градиент слева направо под текстом (дети кнопки за ней — show_behind_parent), контур текста;
-# наведение — картинка ярче и тонкая светлая рамка; нажатая или выбранная — рамка #feae34 3 px; недоступная — серая и темнее.
+# Вид кнопки: картинка и тёмный градиент слева под текстом (дети кнопки за ней — show_behind_parent), контур текста;
+# градиент (задача 16) — в том же файле: gradient_left_alpha у левого края, gradient_right_alpha на доле gradient_width ширины
+# кнопки и дальше вправо; общего затемнения картинки нет. Наведение — картинка ярче и тонкая светлая рамка; нажатая или выбранная —
+# рамка #feae34 3 px; недоступная — серая и темнее.
 const PATH := "res://data/unit_portraits.json"
 const UI_DIR := "res://art/ui/"
 const MADE_PATH := "res://art/ui/unit_portraits_made.json"
-const SHADE_LEFT := 0.7     # градиент: доля чёрного у левого края кнопки
-const SHADE_RIGHT := 0.2    # и у правого
+const GRADIENT_KEYS := {"gradient_left_alpha": 0.45, "gradient_right_alpha": 0.0, "gradient_width": 0.6}   # по умолчанию; доли от 0 до 1
 const OUTLINE_PX := 4       # тёмный контур текста
 const HOVER_BRIGHT := 1.3
 const DISABLED_BRIGHT := 0.55
@@ -33,6 +34,8 @@ var made := {}       # из art/ui/unit_portraits_made.json
 var cache := {}      # "тип WxH" -> Texture2D или null
 var shader: Shader
 var styles := {}     # состояние кнопки -> StyleBox
+var gradient := GRADIENT_KEYS.duplicate()   # параметры градиента из файла
+var shade_tex: GradientTexture2D   # общий для всех кнопок: set_gradient меняет все сразу
 
 
 # Читает data/unit_portraits.json. Нет файла или запись неверна — у этих типов картинки нет (предупреждение), игра идёт.
@@ -45,7 +48,16 @@ func load_defs(path := PATH) -> void:
 	if not d is Dictionary:
 		push_warning("%s: нужен JSON-объект «тип -> {path, crop}»: кнопки без иллюстраций" % path)
 		return
+	for k in GRADIENT_KEYS:
+		var v = d.get(k, GRADIENT_KEYS[k])
+		if (v is float or v is int) and v >= 0.0 and v <= 1.0 and (k != "gradient_width" or v > 0.0):
+			gradient[k] = float(v)
+		else:
+			push_warning("%s: %s — число от 0 до 1 (ширина больше 0); остаётся %s" % [path, k, GRADIENT_KEYS[k]])
+	set_gradient(gradient.gradient_left_alpha, gradient.gradient_right_alpha, gradient.gradient_width)
 	for t in d:
+		if t in GRADIENT_KEYS:
+			continue
 		var e = d[t]
 		var c = e.get("crop") if e is Dictionary else null
 		if not e is Dictionary or not e.get("path") is String or not c is Array or c.size() != 4 \
@@ -55,6 +67,21 @@ func load_defs(path := PATH) -> void:
 		defs[t] = {"path": e.path, "crop": Rect2i(int(c[0]), int(c[1]), int(c[2]), int(c[3]))}
 	var m = JSON.parse_string(FileAccess.get_file_as_string(MADE_PATH)) if FileAccess.file_exists(MADE_PATH) else null
 	made = m if m is Dictionary else {}
+
+
+# Градиент под текстом: left — доля чёрного у левого края, right — с доли width ширины кнопки и до правого края (общая текстура).
+func set_gradient(left: float, right: float, width: float) -> void:
+	gradient = {"gradient_left_alpha": left, "gradient_right_alpha": right, "gradient_width": width}
+	if shade_tex == null:
+		shade_tex = GradientTexture2D.new()
+		shade_tex.width = 256
+		shade_tex.height = 4
+		shade_tex.gradient = Gradient.new()
+	var g := shade_tex.gradient
+	g.set_offset(0, 0.0)
+	g.set_color(0, Color(0, 0, 0, left))
+	g.set_offset(1, width)
+	g.set_color(1, Color(0, 0, 0, right))
 
 
 # Середина crop с пропорциями size (лишнее поровну с двух сторон), в пределах картинки w x h.
@@ -177,13 +204,9 @@ func apply(b: Button, type_name: String) -> void:
 		pic.material.shader = shader
 		var shade := TextureRect.new()
 		shade.name = "Shade"
-		var g := GradientTexture2D.new()
-		g.gradient = Gradient.new()
-		g.gradient.set_color(0, Color(0, 0, 0, SHADE_LEFT))
-		g.gradient.set_color(1, Color(0, 0, 0, SHADE_RIGHT))
-		g.width = 64
-		g.height = 4
-		shade.texture = g
+		if shade_tex == null:
+			set_gradient(gradient.gradient_left_alpha, gradient.gradient_right_alpha, gradient.gradient_width)
+		shade.texture = shade_tex
 		shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		shade.stretch_mode = TextureRect.STRETCH_SCALE
 		for c in [pic, shade]:   # за текстом и рамкой кнопки, на всю кнопку

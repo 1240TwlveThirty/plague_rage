@@ -265,10 +265,10 @@ CARD_QUICK_HANDS_NAME,Быстрые руки,Quick Hands
 CARD_QUICK_HANDS_DESC,+20% к скорости атаки Командира,+20% Commander attack speed
 CARD_COMMANDER_TEMPER_NAME,Закалка командира,Commander's Mettle
 CARD_COMMANDER_TEMPER_DESC,+50% к здоровью Командира,+50% Commander health
-CARD_LAST_BASTION_NAME,Последний рубеж,Last Bastion
+CARD_LAST_BASTION_NAME,Из последних сил,Against the Odds
 CARD_LAST_BASTION_DESC,"−30% к урону по Командиру, пока его здоровье ниже 40%",−30% damage taken by the Commander while below 40% health
 CARD_COMMANDER_BANNER_NAME,Знамя командира,Commander's Banner
-CARD_COMMANDER_BANNER_DESC,"+15% к скорости атаки отрядов, чей центр ближе 150 px к Командиру",+15% attack speed for squads within 150 px of the Commander
+CARD_COMMANDER_BANNER_DESC,"+15% к скорости атаки отрядов, чей центр ближе {hero_near_radius} px к Командиру",+15% attack speed for squads within {hero_near_radius} px of the Commander
 UI_CARDS_TITLE,Выберите карточку,Choose a card
 UI_CARDS_HINT,Клавиши 1 / 2 / 3 или мышь. Пропустить нельзя.,Keys 1 / 2 / 3 or mouse. You can't skip.
 UI_CARDS_OWNED,Уже выбрано: %s,Already chosen: %s

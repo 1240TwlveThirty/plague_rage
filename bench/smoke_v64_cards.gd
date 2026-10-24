@@ -106,7 +106,8 @@ func _run() -> void:
 	m._update_ui()
 	await shot("cards_hero_hud_ru.png")
 	var tips: Array = m.cards_rows.map(func(l): return l.tooltip_text)
-	check("HUD: строки 44 и 45, подсказки с условием «ниже 40%» и «150 px»", m.cards_rows.size() == 2 and tips.size() == 2 and "40%" in tips[0] and "150" in tips[1],
+	check("HUD: строки 44 и 45, подсказки с условием «ниже 40%%» и «%d px» (hero_near_radius)" % int(m.hero_near_r), m.cards_rows.size() == 2 and tips.size() == 2
+		and "40%" in tips[0] and ("%d" % int(m.hero_near_r)) in tips[1],
 		" | ".join(tips).replace("\n", " / "))
 	g.run_cards = []
 	m.queue_free()

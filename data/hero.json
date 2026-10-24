@@ -14,6 +14,7 @@
 	"arc_fx_time": 0.15,
 	"hero_screen_scale_rel": 1.0,
 	"revive_hp_fraction": 1.0,
+	"hero_near_radius": 150,
 	"sprite_path": "res://art/knight_player.png",
 	"frame_w": 26,
 	"frame_h": 26,

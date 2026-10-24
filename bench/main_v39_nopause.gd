@@ -69,6 +69,8 @@ const CARD_PICK := preload("res://scripts/card_pick.gd")
 const ICONS := preload("res://scripts/icons.gd")   # иконки карточек (список в HUD)   # экран выбора карточки
 const CARD_RULES_PATH := "res://data/cards_rules.json"
 const PORTRAITS := preload("res://scripts/portraits.gd")   # иллюстрации отрядов в кнопках магазина и панели отрядов (data/unit_portraits.json)
+const UI_LAYOUT_PATH := "res://data/ui_layout.json"   # размеры кнопок магазина, отрядов, действий и Клича (задача 16)
+const FIT_MIN_FONT := 11   # текст кнопки фиксированного размера ужимается до этого кегля (дальше — перенос по словам)
 const SHOP_PORTRAIT := {"inf_pack": "infantry", "archer_pack": "archer", "spear_pack": "spearman"}   # товар -> тип юнита для иллюстрации
 const ESC_MENU := preload("res://scripts/esc_menu.gd")   # меню паузы по Esc: «Продолжить», «Выйти в меню», «Выход из игры»
 const ESC_NOTE := "UI_PAUSE_NOTE_LOSS"   # ключ перевода
@@ -544,6 +546,8 @@ var total_hits := 0     # статистика: удары по юнитам с�
 var leash_ticks := 0    # статистика: юнито-тики, где привязь перевешивает (w > 0.5)
 var type_id := {}   # имя -> номер
 var portraits = PORTRAITS.new()   # иллюстрации в кнопках (только интерфейс)
+# data/ui_layout.json: фиксированные размеры кнопок (минимум и он же ширина — текст ужимается, кнопка не растягивается).
+var ui_layout := {"shop_button_size": Vector2(448, 56), "squad_button_size": Vector2(352, 48), "action_button_height": 36.0, "war_cry_size": Vector2(300, 40)}
 var type_label := PackedStringArray()   # название типа для интерфейса
 
 # --- Ворота и поражение (data/castle.json) ---
@@ -702,6 +706,7 @@ var hero_hit_dir := PackedByteArray()
 var hero_swing_from := Vector2.ZERO        # где стоял герой при ударе (направление всплеска)
 const HERO_SPAWN := Vector2(1010.0, 680.0)   # у ворот над стеной (GATE_POS.x, WALL_Y - 65; ниже — на зубцах стены): появление и возрождение
 var hero_dead := false   # герой пал в этой волне: приказы заблокированы до её конца, в начале передышки — возрождение
+var hero_near_r := CARDS.HERO_NEAR_DEFAULT   # радиус условия hero_near (hero.json hero_near_radius, px); читает _load_hero
 var hero_taken_mult := 1.0   # множитель урона по герою по условию hero_low (карточка 44, damage_taken); пишет _update_card_conditions, без карточки ровно 1.0
 var hero_fallen_label: Label   # «Командир пал» в HUD
 var hero_view: Node2D          # герой на экране: кольцо-маркер и полоса HP (_draw_hero_marker), спрайт — дочерний; null в бенчах без дерева
@@ -2034,8 +2039,8 @@ func cond_factor(cond: String, w: Dictionary, sq: int) -> float:
 				return 0.0
 			var lost_pct := (squad_start_n[sq] - squad_n[sq]) * 100.0 / squad_start_n[sq]
 			return float(clampi(floori(lost_pct / w.step_pct + 1e-9), 0, int(w.max_steps)))
-		"hero_near":   # центр отряда (якорь — центр живых слотов) ближе radius px к живому герою
-			return 1.0 if hero_idx >= 0 and hp[hero_idx] > 0.0 and squad_pos[sq].distance_squared_to(pos[hero_idx]) < w.radius * w.radius else 0.0
+		"hero_near":   # центр отряда (якорь — центр живых слотов) ближе hero_near_radius px (hero.json) к живому герою
+			return 1.0 if hero_idx >= 0 and hp[hero_idx] > 0.0 and squad_pos[sq].distance_squared_to(pos[hero_idx]) < hero_near_r * hero_near_r else 0.0
 	return 0.0
 
 
@@ -2132,7 +2137,7 @@ func card_row_text(r: Dictionary) -> String:
 # Подсказка к строке карточки: название, описание (без издержки), издержка, условие.
 func card_tooltip(r: Dictionary) -> String:
 	var d: Dictionary = card_defs[r.id]
-	var desc := tr(d.desc_key)
+	var desc := CARDS.fill_desc(tr(d.desc_key))
 	var lines := [tr(d.name_key)]
 	var at := desc.find(";")
 	lines.append(desc if at < 0 else desc.left(at))
@@ -2160,7 +2165,7 @@ func cond_text(w: Dictionary) -> String:
 		"hero_low":
 			return tr(COND_KEYS[w.cond]) % num_text(w.frac * 100.0)
 		"hero_near":
-			return tr(COND_KEYS[w.cond]) % num_text(w.radius)
+			return tr(COND_KEYS[w.cond]) % num_text(hero_near_r)
 	return tr(COND_KEYS[w.cond])
 
 
@@ -3527,6 +3532,11 @@ func _load_hero() -> bool:
 			or d.arc_fx_time <= 0.0 or not _is_whole(d.max_targets) or d.max_targets < 0 or d.revive_hp_fraction <= 0.0 or d.revive_hp_fraction > 1.0:
 		push_error("%s: hp, speed, attack_interval, arc_range, arc_fx_time больше 0; arc_angle в (0, 360]; max_targets целое от 0 (0 — без лимита); revive_hp_fraction в (0, 1]" % hero_path)
 		return false
+	var nr = d.get("hero_near_radius", CARDS.HERO_NEAR_DEFAULT)
+	if not (nr is float or nr is int) or nr <= 0.0:
+		push_error("%s: hero_near_radius — число больше 0 (радиус условия hero_near карточки 45, px)" % hero_path)
+		return false
+	hero_near_r = float(nr)
 	var rel = d.get("hero_screen_scale_rel", 1.0)
 	if not (rel is float or rel is int) or rel <= 0.0:
 		push_error("%s: hero_screen_scale_rel — число больше 0 (1.0 — герой на экране ростом с павшего рыцаря)" % hero_path)
@@ -4747,12 +4757,12 @@ func _setup_fps_label() -> void:
 	shop_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	shop_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	shop_panel.position.x -= 16.0
+	_load_ui_layout()
 	portraits.load_defs()
 	for k in SHOP_ITEMS.size():
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE   # иначе Space «нажимает» последнюю кнопку
-		b.custom_minimum_size = Vector2(320, 44)
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		_fixed_button(b, ui_layout.shop_button_size)
 		b.pressed.connect(_buy.bind(k))
 		shop_panel.add_child(b)
 		shop_buttons.append(b)
@@ -4773,8 +4783,7 @@ func _setup_fps_label() -> void:
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
 		b.toggle_mode = true   # нажатая = выбранная
-		b.custom_minimum_size = Vector2(260, 40)
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		_fixed_button(b, ui_layout.squad_button_size)
 		b.pressed.connect(_on_row_pressed.bind(s))
 		row.add_child(b)
 		squad_panel.add_child(row)
@@ -4787,7 +4796,7 @@ func _setup_fps_label() -> void:
 	for k in action_calls.size():
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
-		b.custom_minimum_size = Vector2(0, 36)
+		b.custom_minimum_size = Vector2(0, ui_layout.action_button_height)
 		b.pressed.connect(action_calls[k])
 		squad_actions.add_child(b)
 		action_buttons.append(b)
@@ -4809,7 +4818,7 @@ func _setup_fps_label() -> void:
 	split_row.add_child(split_slider)
 	split_box.add_child(split_row)
 	split_mode_button = Button.new()
-	split_mode_button.custom_minimum_size = Vector2(0, 36)
+	split_mode_button.custom_minimum_size = Vector2(0, ui_layout.action_button_height)
 	split_mode_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	split_mode_button.pressed.connect(_next_split_mode)
 	split_box.add_child(split_mode_button)
@@ -5074,6 +5083,7 @@ func _update_squad_panel() -> void:
 		squad_buttons[s].text = "%s  %s — %d — %s" % [SETTINGS.key_label("squad_select_%d" % (s + 1)), _squad_label(s), squad_n[s], tr(ORDER_NAMES[squad_order[s]])]
 		if squad_skill_on[s] == 1:   # навык «Стена щитов» действует — отметка и золотой цвет, как у горящих карточек
 			squad_buttons[s].text += "  ● " + tr("UI_SKILL_SHIELD_WALL")
+		_fit_text(squad_buttons[s])
 		squad_buttons[s].add_theme_color_override("font_color", CARD_ON if squad_skill_on[s] == 1 else Color.WHITE)
 		squad_buttons[s].set_pressed_no_signal(_is_sel(s))
 	squad_actions.visible = acts
@@ -5090,6 +5100,61 @@ func _update_squad_panel() -> void:
 		squad_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 16)
 
 
+# data/ui_layout.json поверх значений по умолчанию: размеры — [w, h] больше 0, высота кнопок действий — число больше 0.
+# Нет файла или поле неверно — предупреждение, остаётся значение по умолчанию (только интерфейс).
+func _load_ui_layout() -> void:
+	if not FileAccess.file_exists(UI_LAYOUT_PATH):
+		push_warning("Нет %s: размеры кнопок по умолчанию" % UI_LAYOUT_PATH)
+		return
+	var d = JSON.parse_string(FileAccess.get_file_as_string(UI_LAYOUT_PATH))
+	if not d is Dictionary:
+		push_warning("%s: нужен JSON-объект: размеры кнопок по умолчанию" % UI_LAYOUT_PATH)
+		return
+	for key in ui_layout:
+		var v = d.get(key)
+		if ui_layout[key] is Vector2 and v is Array and v.size() == 2 and v.all(func(x): return (x is float or x is int) and x > 0):
+			ui_layout[key] = Vector2(v[0], v[1])
+		elif ui_layout[key] is float and (v is float or v is int) and v > 0:
+			ui_layout[key] = float(v)
+		else:
+			push_warning("%s: %s — %s; остаётся %s" % [UI_LAYOUT_PATH, key, "[w, h] больше 0" if ui_layout[key] is Vector2 else "число больше 0", str(ui_layout[key])])
+
+
+# Кнопка фиксированного размера: size — и минимум, и ширина (текст не растягивает кнопку: обрезка и перенос по словам, кегль — _fit_text).
+func _fixed_button(b: Button, size: Vector2) -> void:
+	b.custom_minimum_size = size
+	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.clip_text = true
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
+
+# Кегль текста кнопки фиксированного размера: сначала самый крупный (от кегля темы до FIT_MIN_FONT), при котором строки
+# помещаются без переноса; не нашёлся — самый крупный, при котором помещается с переносом по словам (часть уходит на вторую строку).
+# Размер — за вычетом отступов. Пересчёт только при смене текста.
+func _fit_text(b: Button) -> void:
+	if b.get_meta("fit_text", "") == b.text:
+		return
+	b.set_meta("fit_text", b.text)
+	b.remove_theme_font_size_override("font_size")
+	var font := b.get_theme_font("font")
+	var base := b.get_theme_font_size("font_size")
+	var room := b.custom_minimum_size - b.get_theme_stylebox("normal").get_minimum_size()
+	var fs := -1
+	for wrap in [false, true]:
+		for f in range(base, FIT_MIN_FONT - 1, -1):
+			var sz := font.get_multiline_string_size(b.text, HORIZONTAL_ALIGNMENT_LEFT, room.x if wrap else -1.0, f, -1,
+				(TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE) if wrap else TextServer.BREAK_MANDATORY)
+			if sz.x <= room.x + 0.5 and sz.y <= room.y + 0.5:
+				fs = f
+				break
+		if fs > 0:
+			break
+	fs = FIT_MIN_FONT if fs < 0 else fs
+	if fs != base:
+		b.add_theme_font_size_override("font_size", fs)
+
+
 # Кнопка Клича Благодати под списком отрядов (только если дар куплен) и подсветка краёв экрана.
 func _setup_war_cry_ui(layer: CanvasLayer) -> void:
 	if war_cry_level <= 0:
@@ -5098,15 +5163,14 @@ func _setup_war_cry_ui(layer: CanvasLayer) -> void:
 	war_cry_box.add_theme_constant_override("separation", 2)
 	war_cry_button = Button.new()
 	war_cry_button.focus_mode = Control.FOCUS_NONE
-	war_cry_button.custom_minimum_size = Vector2(300, 40)
-	war_cry_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_fixed_button(war_cry_button, ui_layout.war_cry_size)
 	war_cry_button.pressed.connect(request_war_cry)
 	war_cry_box.add_child(war_cry_button)
 	war_cry_bar = ProgressBar.new()
 	war_cry_bar.show_percentage = false
 	war_cry_bar.min_value = 0.0
 	war_cry_bar.max_value = 1.0
-	war_cry_bar.custom_minimum_size = Vector2(300, 8)
+	war_cry_bar.custom_minimum_size = Vector2(ui_layout.war_cry_size.x, 8)
 	war_cry_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	war_cry_box.add_child(war_cry_bar)
 	squad_panel.add_child(war_cry_box)
@@ -5151,6 +5215,7 @@ func _update_war_cry_ui() -> void:
 		war_cry_button.text = tr("HUD_WAR_CRY_READY") % key
 		war_cry_bar.value = 1.0
 	war_cry_button.disabled = not active and not war_cry_can()
+	_fit_text(war_cry_button)
 	war_cry_bar.modulate = gold_tint
 	for r in war_cry_glow:
 		r.visible = active
@@ -5191,6 +5256,7 @@ func _update_ui() -> void:
 			else:
 				shop_buttons[k].text += "\n" + tr("HUD_SHOP_NEW_SQUAD")
 		shop_buttons[k].disabled = capped or gold < price   # серая при нехватке золота или на пределе
+		_fit_text(shop_buttons[k])
 
 
 # Симуляция: фиксированный шаг (по умолчанию 30 раз в секунду)

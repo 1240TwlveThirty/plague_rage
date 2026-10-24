@@ -7,10 +7,12 @@ const MODS := preload("res://scripts/mods.gd")
 const KINDS := ["M", "C", "K"]
 const BUILDS := ["shield", "archers", "gold", "risk", "common", "hero"]   # hero — карточки героя (задача 14): только при включённом герое, гарантированный слот
 # Условия карточек C и их параметры (числа)
-# hero_low — HP героя ниже frac от максимума (модификаторы — только damage_taken / hero); hero_near — центр отряда ближе radius px к живому герою.
+# hero_low — HP героя ниже frac от максимума (модификаторы — только damage_taken / hero); hero_near — центр отряда ближе hero_near_radius px (data/hero.json) к живому герою.
 const CONDS := {"hold": [], "retreat": [], "gate_low": ["frac"], "squad_low": ["frac"], "wave_time": ["seconds"], "gold_high": ["gold"], "lost_steps": ["step_pct", "max_steps"],
-	"hero_low": ["frac"], "hero_near": ["radius"]}
+	"hero_low": ["frac"], "hero_near": []}
 const COND_STATS := ["damage", "hp", "speed", "block", "attack_rate"]   # что может давать условие: множитель урона, получаемого урона (hp), скорости отряда, бонус блока, скорость боя
+const HERO_PATH := "res://data/hero.json"
+const HERO_NEAR_DEFAULT := 150.0   # hero_near_radius, если в hero.json его нет
 const SPECIALS := ["vengeance", "gate_attack"]
 const FIELDS := ["id", "num", "name_key", "desc_key", "builds", "kind", "mods", "when", "on_pick", "special", "per_unit_pct", "max_pct", "disabled", "disabled_reason"]
 
@@ -222,6 +224,15 @@ static func make_record(d: Dictionary, rng: RandomNumberGenerator) -> Dictionary
 
 
 # Карточка героя: первый билд hero (цели hero, условия hero_*).
+# Описание карточки: {hero_near_radius} — радиус условия hero_near из data/hero.json (число как в файле).
+static func fill_desc(text: String) -> String:
+	if not "{hero_near_radius}" in text:
+		return text
+	var d = JSON.parse_string(FileAccess.get_file_as_string(HERO_PATH)) if FileAccess.file_exists(HERO_PATH) else null
+	var r = d.get("hero_near_radius", HERO_NEAR_DEFAULT) if d is Dictionary else HERO_NEAR_DEFAULT
+	return text.replace("{hero_near_radius}", str(int(r)) if (r is float or r is int) and r == floorf(r) else str(r))
+
+
 static func is_hero(d: Dictionary) -> bool:
 	return d.builds[0] == "hero"
 

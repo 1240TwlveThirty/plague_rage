@@ -6,6 +6,8 @@ extends SceneTree
 const MAIN := "res://scripts/main.gd"
 const PORTRAITS := preload("res://scripts/portraits.gd")
 var fails := 0
+var SHOP := Vector2i(448, 56)    # кнопки из data/ui_layout.json (t_portraits)
+var SQUAD := Vector2i(352, 48)
 
 func check(what: String, ok: bool, info := "") -> void:
 	if not ok:
@@ -30,6 +32,7 @@ func _run() -> void:
 		await process_frame
 	t_sheet()
 	t_portraits()
+	t_layout()
 	print("CHECK: провалов %d" % fails)
 	quit(1 if fails > 0 else 0)
 
@@ -124,31 +127,41 @@ func t_sheet() -> void:
 
 func t_portraits() -> void:
 	print("иллюстрации отрядов")
+	var lay: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/ui_layout.json"))
+	SHOP = Vector2i(int(lay.shop_button_size[0]), int(lay.shop_button_size[1]))
+	SQUAD = Vector2i(int(lay.squad_button_size[0]), int(lay.squad_button_size[1]))
 	var p := PORTRAITS.new()
 	p.load_defs()
 	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(PORTRAITS.PATH))
-	check("data/unit_portraits.json: типы %s, у каждого path и crop" % ", ".join(d.keys()), p.defs.size() == d.size() and p.defs.has("infantry") and p.defs.has("archer")
+	var types := d.keys().filter(func(k): return not k in PORTRAITS.GRADIENT_KEYS)
+	check("data/unit_portraits.json: типы %s, у каждого path и crop" % ", ".join(types), p.defs.size() == types.size() and p.defs.has("infantry") and p.defs.has("archer")
 		and p.defs.keys().all(func(t): return ResourceLoader.exists(p.defs[t].path)))
-	var r: Rect2i = PORTRAITS.fit(Rect2i(0, 330, 1536, 219), Vector2i(640, 88), 1536, 1024)
-	var q: Rect2i = PORTRAITS.fit(Rect2i(0, 330, 1536, 219), Vector2i(520, 80), 1536, 1024)
-	check("вырезка с пропорциями кнопки по центру crop: магазин %s, отряд %s" % [str(r), str(q)], r == Rect2i(0, 334, 1536, 211) and q == Rect2i(56, 330, 1424, 219))
-	check("crop за краем картинки обрезается по ней", PORTRAITS.fit(Rect2i(1000, 900, 1536, 219), Vector2i(640, 88), 1536, 1024).end <= Vector2i(1536, 1024))
+	check("градиент из файла: слева %.2f, справа %.2f, ширина %.2f кнопки; текстура — две точки (0 и ширина)" % [p.gradient.gradient_left_alpha, p.gradient.gradient_right_alpha,
+		p.gradient.gradient_width], p.gradient.gradient_left_alpha == float(d.gradient_left_alpha) and p.gradient.gradient_right_alpha == float(d.gradient_right_alpha)
+		and p.gradient.gradient_width == float(d.gradient_width) and is_equal_approx(p.shade_tex.gradient.get_offset(1), d.gradient_width)
+		and is_equal_approx(p.shade_tex.gradient.get_color(0).a, d.gradient_left_alpha) and is_equal_approx(p.shade_tex.gradient.get_color(1).a, d.gradient_right_alpha))
+	var r: Rect2i = PORTRAITS.fit(Rect2i(0, 330, 1536, 219), SHOP * 2, 1536, 1024)
+	var q: Rect2i = PORTRAITS.fit(Rect2i(0, 330, 1536, 219), SQUAD * 2, 1536, 1024)
+	check("вырезка с пропорциями кнопки по центру crop: магазин %s (%s), отряд %s (%s)" % [str(r), str(SHOP), str(q), str(SQUAD)],
+		absf(float(r.size.x) / r.size.y - float(SHOP.x) / SHOP.y) < 0.05 and absf(float(q.size.x) / q.size.y - float(SQUAD.x) / SQUAD.y) < 0.05
+		and Rect2i(0, 330, 1536, 219).encloses(r) and Rect2i(0, 330, 1536, 219).encloses(q))
+	check("crop за краем картинки обрезается по ней", PORTRAITS.fit(Rect2i(1000, 900, 1536, 219), SHOP * 2, 1536, 1024).end <= Vector2i(1536, 1024))
 	var sizes := {}
 	for t in p.defs:
-		for bs in [Vector2i(320, 44), Vector2i(260, 40)]:
+		for bs in [SHOP, SQUAD]:
 			var tex := p.texture(t, bs)
 			sizes["%s %s" % [t, bs]] = tex
 	check("копии art/ui совпадают с данными и берутся как есть (импорт, %d шт., размер 2x кнопки)" % sizes.size(), p.defs.keys().all(func(t): return p.copy_fresh(t))
-		and sizes.keys().all(func(k): return sizes[k] is CompressedTexture2D) and sizes.values().all(func(tx): return tx.get_width() in [640, 520] and tx.get_height() in [88, 80]))
+		and sizes.keys().all(func(k): return sizes[k] is CompressedTexture2D) and sizes.values().all(func(tx): return Vector2i(tx.get_size()) in [SHOP * 2, SQUAD * 2]))
 	check("копии не тронули оригиналы: исходники 1536x1024", p.defs.keys().all(func(t): return load(p.defs[t].path).get_size() == Vector2(1536, 1024)))
 	# другой crop — из исходника при запуске
 	var p2 := PORTRAITS.new()
 	p2.load_defs()
 	p2.defs.infantry.crop = Rect2i(0, 100, 1536, 219)
-	var tx: Texture2D = p2.texture("infantry", Vector2i(320, 44))
-	check("crop в данных изменён, копии нет — полоса из исходника при запуске (ImageTexture 640x88 с mipmaps)", tx is ImageTexture and tx.get_size() == Vector2(640, 88)
+	var tx: Texture2D = p2.texture("infantry", SHOP)
+	check("crop в данных изменён, копии нет — полоса из исходника при запуске (ImageTexture 2x кнопки с mipmaps)", tx is ImageTexture and Vector2i(tx.get_size()) == SHOP * 2
 		and tx.get_image().has_mipmaps())
-	check("тип без иллюстрации — null", p.texture("spearman", Vector2i(320, 44)) == null and p.texture("", Vector2i(320, 44)) == null)
+	check("тип без иллюстрации — null", p.texture("spearman", SHOP) == null and p.texture("", SHOP) == null)
 	# неверные записи
 	var f := FileAccess.open("user://portraits_v65.json", FileAccess.WRITE)
 	f.store_string('{"infantry": {"path": "res://art/infantry_art.png", "crop": [0, 330, 1536]}, "archer": {"crop": [0, 0, 10, 10]}, ' +
@@ -163,7 +176,7 @@ func t_portraits() -> void:
 	DirAccess.remove_absolute("user://portraits_v65.json")
 	# кнопки
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(320, 44)
+	b.custom_minimum_size = Vector2(SHOP)
 	p.apply(b, "infantry")
 	var pic := b.get_node_or_null("Portrait") as TextureRect
 	check("кнопка с иллюстрацией: картинка и градиент за текстом, фильтр linear с mipmaps, контур текста %d px, рамка выбора 3 px #feae34" % p.OUTLINE_PX,
@@ -173,10 +186,33 @@ func t_portraits() -> void:
 	p.apply(b, "spearman")
 	check("тип сменился на тип без иллюстрации — обычная кнопка", not pic.visible and not b.has_theme_stylebox_override("normal") and not b.has_theme_constant_override("outline_size"))
 	p.apply(b, "archer")
-	check("и обратно — иллюстрация лучников", pic.visible and pic.texture == p.texture("archer", Vector2i(320, 44)) and b.has_theme_stylebox_override("normal"))
+	check("и обратно — иллюстрация лучников", pic.visible and pic.texture == p.texture("archer", SHOP) and b.has_theme_stylebox_override("normal"))
 	b.free()
 	var g := Button.new()
-	g.custom_minimum_size = Vector2(320, 44)
+	g.custom_minimum_size = Vector2(SHOP)
 	p.apply(g, "")
 	check("«Оружие», «Ворота» (без типа): дочерних нод и переопределений нет", g.get_node_or_null("Portrait") == null and not g.has_theme_stylebox_override("normal"))
 	g.free()
+
+func t_layout() -> void:
+	print("размеры кнопок (data/ui_layout.json)")
+	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/ui_layout.json"))
+	check("ui_layout.json: shop %s, squad %s, действия %s, Клич %s" % [d.shop_button_size, d.squad_button_size, d.action_button_height, d.war_cry_size],
+		d.shop_button_size == [448.0, 56.0] and d.squad_button_size == [352.0, 48.0] and d.action_button_height == 36.0 and d.war_cry_size == [300.0, 40.0])
+	var m: Node2D = load(MAIN).new()
+	m._load_ui_layout()
+	check("main читает размеры из файла", m.ui_layout.shop_button_size == Vector2(448, 56) and m.ui_layout.squad_button_size == Vector2(352, 48)
+		and m.ui_layout.action_button_height == 36.0 and m.ui_layout.war_cry_size == Vector2(300, 40))
+	# подгонка текста: длинный текст — кегль меньше, кнопка того же размера
+	var b := Button.new()
+	m._fixed_button(b, Vector2(448, 56))
+	b.text = "Z  +50 пехоты — 100 зол. (куплено 0)"
+	m._fit_text(b)
+	var fs0 := b.get_theme_font_size("font_size")
+	b.text = "C  Оружие: скорость атаки +10% — 150 зол. (куплено 0) — очень длинная строка для проверки подгонки текста под кнопку фиксированного размера, три строки и больше"
+	m._fit_text(b)
+	var fs1 := b.get_theme_font_size("font_size")
+	check("подгонка: короткий текст — кегль %d, длинный — %d (не меньше %d), размер кнопки не меняется (%s), перенос по словам" % [fs0, fs1, m.FIT_MIN_FONT, str(b.get_combined_minimum_size())],
+		fs1 < fs0 and fs1 >= m.FIT_MIN_FONT and b.get_combined_minimum_size().x <= 448.0 and b.clip_text and b.autowrap_mode == TextServer.AUTOWRAP_WORD_SMART)
+	b.free()
+	m.free()

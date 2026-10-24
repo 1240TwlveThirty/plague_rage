@@ -58,13 +58,15 @@ func shader(b: Button, key: String) -> float:
 	var pic := b.get_node_or_null("Portrait") as TextureRect
 	return (pic.material as ShaderMaterial).get_shader_parameter(key) if pic != null else -1.0
 
+# Текст кнопки фиксированного размера (с переносом по словам, текущим кеглем) помещается в неё за вычетом отступов.
 func text_fits(b: Button) -> bool:
-	var font := b.get_theme_font("font")
-	var fs := b.get_theme_font_size("font_size")
-	var w := 0.0
-	for line in b.text.split("\n"):
-		w = maxf(w, font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
-	return w + b.get_theme_stylebox("normal").get_minimum_size().x <= b.size.x + 0.5
+	var room := b.size - b.get_theme_stylebox("normal").get_minimum_size()
+	var sz := b.get_theme_font("font").get_multiline_string_size(b.text, HORIZONTAL_ALIGNMENT_LEFT, room.x, b.get_theme_font_size("font_size"), -1,
+		TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE)
+	return sz.x <= room.x + 0.5 and sz.y <= room.y + 0.5
+
+func on_screen(c: Control) -> bool:
+	return Rect2(Vector2.ZERO, root.get_visible_rect().size).encloses(c.get_global_rect())
 
 func hover(p: Vector2) -> void:
 	var e := InputEventMouseMotion.new()
@@ -121,9 +123,11 @@ func t_shop(m: Node2D) -> void:
 		check("%s: магазин виден; у пехоты и лучников иллюстрация (разброс яркости %.2f, %.2f), у «Оружия» и «Ворот» нет" % [loc, spread(img, inf), spread(img, arc)],
 			m.shop_panel.visible and inf.get_node("Portrait").visible and arc.get_node("Portrait").visible and spread(img, inf) > 0.15 and spread(img, arc) > 0.15
 			and plain.all(func(b): return b.get_node_or_null("Portrait") == null))
-		check("%s: текст в кнопках магазина помещается, контур 4 px, кнопка %dx%d (не меньше 320x44; ширину панели задаёт самая длинная строка)" % [loc, inf.size.x, inf.size.y],
-			m.shop_buttons.filter(func(b): return b.visible).all(text_fits) and inf.get_theme_constant("outline_size") == 4 and inf.size.x >= 320.0 and inf.size.y >= 44.0,
-			inf.text.replace("\n", " / "))
+		var vis: Array = m.shop_buttons.filter(func(b): return b.visible)
+		var lay: Vector2 = m.ui_layout.shop_button_size
+		check("%s: все кнопки магазина ровно %dx%d (ui_layout), текст помещается (кегли %s), контур 4 px, панель на экране" % [loc, lay.x, lay.y,
+			str(vis.map(func(b): return b.get_theme_font_size("font_size")))], vis.all(func(b): return b.size == lay) and vis.all(text_fits)
+			and inf.get_theme_constant("outline_size") == 4 and on_screen(m.shop_panel), " | ".join(vis.map(func(b): return b.text.replace("\n", " / "))))
 	TranslationServer.set_locale("ru")
 	check("обычное состояние: картинка не серая, яркость 1", inf.get_draw_mode() == BaseButton.DRAW_NORMAL and shader(inf, "gray") == 0.0 and shader(inf, "bright") == 1.0)
 	m.gold = 0
@@ -161,8 +165,39 @@ func t_squads(m: Node2D) -> void:
 			and shader(bo, "bright") > 1.0 and (bo.get_theme_stylebox("hover") as StyleBoxFlat).border_width_top == 1)
 	else:
 		check("второй отряд с иллюстрацией для наведения есть", false, str(types))
-	check("текст в кнопках отрядов помещается", shown.all(func(s): return text_fits(m.squad_buttons[s])))
+	var sq_ok := shown.all(func(s): return text_fits(m.squad_buttons[s]) and m.squad_buttons[s].size == m.ui_layout.squad_button_size)
+	check("кнопки отрядов ровно %s (ui_layout), текст помещается" % str(m.ui_layout.squad_button_size), sq_ok)
 	hover(Vector2(960, 540))
+	await shot(m, "")
+	# 8 отрядов, навык «Стена щитов» у одного и кнопка Клича — панель целиком на экране 1920x1080 (только интерфейс: потом как было)
+	var keep_used: PackedByteArray = m.squad_used.duplicate()
+	var keep_type: PackedInt32Array = m.squad_type.duplicate()
+	var keep_team: PackedByteArray = m.squad_team.duplicate()
+	for q in m.SQUAD_MAX:
+		if m.squad_used[q] == 0:
+			m.squad_used[q] = 1
+			m.squad_type[q] = m.squad_type[shown[q % shown.size()]]
+			m.squad_team[q] = 0
+	var keep_skill: int = m.squad_skill_on[0]
+	m.squad_skill_on[0] = 1
+	if m.war_cry_button == null:
+		m.war_cry_level = 1
+		m._setup_war_cry_ui(m.squad_panel.get_parent())
+	m.squad_panel_sig = -1
+	m._update_squad_panel()
+	m._update_war_cry_ui()
+	img = await shot(m, "art_squads_8.png")
+	var rows_ok := range(m.SQUAD_MAX).all(func(q): return m.squad_buttons[q].visible and m.squad_buttons[q].size == m.ui_layout.squad_button_size and text_fits(m.squad_buttons[q]))
+	var acts_ok: bool = m.action_buttons.all(func(b): return b.size.y == m.ui_layout.action_button_height)
+	check("8 отрядов + действия + деление + Клич: панель %s на экране; кнопки %s, текст помещается (со «Стеной щитов» — кегль %d); Клич %s" % [str(m.squad_panel.get_global_rect()),
+		str(m.ui_layout.squad_button_size), m.squad_buttons[0].get_theme_font_size("font_size"), str(m.war_cry_button.size)], on_screen(m.squad_panel)
+		and rows_ok and m.war_cry_button.size == m.ui_layout.war_cry_size and text_fits(m.war_cry_button) and acts_ok)
+	m.squad_used = keep_used
+	m.squad_type = keep_type
+	m.squad_team = keep_team
+	m.squad_skill_on[0] = keep_skill
+	m.squad_panel_sig = -1
+	m._update_squad_panel()
 	await shot(m, "")
 
 func t_hero(m: Node2D) -> void:

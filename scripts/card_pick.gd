@@ -7,6 +7,7 @@ signal picked(id: String)
 
 const DIM := Color(0.0, 0.0, 0.0, 0.85)
 const ICONS := preload("res://scripts/icons.gd")
+const CARDS := preload("res://scripts/cards.gd")   # fill_desc: {hero_near_radius} в описании
 const FRAME_TIMER := "res://art/card_perk_timer.png"   # рамка временной карточки
 const FRAME_META := "res://art/card_meta_perk.png"     # запасная рамка (дар), окрашивается в цвет билда
 const SHINE := "res://art/shine.png"
@@ -158,7 +159,7 @@ func _card(k: int, d: Dictionary) -> Button:
 	desc.add_theme_font_size_override("normal_font_size", 18)
 	desc.add_theme_color_override("default_color", INK)
 	desc.custom_minimum_size.x = col.size.x
-	desc.text = desc_bbcode(tr(d.desc_key), COST_ON_CARD)
+	desc.text = desc_bbcode(CARDS.fill_desc(tr(d.desc_key)), COST_ON_CARD)
 	col.add_child(desc)
 	var shine := TextureRect.new()
 	shine.name = "Shine"
