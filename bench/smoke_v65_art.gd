@@ -8,6 +8,7 @@ extends SceneTree
 const DIR := "user://bench_v65"
 const DT := 1.0 / 30.0
 var fails := 0
+var BASE_FONT := 16   # кегль кнопок по теме (читается в _run у новой кнопки)
 var out_dir := ""
 
 func check(what: String, ok: bool, info := "") -> void:
@@ -98,6 +99,9 @@ func _run() -> void:
 	g.start_run(1)
 	await step(5)
 	var m := current_scene as Node2D
+	var probe := Button.new()
+	BASE_FONT = probe.get_theme_font_size("font_size")
+	probe.free()
 	m.banner.visible = false   # дневник на старте закрывает экран
 	await t_shop(m)
 	await t_squads(m)
@@ -125,15 +129,30 @@ func t_shop(m: Node2D) -> void:
 			and plain.all(func(b): return b.get_node_or_null("Portrait") == null))
 		var vis: Array = m.shop_buttons.filter(func(b): return b.visible)
 		var lay: Vector2 = m.ui_layout.shop_button_size
-		check("%s: все кнопки магазина ровно %dx%d (ui_layout), текст помещается (кегли %s), контур 4 px, панель на экране" % [loc, lay.x, lay.y,
-			str(vis.map(func(b): return b.get_theme_font_size("font_size")))], vis.all(func(b): return b.size == lay) and vis.all(text_fits)
-			and inf.get_theme_constant("outline_size") == 4 and on_screen(m.shop_panel), " | ".join(vis.map(func(b): return b.text.replace("\n", " / "))))
+		check("%s: все кнопки магазина ровно %dx%d (ui_layout), текст помещается, кегль %s — не ниже кегля темы %d, контур 4 px, панель на экране" % [loc, lay.x, lay.y,
+			str(vis.map(func(b): return b.get_theme_font_size("font_size"))), BASE_FONT], vis.all(func(b): return b.size == lay) and vis.all(text_fits)
+			and vis.all(func(b): return b.get_theme_font_size("font_size") >= BASE_FONT) and inf.get_theme_constant("outline_size") == 4 and on_screen(m.shop_panel),
+			" | ".join(vis.map(func(b): return b.text.replace("\n", " / "))))
 	TranslationServer.set_locale("ru")
 	check("обычное состояние: картинка не серая, яркость 1", inf.get_draw_mode() == BaseButton.DRAW_NORMAL and shader(inf, "gray") == 0.0 and shader(inf, "bright") == 1.0)
 	m.gold = 0
 	var img := await shot(m, "art_shop_disabled.png")
 	check("нет золота: кнопки недоступны, картинка серая (gray 1) и темнее (%.2f)" % shader(inf, "bright"), inf.disabled and arc.disabled
 		and inf.get_draw_mode() == BaseButton.DRAW_DISABLED and shader(inf, "gray") == 1.0 and shader(inf, "bright") < 1.0)
+	# много покупок: пакеты до предела («макс.»), «Оружие» и «Ворота» — по 15 раз (цена и процент растут): кегль тот же на ru и en
+	m.gold = 100000000
+	m.gate_hp = 1.0
+	for k in m.SHOP_ITEMS.size():
+		for n in 30 if m.SHOP_ITEMS[k] in ["inf_pack", "archer_pack"] else 15:
+			m.gate_hp = 1.0
+			m._buy(k)
+	for loc in ["ru", "en"]:
+		TranslationServer.set_locale(loc)
+		var img2 := await shot(m, "art_shop_bought_%s.png" % loc)
+		var vis2: Array = m.shop_buttons.filter(func(b): return b.visible)
+		check("%s: после покупок (%s) кегль %s не ниже %d, текст помещается" % [loc, str(m.shop_bought), str(vis2.map(func(b): return b.get_theme_font_size("font_size"))), BASE_FONT],
+			vis2.all(func(b): return b.get_theme_font_size("font_size") >= BASE_FONT) and vis2.all(text_fits), " | ".join(vis2.map(func(b): return b.text.replace("\n", " / "))))
+	TranslationServer.set_locale("ru")
 	m.gold = 100000
 	await shot(m, "")
 
@@ -191,7 +210,8 @@ func t_squads(m: Node2D) -> void:
 	var acts_ok: bool = m.action_buttons.all(func(b): return b.size.y == m.ui_layout.action_button_height)
 	check("8 отрядов + действия + деление + Клич: панель %s на экране; кнопки %s, текст помещается (со «Стеной щитов» — кегль %d); Клич %s" % [str(m.squad_panel.get_global_rect()),
 		str(m.ui_layout.squad_button_size), m.squad_buttons[0].get_theme_font_size("font_size"), str(m.war_cry_button.size)], on_screen(m.squad_panel)
-		and rows_ok and m.war_cry_button.size == m.ui_layout.war_cry_size and text_fits(m.war_cry_button) and acts_ok)
+		and rows_ok and m.war_cry_button.size == m.ui_layout.war_cry_size and text_fits(m.war_cry_button) and acts_ok
+		and m.war_cry_bar.size.x == m.ui_layout.war_cry_size.x and m.war_cry_bar.custom_minimum_size.y == 8.0, "полоса Клича %s" % str(m.war_cry_bar.size))
 	m.squad_used = keep_used
 	m.squad_type = keep_type
 	m.squad_team = keep_team

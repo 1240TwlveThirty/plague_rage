@@ -547,7 +547,7 @@ var leash_ticks := 0    # статистика: юнито-тики, где пр
 var type_id := {}   # имя -> номер
 var portraits = PORTRAITS.new()   # иллюстрации в кнопках (только интерфейс)
 # data/ui_layout.json: фиксированные размеры кнопок (минимум и он же ширина — текст ужимается, кнопка не растягивается).
-var ui_layout := {"shop_button_size": Vector2(448, 56), "squad_button_size": Vector2(352, 48), "action_button_height": 36.0, "war_cry_size": Vector2(300, 40)}
+var ui_layout := {"shop_button_size": Vector2(464, 56), "squad_button_size": Vector2(352, 48), "action_button_height": 36.0, "war_cry_size": Vector2(352, 40)}
 var type_label := PackedStringArray()   # название типа для интерфейса
 
 # --- Ворота и поражение (data/castle.json) ---
@@ -5171,6 +5171,7 @@ func _setup_war_cry_ui(layer: CanvasLayer) -> void:
 	war_cry_bar.min_value = 0.0
 	war_cry_bar.max_value = 1.0
 	war_cry_bar.custom_minimum_size = Vector2(ui_layout.war_cry_size.x, 8)
+	war_cry_bar.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN   # ширина кнопки Клича, а не панели
 	war_cry_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	war_cry_box.add_child(war_cry_bar)
 	squad_panel.add_child(war_cry_box)
@@ -5246,9 +5247,13 @@ func _update_ui() -> void:
 			continue
 		var price := _price(k)
 		var capped := _at_cap(k)
-		shop_buttons[k].text = tr("HUD_SHOP_ROW") % [SETTINGS.key_label(SHOP_ACTIONS[k]), _shop_title(k), tr("HUD_SHOP_MAX") if capped else tr("HUD_SHOP_PRICE") % ceili(price), shop_bought[k]]
+		var cost: String = tr("HUD_SHOP_MAX") if capped else tr("HUD_SHOP_PRICE") % ceili(price)
 		# Юниты идут в выбранный отряд своего типа, иначе в первый отряд типа (копейщиков без отряда — в новый).
 		var pack_type: int = {"inf_pack": infantry_type, "archer_pack": archer_type, "spear_pack": spearman_type}.get(SHOP_ITEMS[k], -1)
+		if pack_type < 0:   # «Оружие», «Ворота»: цена — второй строкой (в одну при кегле 16 не помещается, задача 17)
+			shop_buttons[k].text = tr("HUD_SHOP_ROW_TITLE") % [SETTINGS.key_label(SHOP_ACTIONS[k]), _shop_title(k)] + "\n" + tr("HUD_SHOP_ROW_PRICE") % [cost, shop_bought[k]]
+		else:
+			shop_buttons[k].text = tr("HUD_SHOP_ROW") % [SETTINGS.key_label(SHOP_ACTIONS[k]), _shop_title(k), cost, shop_bought[k]]
 		if pack_type >= 0:
 			var target := _buy_target(pack_type)
 			if squad_used[target] == 1 and squad_type[target] == pack_type:

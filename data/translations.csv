@@ -65,6 +65,8 @@ HUD_SQUAD_SPLIT,Разделить (%s),Split (%s)
 HUD_SQUAD_MERGE,Слить (%s),Merge (%s)
 HUD_SHOP_ROW,%s  %s — %s (куплено %d),%s  %s — %s (bought %d)
 HUD_SHOP_MAX,макс.,max
+HUD_SHOP_ROW_TITLE,%s  %s,%s  %s
+HUD_SHOP_ROW_PRICE,%s (куплено %d),%s (bought %d)
 HUD_SHOP_PRICE,%d зол.,%d gold
 HUD_SHOP_TARGET,→ Отряд %d (%s),→ Squad %d (%s)
 HUD_PREVIEW_ONE,%d × %d · %d юн.,%d × %d · %d units

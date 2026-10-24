@@ -1,6 +1,6 @@
 {
-	"shop_button_size": [448, 56],
+	"shop_button_size": [464, 56],
 	"squad_button_size": [352, 48],
 	"action_button_height": 36,
-	"war_cry_size": [300, 40]
+	"war_cry_size": [352, 40]
 }

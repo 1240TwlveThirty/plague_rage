@@ -6,8 +6,8 @@ extends SceneTree
 const MAIN := "res://scripts/main.gd"
 const PORTRAITS := preload("res://scripts/portraits.gd")
 var fails := 0
-var SHOP := Vector2i(448, 56)    # кнопки из data/ui_layout.json (t_portraits)
-var SQUAD := Vector2i(352, 48)
+var SHOP: Vector2i    # кнопки из data/ui_layout.json (читаются в _run; тесты не зашивают размеры макета)
+var SQUAD: Vector2i
 
 func check(what: String, ok: bool, info := "") -> void:
 	if not ok:
@@ -30,6 +30,9 @@ func _run() -> void:
 	if root.has_node("Game"):
 		root.get_node("Game").free()
 		await process_frame
+	var lay: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/ui_layout.json"))
+	SHOP = Vector2i(int(lay.shop_button_size[0]), int(lay.shop_button_size[1]))
+	SQUAD = Vector2i(int(lay.squad_button_size[0]), int(lay.squad_button_size[1]))
 	t_sheet()
 	t_portraits()
 	t_layout()
@@ -127,9 +130,6 @@ func t_sheet() -> void:
 
 func t_portraits() -> void:
 	print("иллюстрации отрядов")
-	var lay: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/ui_layout.json"))
-	SHOP = Vector2i(int(lay.shop_button_size[0]), int(lay.shop_button_size[1]))
-	SQUAD = Vector2i(int(lay.squad_button_size[0]), int(lay.squad_button_size[1]))
 	var p := PORTRAITS.new()
 	p.load_defs()
 	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(PORTRAITS.PATH))
@@ -197,15 +197,24 @@ func t_portraits() -> void:
 func t_layout() -> void:
 	print("размеры кнопок (data/ui_layout.json)")
 	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/ui_layout.json"))
-	check("ui_layout.json: shop %s, squad %s, действия %s, Клич %s" % [d.shop_button_size, d.squad_button_size, d.action_button_height, d.war_cry_size],
-		d.shop_button_size == [448.0, 56.0] and d.squad_button_size == [352.0, 48.0] and d.action_button_height == 36.0 and d.war_cry_size == [300.0, 40.0])
+	var size_ok := func(v): return v is Array and v.size() == 2 and v.all(func(x): return (x is float or x is int) and x > 0)
+	check("ui_layout.json: shop %s, squad %s, действия %s, Клич %s — размеры [w, h] больше 0" % [d.shop_button_size, d.squad_button_size, d.action_button_height,
+		d.war_cry_size], size_ok.call(d.shop_button_size) and size_ok.call(d.squad_button_size) and size_ok.call(d.war_cry_size) and d.action_button_height > 0)
 	var m: Node2D = load(MAIN).new()
 	m._load_ui_layout()
-	check("main читает размеры из файла", m.ui_layout.shop_button_size == Vector2(448, 56) and m.ui_layout.squad_button_size == Vector2(352, 48)
-		and m.ui_layout.action_button_height == 36.0 and m.ui_layout.war_cry_size == Vector2(300, 40))
+	check("main читает размеры из файла", m.ui_layout.shop_button_size == Vector2(d.shop_button_size[0], d.shop_button_size[1])
+		and m.ui_layout.squad_button_size == Vector2(d.squad_button_size[0], d.squad_button_size[1]) and m.ui_layout.action_button_height == float(d.action_button_height)
+		and m.ui_layout.war_cry_size == Vector2(d.war_cry_size[0], d.war_cry_size[1]))
+	var m2: Node2D = load(MAIN).new()
+	var defaults: Dictionary = m2.ui_layout.duplicate()
+	m2.free()
+	check("значения по умолчанию в main — те же, что в файле (без файла кнопки того же размера)", defaults.shop_button_size == m.ui_layout.shop_button_size
+		and defaults.squad_button_size == m.ui_layout.squad_button_size and defaults.action_button_height == m.ui_layout.action_button_height
+		and defaults.war_cry_size == m.ui_layout.war_cry_size)
 	# подгонка текста: длинный текст — кегль меньше, кнопка того же размера
+	var shop: Vector2 = m.ui_layout.shop_button_size
 	var b := Button.new()
-	m._fixed_button(b, Vector2(448, 56))
+	m._fixed_button(b, shop)
 	b.text = "Z  +50 пехоты — 100 зол. (куплено 0)"
 	m._fit_text(b)
 	var fs0 := b.get_theme_font_size("font_size")
@@ -213,6 +222,6 @@ func t_layout() -> void:
 	m._fit_text(b)
 	var fs1 := b.get_theme_font_size("font_size")
 	check("подгонка: короткий текст — кегль %d, длинный — %d (не меньше %d), размер кнопки не меняется (%s), перенос по словам" % [fs0, fs1, m.FIT_MIN_FONT, str(b.get_combined_minimum_size())],
-		fs1 < fs0 and fs1 >= m.FIT_MIN_FONT and b.get_combined_minimum_size().x <= 448.0 and b.clip_text and b.autowrap_mode == TextServer.AUTOWRAP_WORD_SMART)
+		fs1 < fs0 and fs1 >= m.FIT_MIN_FONT and b.get_combined_minimum_size().x <= shop.x and b.clip_text and b.autowrap_mode == TextServer.AUTOWRAP_WORD_SMART)
 	b.free()
 	m.free()
