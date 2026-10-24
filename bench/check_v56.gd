@@ -51,7 +51,9 @@ func t_data() -> void:
 	for id in cards:
 		if not ICONS.of_card(id) in IDS:
 			bad.append(id)
-	check("у всех 40 карточек иконка из списка", cards.size() == 40 and bad.is_empty(), ", ".join(bad))
+	check("у всех 45 карточек иконка из списка", cards.size() == 45 and bad.is_empty(), ", ".join(bad))
+	check("карточки героя (задача 14): 41 range, 42 reload, 43 heart, 44 shield, 45 horn", ICONS.of_card("wide_swing") == "range" and ICONS.of_card("quick_hands") == "reload"
+		and ICONS.of_card("commander_temper") == "heart" and ICONS.of_card("last_bastion") == "shield" and ICONS.of_card("commander_banner") == "horn")
 	check("карта карточек как в задании (выборочно): 1 sword, 13 fire, 24 blood, 30 scales, 39 radiance, 40 cross",
 		ICONS.of_card("meteor_blades") == "sword" and ICONS.of_card("boiling_pitch") == "fire" and ICONS.of_card("vow_of_vengeance") == "blood"
 		and ICONS.of_card("victory_sacrifice") == "scales" and ICONS.of_card("grace_blessing") == "radiance" and ICONS.of_card("field_kitchen") == "cross")

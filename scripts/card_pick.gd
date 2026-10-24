@@ -19,9 +19,10 @@ const SHINE_SCALE := 5
 const INK := Color(0.22, 0.13, 0.07)      # текст на светлой карточке
 const COST_ON_CARD := Color(0.72, 0.1, 0.08)   # издержка на карточке
 const COST_COLOR := Color(1.0, 0.35, 0.3)
-const BUILD_KEYS := {"shield": "UI_BUILD_SHIELD", "archers": "UI_BUILD_ARCHERS", "gold": "UI_BUILD_GOLD", "risk": "UI_BUILD_RISK", "common": "UI_BUILD_COMMON"}
+const BUILD_KEYS := {"shield": "UI_BUILD_SHIELD", "archers": "UI_BUILD_ARCHERS", "gold": "UI_BUILD_GOLD", "risk": "UI_BUILD_RISK", "common": "UI_BUILD_COMMON",
+	"hero": "UI_BUILD_HERO"}
 const BUILD_COLORS := {"shield": Color(0.35, 0.55, 1.0), "archers": Color(0.35, 0.85, 0.45), "gold": Color(1.0, 0.8, 0.2), "risk": Color(0.9, 0.35, 0.9),
-	"common": Color(0.75, 0.75, 0.75)}
+	"common": Color(0.75, 0.75, 0.75), "hero": Color(0.95, 0.45, 0.2)}
 const KEYS := [KEY_1, KEY_2, KEY_3]
 const SETTINGS := preload("res://scripts/settings.gd")
 

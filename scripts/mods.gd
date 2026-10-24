@@ -9,28 +9,33 @@ extends RefCounted
 # Модификаторы собираются из списка источников (sources): дары забега (Game.active_gifts) и карточки забега (Game.run_cards).
 # Данные юнитов волны (урон, HP, скорость, перезарядка, дальность, HP зомби, награда) main.gd пересчитывает от базы в начале каждой волны.
 const STATS := ["damage", "hp", "bounty", "income", "gate_hp", "start_units", "unit_cost", "weapon_cost", "repair_cost", "signal_window", "spread", "radiance_pct",
-	"income_flat", "heal", "speed", "reload", "attack_speed", "range", "enemy_hp", "grant_units_free", "block", "recover", "attack_rate"]
-const TARGETS := ["all_units", "infantry", "archer", "gate", "player", "enemy", "knight", "spearman"]
+	"income_flat", "heal", "speed", "reload", "attack_speed", "range", "enemy_hp", "grant_units_free", "block", "recover", "attack_rate",
+	"arc_angle", "arc_range", "damage_taken"]
+const TARGETS := ["all_units", "infantry", "archer", "gate", "player", "enemy", "knight", "spearman", "hero"]
 const OPS := ["add_pct", "add_flat", "mult"]
 # Допустимые сочетания: stat -> его target. Пары вне таблицы сцена боя не читает, дар с такой парой молча не действовал бы.
 # Первый target в списке — по умолчанию (value без target); bounty / knight и unit_cost / archer — добавка к общему ключу.
-const PAIRS := {"damage": ["all_units", "infantry", "archer", "spearman"], "hp": ["all_units", "infantry", "archer", "spearman"], "bounty": ["player", "knight"],
+const PAIRS := {"damage": ["all_units", "infantry", "archer", "spearman"], "hp": ["all_units", "infantry", "archer", "spearman", "hero"], "bounty": ["player", "knight"],
 	"income": ["player"], "gate_hp": ["gate"], "start_units": ["player"], "unit_cost": ["player", "archer", "spearman"], "weapon_cost": ["player"], "repair_cost": ["player"], "signal_window": ["player"],
 	"spread": ["archer"], "radiance_pct": ["player"], "income_flat": ["player"], "heal": ["player"], "speed": ["all_units", "infantry", "archer", "spearman"],
 	"reload": ["archer"], "attack_speed": ["infantry"], "range": ["archer"], "enemy_hp": ["enemy"], "grant_units_free": ["player"],
-	"block": ["all_units", "infantry", "spearman"], "recover": ["player"], "attack_rate": ["all_units", "infantry", "archer"]}
+	"block": ["all_units", "infantry", "spearman"], "recover": ["player"], "attack_rate": ["all_units", "infantry", "archer", "hero"],
+	"arc_angle": ["hero"], "arc_range": ["hero"], "damage_taken": ["hero"]}
 # Допустимые op для stat: сцена боя читает множители (get_mult), прибавку к числу (get_count) или value; остальное не действовало бы.
 const STAT_OPS := {"damage": ["add_pct", "mult"], "hp": ["add_pct", "mult"], "bounty": ["add_pct", "mult"], "income": ["add_pct", "mult"],
 	"gate_hp": ["add_pct", "mult"], "start_units": ["add_pct", "add_flat"], "unit_cost": ["add_pct"], "weapon_cost": ["add_pct"], "repair_cost": ["add_pct"],
 	"signal_window": ["add_flat"], "spread": ["add_pct"], "radiance_pct": ["add_pct"], "income_flat": ["add_flat"], "heal": ["add_pct"], "speed": ["add_pct"],
 	"reload": ["add_pct"], "attack_speed": ["add_pct"], "range": ["add_pct"], "enemy_hp": ["add_pct"], "grant_units_free": ["add_flat"],
-	"block": ["add_flat"], "recover": ["add_pct"], "attack_rate": ["add_pct"]}   # attack_rate — скорость боя: удары пехоты и копейщиков (infantry), стрельба лучников (archer), обе (all_units); recover — доля павших за волну, что возвращаются после неё (+10 — это 10%); block — прибавка к шансу блока щитом в долях (0.15 = +15 п. п.)
+	"block": ["add_flat"], "recover": ["add_pct"], "attack_rate": ["add_pct"], "arc_angle": ["add_flat"], "arc_range": ["add_pct"], "damage_taken": ["add_pct"]}   # attack_rate — скорость боя: удары пехоты и копейщиков (infantry), стрельба лучников (archer), обе (all_units); recover — доля павших за волну, что возвращаются после неё (+10 — это 10%); block — прибавка к шансу блока щитом в долях (0.15 = +15 п. п.)
+# Цель hero (задача 14, карточки героя): hp и attack_rate героя; arc_angle — прибавка к углу дуги удара в градусах (не больше 360),
+# arc_range — процент к радиусу дуги (читаются при ударе); damage_taken — процент к урону по герою (−30 — урон x0.7), только в условии hero_low.
 # Цены в value: итог не ниже COST_FLOOR базовой (против накопления скидок), затем округление до целого, не меньше 1.
 const COSTS := ["unit_cost", "weapon_cost", "repair_cost"]
 const GIFT_TYPES := ["mods", "ability"]
 const ABILITY_FIELDS := ["bonus_pct", "duration_s", "cooldown_s"]
 const COST_FLOOR := 0.2
 const NON_NEGATIVE := ["signal_window", "spread", "income_flat", "grant_units_free"]   # в value не ниже 0
+const COND_ONLY := ["damage_taken"]   # только в условиях карточек (сцена боя читает их по условию): дар с таким stat не действовал бы
 
 var defs := {}       # id дара -> {name_key, desc_key, stat, target, op, levels, req_sieges, prices, hidden}
 var pct := {}        # ключ "stat|target" -> сумма add_pct, в процентах
@@ -93,6 +98,9 @@ static func load_gifts(path: String) -> Dictionary:
 				return {}
 			if not e.op in STAT_OPS[e.stat]:
 				push_error("%s: у дара \"%s\" op \"%s\" недопустим для stat \"%s\"" % [path, e.id, e.op, e.stat])
+				return {}
+			if e.stat in COND_ONLY:
+				push_error("%s: у дара \"%s\" stat \"%s\" бывает только в условии карточки" % [path, e.id, e.stat])
 				return {}
 		if not e.get("hidden", false) is bool:
 			push_error("%s: у дара \"%s\" поле hidden — не true / false" % [path, e.id])

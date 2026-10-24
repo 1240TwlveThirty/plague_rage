@@ -1,5 +1,6 @@
 {
 	"pick_after_waves": [2, 5, 8],
 	"offer_count": 3,
-	"pick_build_continue_chance": 0.5
+	"pick_build_continue_chance": 0.5,
+	"hero_guaranteed_slots": 1
 }

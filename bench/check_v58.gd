@@ -70,7 +70,7 @@ func _run() -> void:
 func t_data() -> void:
 	print("данные и валидатор")
 	var mods := preload("res://scripts/mods.gd")
-	check("attack_rate: цели all_units, infantry, archer; только add_pct", mods.PAIRS.attack_rate == ["all_units", "infantry", "archer"] and mods.STAT_OPS.attack_rate == ["add_pct"])
+	check("attack_rate: цели all_units, infantry, archer (и hero — задача 14); только add_pct", mods.PAIRS.attack_rate == ["all_units", "infantry", "archer", "hero"] and mods.STAT_OPS.attack_rate == ["add_pct"])
 	var defs := CARDS.load_cards(FIX)
 	check("пул с тестовыми карточками (и условной attack_rate) проходит валидатор", defs.has("t_hold_rate") and defs.has("t_rate_all"))
 	check("attack_rate / spearman и attack_rate add_flat — ошибка", CARDS.check_mod({"stat": "attack_rate", "target": "spearman", "op": "add_pct", "value": 1}) != ""

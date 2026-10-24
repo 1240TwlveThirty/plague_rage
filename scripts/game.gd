@@ -428,11 +428,11 @@ func pick_card(id: String) -> Dictionary:
 	return r
 
 
-# Тройка для экрана выбора (генератор забега).
-func card_offer() -> Array:
+# Тройка для экрана выбора (генератор забега); hero — герой в бою включён (карточки героя и гарантированный слот, задача 14).
+func card_offer(hero := false) -> Array:
 	if card_defs.is_empty() or card_rules.is_empty():
 		return []
-	return CARDS.offer(card_defs, run_cards, card_rules, run_rng)
+	return CARDS.offer(card_defs, run_cards, card_rules, run_rng, hero)
 
 
 # Цена уровня дара (1..число уровней): prices дара или gift_prices из radiance.json; цены нет — -1.

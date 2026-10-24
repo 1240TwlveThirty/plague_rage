@@ -15,7 +15,7 @@ const WAR_CRY_GLOW := Color(1.0, 0.82, 0.3, 0.3)   # подсветка краё
 const WAR_CRY_GLOW_PX := 10.0
 const SPLIT_NAMES := {"infantry": "UI_SPLIT_INFANTRY", "archer": "UI_SPLIT_ARCHER"}   # «Жертва ради победы»: кому выпало
 const COND_KEYS := {"hold": "COND_HOLD", "retreat": "COND_RETREAT", "gate_low": "COND_GATE_LOW", "squad_low": "COND_SQUAD_LOW",
-	"wave_time": "COND_WAVE_TIME", "gold_high": "COND_GOLD_HIGH", "lost_steps": "COND_LOST_STEPS"}
+	"wave_time": "COND_WAVE_TIME", "gold_high": "COND_GOLD_HIGH", "lost_steps": "COND_LOST_STEPS", "hero_low": "COND_HERO_LOW", "hero_near": "COND_HERO_NEAR"}
 const CARD_ON := Color(1.0, 0.82, 0.3)          # строка карточки: условие выполнено
 const CARD_IDLE := Color(1.0, 1.0, 1.0, 0.55)   # условная карточка, условие не выполнено
 const BLOCK_CAP := 0.95   # общий шанс блока не выше
@@ -699,6 +699,7 @@ var hero_hit_dir := PackedByteArray()
 var hero_swing_from := Vector2.ZERO        # где стоял герой при ударе (направление всплеска)
 const HERO_SPAWN := Vector2(1010.0, 680.0)   # у ворот над стеной (GATE_POS.x, WALL_Y - 65; ниже — на зубцах стены): появление и возрождение
 var hero_dead := false   # герой пал в этой волне: приказы заблокированы до её конца, в начале передышки — возрождение
+var hero_taken_mult := 1.0   # множитель урона по герою по условию hero_low (карточка 44, damage_taken); пишет _update_card_conditions, без карточки ровно 1.0
 var hero_fallen_label: Label   # «Командир пал» в HUD
 var hero_view: Node2D          # герой на экране: кольцо-маркер и полоса HP (_draw_hero_marker), спрайт — дочерний; null в бенчах без дерева
 var hero_sprite: Sprite2D
@@ -1748,7 +1749,7 @@ func _apply_mods() -> void:
 func _apply_wave_data() -> void:
 	var names := {infantry_type: "infantry", archer_type: "archer", spearman_type: "spearman"}
 	if hero_type >= 0:
-		names[hero_type] = "hero"   # герой — юнит игрока: множители цели all_units (своей цели у героя нет, новых статов нет)
+		names[hero_type] = "hero"   # герой — юнит игрока: множители цели all_units и своей цели hero (карточки героя, задача 14)
 	var hp_new := base_type_hp.duplicate()
 	var dmg_new := base_type_damage.duplicate()
 	var arrow_new := base_type_arrow_dmg.duplicate()
@@ -1798,10 +1799,11 @@ func _apply_wave_data() -> void:
 	type_cd_floor[infantry_type] = -CD_CARRY if inf_on else 0.0
 	type_cd_floor[spearman_type] = -CD_CARRY if spear_on else 0.0
 	type_cd_floor[archer_type] = -CD_CARRY if arch_on else 0.0
-	if hero_type >= 0:   # герой: attack_rate all_units и «Оружие»; решает каждый тик — интервал без округления до 2 тиков, перенос до 1 тика
-		var hero_rate := (1.0 + rate_all) * wrate
-		cd_new[hero_type] = base_type_cooldown[hero_type] / hero_rate if ar_all or w_on else base_type_cooldown[hero_type]
-		type_cd_floor[hero_type] = -1.0 / 30.0 if ar_all or w_on else 0.0
+	if hero_type >= 0:   # герой: attack_rate all_units и своей цели (карточка 42), «Оружие»; решает каждый тик — интервал без округления до 2 тиков, перенос до 1 тика
+		var hero_on_rate: bool = ar_all or w_on or mods.has_key("attack_rate", "hero")
+		var hero_rate: float = (1.0 + rate_all + (mods.get_mult("attack_rate", "hero") - 1.0)) * wrate
+		cd_new[hero_type] = base_type_cooldown[hero_type] / hero_rate if hero_on_rate else base_type_cooldown[hero_type]
+		type_cd_floor[hero_type] = -1.0 / 30.0 if hero_on_rate else 0.0
 	var bounty: float = mods.get_mult("bounty", "player")
 	for t in bounty_new.size():
 		bounty_new[t] *= bounty
@@ -1899,6 +1901,7 @@ func _prepare_cards() -> void:
 	squad_taken_mult.fill(1.0)
 	squad_speed_mult.fill(1.0)
 	squad_rate_mult.fill(1.0)
+	hero_taken_mult = 1.0
 	_sync_atk_mult()
 
 
@@ -1933,6 +1936,8 @@ func _update_card_conditions() -> void:
 				bl += type_hold_block[squad_type[sq]]
 				skill = 1
 			for c in cond_cards:
+				if c.cond == "hero_low":
+					continue   # условие героя — ниже, не по отрядам
 				var k := cond_factor(c.cond, c.when, sq)
 				if k == 0.0:
 					continue
@@ -1965,6 +1970,14 @@ func _update_card_conditions() -> void:
 		squad_block_bonus[sq] = bl
 		squad_skill_on[sq] = skill
 		squad_rate_mult[sq] = 1.0 + ar / 100.0
+	# Условие героя (hero_low, карточка 44): не по отрядам — множитель урона по герою; проценты damage_taken складываются.
+	var ht := 0.0
+	for c in cond_cards:
+		if c.cond == "hero_low" and hero_idx >= 0 and hp[hero_idx] > 0.0 and hp[hero_idx] < c.when.frac * type_hp[hero_type]:
+			card_state[c.id].on = true
+			for e in c.mods:
+				ht += e.value
+	hero_taken_mult = maxf(1.0 + ht / 100.0, 0.0)
 	_sync_atk_mult()
 
 
@@ -2011,6 +2024,8 @@ func cond_factor(cond: String, w: Dictionary, sq: int) -> float:
 				return 0.0
 			var lost_pct := (squad_start_n[sq] - squad_n[sq]) * 100.0 / squad_start_n[sq]
 			return float(clampi(floori(lost_pct / w.step_pct + 1e-9), 0, int(w.max_steps)))
+		"hero_near":   # центр отряда (якорь — центр живых слотов) ближе radius px к живому герою
+			return 1.0 if hero_idx >= 0 and hp[hero_idx] > 0.0 and squad_pos[sq].distance_squared_to(pos[hero_idx]) < w.radius * w.radius else 0.0
 	return 0.0
 
 
@@ -2054,7 +2069,7 @@ func _offer_cards() -> void:
 	var rng: RandomNumberGenerator = game.run_rng if game != null else bench_card_rng
 	if rng == null:
 		return
-	pending_offer = CARDS.offer(card_defs, _cards(), card_rules, rng)
+	pending_offer = CARDS.offer(card_defs, _cards(), card_rules, rng, hero_on)
 	if card_screen != null and not pending_offer.is_empty():
 		card_screen.open(pending_offer, card_defs, _cards().map(func(r): return card_defs[r.id].name_key))
 
@@ -2132,6 +2147,10 @@ func cond_text(w: Dictionary) -> String:
 			return tr(COND_KEYS[w.cond]) % num_text(w.gold)
 		"lost_steps":
 			return tr(COND_KEYS[w.cond]) % num_text(w.step_pct)
+		"hero_low":
+			return tr(COND_KEYS[w.cond]) % num_text(w.frac * 100.0)
+		"hero_near":
+			return tr(COND_KEYS[w.cond]) % num_text(w.radius)
 	return tr(COND_KEYS[w.cond])
 
 
@@ -4039,8 +4058,8 @@ func _draw_hero_fx() -> void:
 	var a := 1.0 - e * e * (3.0 - 2.0 * e)
 	var col := Color(hero_cfg.arc_fx_color)
 	var edge := col.lerp(Color.WHITE, 0.6)
-	var r: float = hero_cfg.arc_range
-	var half := minf(deg_to_rad(float(hero_cfg.arc_angle)) * 0.5, PI)
+	var r: float = hero_cfg.arc_range * hero_range_mult()
+	var half := minf(deg_to_rad(hero_arc_angle()) * 0.5, PI)
 	var grow := HERO_FX_GROW_PX * e
 	var ang := hero_fx_ang
 	var full := half >= PI - 0.001
@@ -4113,11 +4132,14 @@ func _update_hero(delta: float) -> void:
 func _hero_targets(arc: bool) -> PackedInt32Array:
 	var p := pos[hero_idx]
 	var r2 := type_range_sq[hero_type]
+	var rk := hero_range_mult()
+	if rk != 1.0:
+		r2 *= rk * rk   # карточка 41: радиус дуги (без карточки ветки нет — бит в бит)
 	var reach := ceili(sqrt(r2) / CELL_SIZE)
 	var cx := clampi(floori(p.x / CELL_SIZE), 0, GRID_W - 1)
 	var cy := clampi(floori(p.y / CELL_SIZE), 0, GRID_H - 1)
 	var fwd := Vector2.from_angle(hero_face_ang)
-	var cos_half := cos(deg_to_rad(float(hero_cfg.arc_angle)) * 0.5) if arc else -2.0
+	var cos_half := cos(deg_to_rad(hero_arc_angle()) * 0.5) if arc else -2.0
 	var k: int = hero_cfg.max_targets
 	var tj := PackedInt32Array()     # цели по возрастанию расстояния (не больше k)
 	var td := PackedFloat32Array()
@@ -4142,6 +4164,19 @@ func _hero_targets(arc: bool) -> PackedInt32Array:
 					tj.resize(k)
 					td.resize(k)
 	return tj
+
+
+# Статы дуги удара с модификаторами (карточка 41, цель hero): читаются при каждом ударе и в отрисовке дуги. Угол — arc_angle
+# hero.json плюс arc_angle add_flat (не больше 360), радиус — множитель arc_range к дальности героя. Без модификаторов — данные как есть.
+func hero_arc_angle() -> float:
+	var a := float(hero_cfg.arc_angle)
+	if mods != null and mods.has_key("arc_angle", "hero"):
+		a = clampf(a + mods.get_flat("arc_angle", "hero"), 1.0, 360.0)
+	return a
+
+
+func hero_range_mult() -> float:
+	return mods.get_mult("arc_range", "hero") if mods != null else 1.0
 
 
 # Удар героя по целям tj (можно пустым — мимо): урон, перезарядка с переносом остатка (как у юнитов), Клич Благодати ускоряет
@@ -5498,6 +5533,8 @@ func _update_unit(i: int, delta: float) -> void:
 							blocked_hits += 1
 			if unit_squad[best] >= 0:
 				dmg *= squad_taken_mult[unit_squad[best]]   # бонус к HP по условию — меньше получаемого урона
+			elif best == hero_idx:
+				dmg *= hero_taken_mult   # карточка 44 (hero_low): без неё 1.0
 			hp[best] -= dmg
 			if my_team == 1 and contact_tick < 0:
 				contact_tick = tick_counter

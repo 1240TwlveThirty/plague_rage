@@ -173,12 +173,13 @@ func t_regress() -> void:
 # (е) таблица допустимых пар stat / target.
 func t_validation() -> void:
 	print("(е) валидация пар stat / target — ниже ожидаются строки ERROR от недопустимых пар")
-	var want := {"damage": ["all_units", "infantry", "archer", "spearman"], "hp": ["all_units", "infantry", "archer", "spearman"], "bounty": ["player", "knight"], "income": ["player"],
+	var want := {"damage": ["all_units", "infantry", "archer", "spearman"], "hp": ["all_units", "infantry", "archer", "spearman", "hero"], "bounty": ["player", "knight"], "income": ["player"],
 		"gate_hp": ["gate"], "start_units": ["player"], "unit_cost": ["player", "archer", "spearman"], "weapon_cost": ["player"], "repair_cost": ["player"], "signal_window": ["player"],
 		"spread": ["archer"], "radiance_pct": ["player"], "income_flat": ["player"], "heal": ["player"], "speed": ["all_units", "infantry", "archer", "spearman"],
 		"reload": ["archer"], "attack_speed": ["infantry"], "range": ["archer"], "enemy_hp": ["enemy"], "grant_units_free": ["player"],
-		"block": ["all_units", "infantry", "spearman"], "recover": ["player"], "attack_rate": ["all_units", "infantry", "archer"]}
-	check("таблица MODS.PAIRS как в задании, покрывает все stat", MODS.PAIRS == want and MODS.PAIRS.size() == MODS.STATS.size(), str(MODS.PAIRS))
+		"block": ["all_units", "infantry", "spearman"], "recover": ["player"], "attack_rate": ["all_units", "infantry", "archer", "hero"],
+		"arc_angle": ["hero"], "arc_range": ["hero"], "damage_taken": ["hero"]}   # задача 14: цель hero (hp, attack_rate, дуга, урон по герою)
+	check("таблица MODS.PAIRS как в задании (с целью hero задачи 14), покрывает все stat", MODS.PAIRS == want and MODS.PAIRS.size() == MODS.STATS.size(), str(MODS.PAIRS))
 	var wrong := PackedStringArray()
 	var allowed := 0
 	for stat in MODS.STATS:
@@ -189,9 +190,10 @@ func t_validation() -> void:
 			f.close()
 			var ok: bool = not MODS.load_gifts(path).is_empty()
 			allowed += int(ok)
-			if ok != (target in want[stat]):
+			if ok != (target in want[stat] and not stat in MODS.COND_ONLY):   # damage_taken — только в условии карточки, дару нельзя
 				wrong.append("%s/%s" % [stat, target])
-	check("все %d сочетаний stat x target: грузятся ровно допустимые (%d)" % [MODS.STATS.size() * MODS.TARGETS.size(), allowed], wrong.is_empty() and allowed == want.values().reduce(func(a, v): return a + v.size(), 0), ", ".join(wrong))
+	check("все %d сочетаний stat x target: грузятся ровно допустимые (%d; damage_taken дару нельзя)" % [MODS.STATS.size() * MODS.TARGETS.size(), allowed], wrong.is_empty()
+		and allowed == want.values().reduce(func(a, v): return a + v.size(), 0) - want.damage_taken.size(), ", ".join(wrong))
 	check("bad_pair.json (start_units / all_units) не грузится", MODS.load_gifts(FIX_G + "bad_pair.json").is_empty())
 	var m: Node2D = load(MAIN).new()
 	m.spawn_seed = 1
@@ -213,8 +215,9 @@ func t_validation() -> void:
 	var stat_ops := {"damage": ["add_pct", "mult"], "hp": ["add_pct", "mult"], "bounty": ["add_pct", "mult"], "income": ["add_pct", "mult"], "gate_hp": ["add_pct", "mult"],
 		"start_units": ["add_pct", "add_flat"], "unit_cost": ["add_pct"], "weapon_cost": ["add_pct"], "repair_cost": ["add_pct"], "signal_window": ["add_flat"],
 		"spread": ["add_pct"], "radiance_pct": ["add_pct"], "income_flat": ["add_flat"], "heal": ["add_pct"], "speed": ["add_pct"], "reload": ["add_pct"],
-		"attack_speed": ["add_pct"], "range": ["add_pct"], "enemy_hp": ["add_pct"], "grant_units_free": ["add_flat"], "block": ["add_flat"], "recover": ["add_pct"], "attack_rate": ["add_pct"]}
-	check("таблица MODS.STAT_OPS как в задании, покрывает все stat", MODS.STAT_OPS == stat_ops and MODS.STAT_OPS.size() == MODS.STATS.size(), str(MODS.STAT_OPS))
+		"attack_speed": ["add_pct"], "range": ["add_pct"], "enemy_hp": ["add_pct"], "grant_units_free": ["add_flat"], "block": ["add_flat"], "recover": ["add_pct"], "attack_rate": ["add_pct"],
+		"arc_angle": ["add_flat"], "arc_range": ["add_pct"], "damage_taken": ["add_pct"]}
+	check("таблица MODS.STAT_OPS как в задании (с задачей 14), покрывает все stat", MODS.STAT_OPS == stat_ops and MODS.STAT_OPS.size() == MODS.STATS.size(), str(MODS.STAT_OPS))
 	var wrong_op := PackedStringArray()
 	var allowed_op := 0
 	for stat in MODS.STATS:
@@ -225,9 +228,10 @@ func t_validation() -> void:
 			f.close()
 			var ok: bool = not MODS.load_gifts(path).is_empty()
 			allowed_op += int(ok)
-			if ok != (op in stat_ops[stat]):
+			if ok != (op in stat_ops[stat] and not stat in MODS.COND_ONLY):
 				wrong_op.append("%s/%s" % [stat, op])
-	check("все %d сочетаний stat x op: грузятся ровно допустимые (%d)" % [MODS.STATS.size() * MODS.OPS.size(), allowed_op], wrong_op.is_empty() and allowed_op == stat_ops.values().reduce(func(a, v): return a + v.size(), 0), ", ".join(wrong_op))
+	check("все %d сочетаний stat x op: грузятся ровно допустимые (%d)" % [MODS.STATS.size() * MODS.OPS.size(), allowed_op], wrong_op.is_empty()
+		and allowed_op == stat_ops.values().reduce(func(a, v): return a + v.size(), 0) - stat_ops.damage_taken.size(), ", ".join(wrong_op))
 
 	check("req_sieges и prices не той длины или с числом меньше допустимого не грузятся", MODS.load_gifts(FIX_G + "bad_req.json").is_empty() and MODS.load_gifts(FIX_G + "bad_gift_prices.json").is_empty())
 	var shop: Dictionary = MODS.load_gifts(FIX_G + "shop.json")

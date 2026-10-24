@@ -5,9 +5,11 @@ extends RefCounted
 # K — особые (special, on_pick). Издержка — модификатор с "cost": true: она действует всегда, и у карточек C тоже (не только при условии).
 const MODS := preload("res://scripts/mods.gd")
 const KINDS := ["M", "C", "K"]
-const BUILDS := ["shield", "archers", "gold", "risk", "common"]
+const BUILDS := ["shield", "archers", "gold", "risk", "common", "hero"]   # hero — карточки героя (задача 14): только при включённом герое, гарантированный слот
 # Условия карточек C и их параметры (числа)
-const CONDS := {"hold": [], "retreat": [], "gate_low": ["frac"], "squad_low": ["frac"], "wave_time": ["seconds"], "gold_high": ["gold"], "lost_steps": ["step_pct", "max_steps"]}
+# hero_low — HP героя ниже frac от максимума (модификаторы — только damage_taken / hero); hero_near — центр отряда ближе radius px к живому герою.
+const CONDS := {"hold": [], "retreat": [], "gate_low": ["frac"], "squad_low": ["frac"], "wave_time": ["seconds"], "gold_high": ["gold"], "lost_steps": ["step_pct", "max_steps"],
+	"hero_low": ["frac"], "hero_near": ["radius"]}
 const COND_STATS := ["damage", "hp", "speed", "block", "attack_rate"]   # что может давать условие: множитель урона, получаемого урона (hp), скорости отряда, бонус блока, скорость боя
 const SPECIALS := ["vengeance", "gate_attack"]
 const FIELDS := ["id", "num", "name_key", "desc_key", "builds", "kind", "mods", "when", "on_pick", "special", "per_unit_pct", "max_pct", "disabled", "disabled_reason"]
@@ -104,13 +106,24 @@ static func load_cards(path: String) -> Dictionary:
 			for k in CONDS[w.cond]:
 				if not _num(w.get(k)) or w[k] <= 0:
 					return _err(path, id, "у условия %s нет числа %s больше 0" % [w.cond, k])   # tr-skip: текст ошибки загрузки (лог)
-			if w.cond in ["gate_low", "squad_low"] and w.frac > 1.0:
+			if w.cond in ["gate_low", "squad_low", "hero_low"] and w.frac > 1.0:
 				return _err(path, id, "у условия %s frac больше 1" % w.cond)   # tr-skip: текст ошибки загрузки (лог)
 			for mod in e.mods:
+				if w.cond == "hero_low":
+					if not mod.get("cost", false) and (mod.stat != "damage_taken" or mod.target != "hero" or mod.op != "add_pct"):
+						return _err(path, id, "условие hero_low даёт только add_pct к damage_taken героя")   # tr-skip: текст ошибки загрузки (лог)
+					continue
 				if not mod.get("cost", false) and (not mod.stat in COND_STATS or mod.op != ("add_flat" if mod.stat == "block" else "add_pct") or not mod.target in ["all_units", "infantry", "archer", "spearman"]):
 					return _err(path, id, "условный модификатор %s %s %s: условие даёт только add_pct к damage, hp, speed, attack_rate и add_flat к block" % [mod.stat, mod.target, mod.op])   # tr-skip: текст ошибки загрузки (лог)
 		elif e.has("when"):
 			return _err(path, id, "условие when бывает только у карточек C")   # tr-skip: текст ошибки загрузки (лог)
+		if e.kind != "C" or e.when.cond != "hero_low":
+			for mod in e.mods:
+				if mod.stat == "damage_taken":
+					return _err(path, id, "damage_taken бывает только в условии hero_low")   # tr-skip: текст ошибки загрузки (лог)
+		var heroish: bool = e.mods.any(func(mod): return mod.target == "hero") or (e.kind == "C" and e.when.cond.begins_with("hero_"))
+		if heroish != is_hero(e):
+			return _err(path, id, "карточка героя (цель hero или условие hero_*) — первый билд hero, и наоборот")   # tr-skip: текст ошибки загрузки (лог)
 		if e.has("special"):
 			if e.kind != "K" or not e.special is String or not e.special in SPECIALS:
 				return _err(path, id, "special бывает только у K и только %s" % ", ".join(SPECIALS))   # tr-skip: текст ошибки загрузки (лог)
@@ -144,7 +157,8 @@ static func _check_on_pick(o: Variant) -> String:
 	return "on_pick: неизвестный эффект \"%s\"" % str(o.keys()[0])   # tr-skip: текст ошибки загрузки (лог)
 
 
-# cards_rules.json: pick_after_waves — непустой массив возрастающих целых от 1; offer_count — целое от 1; pick_build_continue_chance — 0..1.
+# cards_rules.json: pick_after_waves — непустой массив возрастающих целых от 1; offer_count — целое от 1; pick_build_continue_chance — 0..1;
+# hero_guaranteed_slots (по желанию, нет поля — 0) — целое от 0 до offer_count: столько мест тройки при включённом герое — карточки героя.
 static func load_rules(path: String) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		push_error("Нет файла данных: %s" % path)
@@ -171,7 +185,11 @@ static func load_rules(path: String) -> Dictionary:
 	if not _num(c) or c < 0.0 or c > 1.0:
 		push_error("%s: pick_build_continue_chance — число от 0 до 1" % path)
 		return {}
-	return {"pick_after_waves": waves, "offer_count": int(n), "pick_build_continue_chance": float(c)}
+	var hs = d.get("hero_guaranteed_slots", 0)
+	if not _num(hs) or hs != floorf(hs) or hs < 0 or hs > n:
+		push_error("%s: hero_guaranteed_slots — целое от 0 до offer_count" % path)
+		return {}
+	return {"pick_after_waves": waves, "offer_count": int(n), "pick_build_continue_chance": float(c), "hero_guaranteed_slots": int(hs)}
 
 
 # Источник модификаторов для Mods.build_sources по выбранным карточкам (записи {id[, result]}): модификаторы M и K,
@@ -203,6 +221,11 @@ static func make_record(d: Dictionary, rng: RandomNumberGenerator) -> Dictionary
 	return r
 
 
+# Карточка героя: первый билд hero (цели hero, условия hero_*).
+static func is_hero(d: Dictionary) -> bool:
+	return d.builds[0] == "hero"
+
+
 # Активные (не disabled) карточки в порядке файла.
 static func active_ids(defs: Dictionary) -> Array:
 	return defs.keys().filter(func(id): return not defs[id].get("disabled", false))
@@ -211,17 +234,27 @@ static func active_ids(defs: Dictionary) -> Array:
 # Тройка для выбора: без повторов и уже выбранных, без disabled; основные билды (первый тег builds) разные;
 # с вероятностью pick_build_continue_chance одна карточка продолжает основной билд, в котором у игрока уже есть карточка (если такая найдётся);
 # разных билдов не хватает — добор из оставшихся. Генератор — переданный (Game.run_rng).
-static func offer(defs: Dictionary, records: Array, rules: Dictionary, rng: RandomNumberGenerator) -> Array:
+# hero (герой в бою включён): сначала hero_guaranteed_slots мест — карточки героя (пока не взятые есть), остальное — как выше из общего пула
+# (в нём и карточки героя). Герой выключен — карточек героя в пуле нет, генератор тратится как до задачи 14.
+static func offer(defs: Dictionary, records: Array, rules: Dictionary, rng: RandomNumberGenerator, hero := false) -> Array:
 	var taken := records.map(func(r): return r.id)
-	var pool := active_ids(defs).filter(func(id): return not id in taken)
+	var pool := active_ids(defs).filter(func(id): return not id in taken and (hero or not is_hero(defs[id])))
 	var owned := {}
 	for id in taken:
 		if defs.has(id):
 			owned[defs[id].builds[0]] = true
 	var out := []
 	var used := {}
-	if not owned.is_empty() and rng.randf() < rules.pick_build_continue_chance:
-		var cont := pool.filter(func(id): return owned.has(defs[id].builds[0]))
+	if hero:
+		for n in mini(rules.get("hero_guaranteed_slots", 0), rules.offer_count):
+			var hc := pool.filter(func(id): return is_hero(defs[id]) and not id in out)
+			if hc.is_empty():
+				break
+			var id: String = hc[rng.randi_range(0, hc.size() - 1)]
+			out.append(id)
+			used[defs[id].builds[0]] = true
+	if not owned.is_empty() and out.size() < rules.offer_count and rng.randf() < rules.pick_build_continue_chance:
+		var cont := pool.filter(func(id): return owned.has(defs[id].builds[0]) and not id in out)
 		if not cont.is_empty():
 			var id: String = cont[rng.randi_range(0, cont.size() - 1)]
 			out.append(id)

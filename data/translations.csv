@@ -259,6 +259,16 @@ CARD_GRACE_BLESSING_NAME,Благословение Благодати,Blessing 
 CARD_GRACE_BLESSING_DESC,+10% Сияния за забег,+10% Radiance per run
 CARD_FIELD_KITCHEN_NAME,Полевой госпиталь,Field Hospital
 CARD_FIELD_KITCHEN_DESC,После волны возвращает 20% павших,Returns 20% of the fallen after each wave
+CARD_WIDE_SWING_NAME,Широкий замах,Wide Swing
+CARD_WIDE_SWING_DESC,Дуга удара Командира шире на 40° и длиннее на 15%,The Commander's strike arc is 40° wider and 15% longer
+CARD_QUICK_HANDS_NAME,Быстрые руки,Quick Hands
+CARD_QUICK_HANDS_DESC,+20% к скорости атаки Командира,+20% Commander attack speed
+CARD_COMMANDER_TEMPER_NAME,Закалка командира,Commander's Mettle
+CARD_COMMANDER_TEMPER_DESC,+50% к здоровью Командира,+50% Commander health
+CARD_LAST_BASTION_NAME,Последний рубеж,Last Bastion
+CARD_LAST_BASTION_DESC,"−30% к урону по Командиру, пока его здоровье ниже 40%",−30% damage taken by the Commander while below 40% health
+CARD_COMMANDER_BANNER_NAME,Знамя командира,Commander's Banner
+CARD_COMMANDER_BANNER_DESC,"+15% к скорости атаки отрядов, чей центр ближе 150 px к Командиру",+15% attack speed for squads within 150 px of the Commander
 UI_CARDS_TITLE,Выберите карточку,Choose a card
 UI_CARDS_HINT,Клавиши 1 / 2 / 3 или мышь. Пропустить нельзя.,Keys 1 / 2 / 3 or mouse. You can't skip.
 UI_CARDS_OWNED,Уже выбрано: %s,Already chosen: %s
@@ -269,6 +279,7 @@ UI_BUILD_ARCHERS,Лучники,Archers
 UI_BUILD_GOLD,Золото,Gold
 UI_BUILD_RISK,Риск,Risk
 UI_BUILD_COMMON,Общая,Common
+UI_BUILD_HERO,Командир,Commander
 GIFT_WAR_CRY_NAME,Клич Благодати,Call of Grace
 GIFT_WAR_CRY_DESC,"Кнопка в бою: всем +%s%% скорости ударов на %s с, перезарядка %s с","Battle button: +%s%% attack speed for all for %s s, cooldown %s s"
 ACTION_WAR_CRY,Клич Благодати,Call of Grace
@@ -295,6 +306,8 @@ COND_WAVE_TIME,первые %s с волны,the first %s s of a wave
 COND_GOLD_HIGH,в начале волны золота не меньше %s,at least %s gold at the start of a wave
 COND_LOST_STEPS,бонус за каждые %s%% потерь отряда,bonus for every %s%% of the squad lost
 COND_VENGEANCE,бонус растёт с каждым своим павшим в волне,the bonus grows with every soldier lost this wave
+COND_HERO_LOW,здоровье Командира ниже %s%%,the Commander is below %s%% health
+COND_HERO_NEAR,центр отряда ближе %s px к Командиру,the squad center is within %s px of the Commander
 SHOP_SPEAR_PACK,+%d копейщиков,+%d spearmen
 UNIT_SPEARMAN,Копейщики,Spearmen
 UNIT_HERO,Командир,Commander

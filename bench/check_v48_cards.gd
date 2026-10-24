@@ -49,13 +49,13 @@ func t_data() -> void:
 	var defs := CARDS.load_cards("res://data/cards.json")
 	var active := CARDS.active_ids(defs)
 	var disabled := defs.keys().filter(func(id): return defs[id].get("disabled", false))
-	check("40 карточек, 39 активных; выключена «Кипящая смола» (13), с причиной; «Строй щитов» (9) включён в задаче 8 (стат block)", defs.size() == 40
-		and active.size() == 39 and disabled == ["boiling_pitch"] and defs.boiling_pitch.disabled_reason != "" and defs.shield_wall.when.cond == "hold", str(disabled))
+	check("45 карточек (41–45 — героя, задача 14), 44 активных; выключена «Кипящая смола» (13), с причиной; «Строй щитов» (9) включён в задаче 8 (стат block)", defs.size() == 45
+		and active.size() == 44 and disabled == ["boiling_pitch"] and defs.boiling_pitch.disabled_reason != "" and defs.shield_wall.when.cond == "hold", str(disabled))
 	var nums := defs.keys().map(func(id): return int(defs[id].num))
 	var keys_ok := true
 	for id in defs:
 		keys_ok = keys_ok and defs[id].name_key == "CARD_%s_NAME" % id.to_upper() and defs[id].desc_key == "CARD_%s_DESC" % id.to_upper()
-	check("номера 1..40 по порядку, id латиницей, ключи CARD_<ID>_NAME / _DESC", nums == range(1, 41) and keys_ok)
+	check("номера 1..45 по порядку, id латиницей, ключи CARD_<ID>_NAME / _DESC", nums == range(1, 46) and keys_ok)
 	var cost := []
 	for id in defs:
 		if defs[id].mods.any(func(x): return x.get("cost", false)):
@@ -64,7 +64,7 @@ func t_data() -> void:
 	var kinds := {"M": [], "C": [], "K": []}
 	for id in defs:
 		kinds[defs[id].kind].append(int(defs[id].num))
-	check("типы: C — 9, 10, 11, 17, 25, 31, 32, 36, 37; K — 13, 24, 30; остальные M", kinds.C == [9, 10, 11, 17, 25, 31, 32, 36, 37] and kinds.K == [13, 24, 30] and kinds.M.size() == 28,
+	check("типы: C — 9, 10, 11, 17, 25, 31, 32, 36, 37, 44, 45; K — 13, 24, 30; остальные M", kinds.C == [9, 10, 11, 17, 25, 31, 32, 36, 37, 44, 45] and kinds.K == [13, 24, 30] and kinds.M.size() == 31,
 		"C %s, K %s" % [str(kinds.C), str(kinds.K)])
 	var long := []
 	for loc in ["ru", "en"]:
@@ -147,7 +147,7 @@ func t_game() -> void:
 	g.name = "Game"
 	g.save_path = DIR + "/save.json"
 	root.add_child(g)
-	check("Game загрузил 40 карточек и правила; run_cards пуст", g.card_defs.size() == 40 and not g.card_rules.is_empty() and g.run_cards.is_empty())
+	check("Game загрузил 45 карточек и правила; run_cards пуст", g.card_defs.size() == 45 and not g.card_rules.is_empty() and g.run_cards.is_empty())
 	g.run_cards = [{"id": "purse"}]
 	g.run_seed = 11
 	g.cfg_ok = false   # start_run без смены сцены: здесь проверяется только сброс состояния
@@ -164,7 +164,7 @@ func t_game() -> void:
 	g.run_cards = []
 	check("без карточек — 22", g.run_reward("loss", 5) == 22)
 	var o: Array = g.card_offer()
-	check("card_offer: тройка из разных основных билдов", o.size() == 3 and o.map(func(id): return g.card_defs[id].builds[0]).reduce(func(acc, b): return acc if b in acc else acc + [b], []).size() == 3, str(o))
+	check("card_offer (без героя): тройка из разных основных билдов", o.size() == 3 and o.map(func(id): return g.card_defs[id].builds[0]).reduce(func(acc, b): return acc if b in acc else acc + [b], []).size() == 3, str(o))
 	g.queue_free()
 	await step(2)
 	for f in DirAccess.get_files_at(DIR):

@@ -39,7 +39,7 @@ func find_mod(card: Dictionary, cost: bool) -> Dictionary:
 func t_data() -> void:
 	print("данные")
 	var defs := CARDS.load_cards("res://data/cards.json")
-	check("data/cards.json проходит валидатор (%d карточек)" % defs.size(), defs.size() == 40)
+	check("data/cards.json проходит валидатор (%d карточек, с 41–45 героя)" % defs.size(), defs.size() == 45)
 	for id in WANT:
 		var w: Array = WANT[id]
 		var e := find_mod(defs[id], w[3])

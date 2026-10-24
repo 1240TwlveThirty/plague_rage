@@ -39,7 +39,12 @@
 		"blood_for_blood": "blood",
 		"dark_vow": "skull",
 		"grace_blessing": "radiance",
-		"field_kitchen": "cross"
+		"field_kitchen": "cross",
+		"wide_swing": "range",
+		"quick_hands": "reload",
+		"commander_temper": "heart",
+		"last_bastion": "shield",
+		"commander_banner": "horn"
 	},
 	"gifts": {
 		"tempered_steel": "sword",
