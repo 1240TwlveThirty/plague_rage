@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://ddi03x43l0t0n"
+
+[deps]
+
+files=["res://bench/damage_breakpoints.target.translation", "res://bench/damage_breakpoints.wave.translation", "res://bench/damage_breakpoints.target.translation", "res://bench/damage_breakpoints.base.translation", "res://bench/damage_breakpoints.hits.translation", "res://bench/damage_breakpoints.hits.translation", "res://bench/damage_breakpoints.hits.translation", "res://bench/damage_breakpoints.hits.translation", "res://bench/damage_breakpoints.crosses.translation"]
+
+source_file="res://bench/damage_breakpoints.csv"
+dest_files=["res://bench/damage_breakpoints.target.translation", "res://bench/damage_breakpoints.wave.translation", "res://bench/damage_breakpoints.target.translation", "res://bench/damage_breakpoints.base.translation", "res://bench/damage_breakpoints.hits.translation", "res://bench/damage_breakpoints.hits.translation", "res://bench/damage_breakpoints.hits.translation", "res://bench/damage_breakpoints.hits.translation", "res://bench/damage_breakpoints.crosses.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

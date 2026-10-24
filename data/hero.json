@@ -1,7 +1,7 @@
 {
 	"enabled": true,
 	"label": "UNIT_HERO",
-	"hp": 15.0,
+	"hp": 35,
 	"speed": 138.0,
 	"damage": 2.0,
 	"attack_interval": 0.8,
