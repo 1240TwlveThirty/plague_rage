@@ -54,10 +54,11 @@ func t_data() -> void:
 		and d.auto_attack == false and d.size_scale >= 1.6 and d.size_scale <= 2.0 and d.revive_hp_fraction == 1.0)
 	check("тип hero последним (номера типов из unit_types.json прежние), подпись «Командир»", h == m.type_hp.size() - 1 and h == m.type_id.size() - 1
 		and tr(m.type_label[h]) == "Командир")
-	check("урон x2 пехоты, интервал удара как у пехоты, HP x5 пехоты", is_equal_approx(m.base_type_damage[h], 2.0 * m.base_type_damage[i])
-		and is_equal_approx(m.base_type_cooldown[h], m.base_type_cooldown[i]) and is_equal_approx(m.base_type_hp[h], 5.0 * m.base_type_hp[i]))
-	var k: float = m.base_type_speed[h] / m.base_type_speed[i]
-	check("скорость %.0f px/с (данные — мировые px/с) = %.2f пехоты (около 1.15)" % [m.base_type_speed[h], k], is_equal_approx(m.base_type_speed[h], d.speed) and absf(k - 1.15) < 0.02)
+	# Балансные значения не фиксируются (задача 14): тип героя берёт числа из hero.json как есть.
+	check("HP %.1f, урон %.1f, интервал удара %.2f с — из hero.json (HP больше 0)" % [m.base_type_hp[h], m.base_type_damage[h], m.base_type_cooldown[h]],
+		d.hp > 0.0 and is_equal_approx(m.base_type_hp[h], d.hp) and is_equal_approx(m.base_type_damage[h], d.damage)
+		and is_equal_approx(m.base_type_cooldown[h], d.attack_interval))
+	check("скорость %.0f px/с (данные — мировые px/с) — из hero.json, больше 0" % m.base_type_speed[h], d.speed > 0.0 and is_equal_approx(m.base_type_speed[h], d.speed))
 	check("дальность удара %.1f px (данные — мировые px), больше пехотной %.1f; щита нет, награды нет" % [sqrt(m.type_range_sq[h]), sqrt(m.type_range_sq[i])],
 		is_equal_approx(sqrt(m.type_range_sq[h]), d.arc_range) and m.type_range_sq[h] > m.type_range_sq[i] and m.type_block_mult[h] == 1.0 and m.type_bounty_mult[h] == 0.0)
 	m.free()
@@ -206,7 +207,8 @@ func t_combat() -> void:
 	while m.hero_swings == 1 and ticks < 100:
 		m._update_hero(DT)
 		ticks += 1
-	check("следующий удар через %d тиков (attack_interval 0.8 с = 24 тика)" % ticks, ticks == 24 and m.hero_swings == 2)
+	var want := ceili(m.type_cooldown[m.hero_type] / DT - 1e-4)
+	check("следующий удар через %d тиков (attack_interval %.2f с = %d тиков)" % [ticks, m.type_cooldown[m.hero_type], want], ticks == want and m.hero_swings == 2)
 	m.hp[z[1]] = 0.0
 	m.hp[z[2]] = 0.0
 	m.cooldown[h] = 0.0

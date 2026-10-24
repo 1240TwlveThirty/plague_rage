@@ -48,13 +48,14 @@ func _run() -> void:
 func t_data() -> void:
 	print("данные удара (этап A)")
 	var d = JSON.parse_string(FileAccess.get_file_as_string("res://data/hero.json"))
-	check("hero.json: auto_attack false, arc_angle 110, arc_range 28, max_targets 6, hold_repeat true, arc_fx_time 0.15, arc_fx_color — hex",
-		d.auto_attack == false and d.arc_angle == 110.0 and d.arc_range == 28.0 and d.max_targets == 6 and d.hold_repeat == true
-		and d.arc_fx_time == 0.15 and Color.html_is_valid(d.arc_fx_color))
-	check("attack_range и targets_per_swing убраны (их заменили arc_range и max_targets); attack_interval и damage прежние",
-		not d.has("attack_range") and not d.has("targets_per_swing") and d.attack_interval == 0.8 and d.damage == 2.0)
+	# Балансные значения не фиксируются (задача 14): только типы и пределы.
+	check("hero.json: auto_attack false, hold_repeat true, arc_angle %s в (0, 360], arc_range %s, max_targets %s (целое от 0), arc_fx_time больше 0, arc_fx_color — hex" % [d.arc_angle, d.arc_range, d.max_targets],
+		d.auto_attack == false and d.hold_repeat == true and d.arc_angle > 0.0 and d.arc_angle <= 360.0 and d.arc_range > 0.0
+		and d.max_targets >= 0 and d.max_targets == floorf(d.max_targets) and d.arc_fx_time > 0.0 and Color.html_is_valid(d.arc_fx_color))
+	check("attack_range и targets_per_swing убраны (их заменили arc_range и max_targets); attack_interval больше 0, damage от 0",
+		not d.has("attack_range") and not d.has("targets_per_swing") and d.attack_interval > 0.0 and d.damage >= 0.0)
 	var m := make()
-	check("дальность типа героя = arc_range %.1f px" % sqrt(m.type_range_sq[m.hero_type]), is_equal_approx(sqrt(m.type_range_sq[m.hero_type]), 28.0))
+	check("дальность типа героя = arc_range %.1f px" % sqrt(m.type_range_sq[m.hero_type]), is_equal_approx(sqrt(m.type_range_sq[m.hero_type]), d.arc_range))
 	m.free()
 
 # n зомби-крестьян в углу поля (после героя: его индекс прежний), HP большое — не умирают от удара.
@@ -179,7 +180,8 @@ func t_cooldown() -> void:
 	while m.hero_swing_n == 1 and ticks < 100:
 		swing(m)   # удержание: ввод удара каждый тик
 		ticks += 1
-	check("удержание: следующий удар через %d тиков (attack_interval 0.8 с = 24 тика)" % ticks, ticks == 24 and m.hero_swing_n == 2)
+	var want := ceili(m.type_cooldown[m.hero_type] / DT - 1e-4)
+	check("удержание: следующий удар через %d тиков (attack_interval %.2f с = %d тиков)" % [ticks, m.type_cooldown[m.hero_type], want], ticks == want and m.hero_swing_n == 2)
 	for t in 10:
 		m._build_grid()
 		m._update_hero(DT)   # отпустил: перезарядка идёт, удара нет
