@@ -71,7 +71,7 @@ func t_theme() -> void:
 		return
 	var types := Array(t.get_type_list())
 	types.sort()
-	check("в теме только вариации %s (базовые Button, PanelContainer, Label не заданы)" % ", ".join(types), types == [String(UI.BUTTON), String(UI.LABEL), String(UI.PANEL)]
+	check("в теме только вариации %s (базовые Button, PanelContainer, Label не заданы; FrameSlot и FrameBar — задача 19)" % ", ".join(types), types == [String(UI.BAR), String(UI.BUTTON), String(UI.LABEL), String(UI.PANEL), String(UI.SLOT)]
 		and t.get_type_variation_base(UI.BUTTON) == &"Button" and t.get_type_variation_base(UI.PANEL) == &"PanelContainer" and t.get_type_variation_base(UI.LABEL) == &"Label")
 	var bt: Texture2D = (t.get_stylebox("normal", UI.BUTTON) as StyleBoxTexture).texture
 	var src := Image.load_from_file(ProjectSettings.globalize_path(b.file))

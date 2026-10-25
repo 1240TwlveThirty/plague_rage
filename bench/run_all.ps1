@@ -86,6 +86,7 @@ Godot "карточки героя, место в тройке (v64)" "res://ben
 Godot "арты: спрайтшит героя, иллюстрации отрядов (v65)" "res://bench/check_v65.gd" "CHECK: провалов 0"
 Godot "рамки: арт и срез 9-slice (v68)" "res://bench/make_ui_scaled.gd" "UI_ART: проверка пройдена" @("check")
 Godot "рамки: тема и где применена (v68)" "res://bench/check_v68_ui.gd" "CHECK: провалов 0"
+Godot "верхняя панель боя и окошко Сияния (v69)" "res://bench/check_v69_hud.gd" "CHECK: провалов 0"
 Godot "меню, хаб, пауза по Esc (v45)" "res://bench/check_v45.gd" "CHECK: провалов 0"
 Godot "подгонка слоя замка (v48)" "res://bench/check_v48.gd" "CHECK: провалов 0"
 Godot "настройки, полный экран (v49)" "res://bench/check_v49.gd" "CHECK: провалов 0"

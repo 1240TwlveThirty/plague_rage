@@ -187,7 +187,8 @@ func t_win() -> void:
 	for w in 9:
 		planned += await wave(m)
 	m._update_ui()
-	check("после 9 волн передышка, HUD «Волна 9/10»", m.wave_state == m.WS_RESPITE and m.wave_number == 9 and m.hud_label.text.begins_with("Волна 9/10 · "), m.hud_label.text.get_slice("\n", 0))
+	var hv: Dictionary = m.top_hud.get_values()
+	check("после 9 волн передышка, панель «Волна 9/10»", m.wave_state == m.WS_RESPITE and m.wave_number == 9 and hv.wave == 9 and hv.wave_max == 10, str(hv))
 	check("до конца забега Game не тронут: runs 0, last_run пуст", g.records[1].runs == 0 and g.last_run.result == "")
 	var gold_before: float = m.gold
 	planned += await wave(m)
@@ -200,7 +201,8 @@ func t_win() -> void:
 		g.last_run == {"siege": 1, "result": "win", "wave": 10, "kills": planned, "radiance": g.run_reward("win", 10)}, str(g.last_run))
 	check("баннер: «Осада пережита. Волн: 10 из 10.» и «Enter — в хаб», кнопка «В хаб» видна", m.banner.visible and m.banner_parts[1] == "Осада пережита. Волн: 10 из 10."
 		and m.banner_parts[3] == "Enter — в хаб" and m.hub_button.visible and tr(m.hub_button.text) == "В хаб", str(m.banner_parts))
-	check("HUD «Волна 10/10», магазин скрыт", m.hud_label.text.begins_with("Волна 10/10 · ") and not m.shop_panel.visible)
+	hv = m.top_hud.get_values()
+	check("панель «Волна 10/10», магазин скрыт", hv.wave == 10 and hv.wave_max == 10 and not m.shop_panel.visible, str(hv))
 	m._start_wave()
 	key(m, KEY_P)
 	check("волна 11 не стартует, пауза при wave_state 3 недоступна", m.wave_number == 10 and m.wave_state == m.WS_WIN and not m.paused)

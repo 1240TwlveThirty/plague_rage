@@ -2,5 +2,22 @@
 	"shop_button_size": [464, 56],
 	"squad_button_size": [352, 48],
 	"action_button_height": 48,
-	"war_cry_size": [352, 48]
+	"war_cry_size": [352, 48],
+	"top_hud": {
+		"top": 16,
+		"gap": 12,
+		"height": 56,
+		"icon_scale": 2,
+		"icon_gap": 8,
+		"font_size": 18,
+		"font_min": 16,
+		"slots": [
+			{"id": "wave", "icon": "hourglass", "width": 200},
+			{"id": "zombies", "icon": "skull", "width": 200},
+			{"id": "troops", "icon": "soldiers", "width": 200},
+			{"id": "gate", "icon": "gate", "width": 600, "bar": true},
+			{"id": "gold", "icon": "coin", "width": 200}
+		]
+	},
+	"corner_slot": {"id": "radiance", "icon": "radiance", "width": 200, "top": 16, "right": 16}
 }

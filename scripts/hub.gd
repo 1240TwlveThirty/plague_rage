@@ -11,6 +11,8 @@ const DIARY_EMPTY := "HUB_DIARY_EMPTY"
 const RADIANCE_COLOR := Color(0.6, 0.9, 1.0)
 const RADIANCE_ICON := "res://art/shine.png"
 const ICONS := preload("res://scripts/icons.gd")
+const TOP_HUD := preload("res://scripts/top_hud.gd")   # окошко «Сияние» справа сверху — тот же компонент, что у панели боя (задача 19)
+const HUD_SLOT := preload("res://scripts/hud_slot.gd")
 const GIFT_ICON_AT := Vector2(8, 5)   # иконка 16 x 16 в окне рамки 32 x 48 (масштаб 1, как у рамки в строке)
 const GIFT_ICON := "res://art/card_meta_perk.png"   # общая заглушка; своя иконка дара — art/gift_<id>.png, если есть
 const GIFT_ICON_SIZE := Vector2(32.0, 48.0)   # 12 строк даров помещаются на экран 1080
@@ -34,6 +36,7 @@ var esc_menu: CanvasLayer      # меню паузы по Esc: «Продолж�
 var tabs: TabContainer         # «Осада» и «Дары»
 var gifts_panel: PanelContainer   # вкладка «Дары»: универсальная панель
 var radiance_label: Label      # баланс Сияния на вкладке «Дары»
+var radiance_slot: HUD_SLOT        # окошко «Сияние» в правом верхнем углу (на обеих вкладках)
 var gift_rows := {}            # id дара -> {level, effect, price, button, reason}: подписи и кнопка строки магазина
 
 
@@ -90,6 +93,9 @@ func _ready() -> void:
 	_setup_gifts()
 	tabs.tab_changed.connect(_on_tab_changed)
 	top.move_child(tabs, top.get_child_count() - 1)
+	radiance_slot = TOP_HUD.corner_slot()
+	add_child(radiance_slot)
+	radiance_slot.set_value(game.radiance)
 	_setup_diary()
 	esc_menu = ESC_MENU.new()
 	add_child(esc_menu)
@@ -207,6 +213,8 @@ static func _num(v: float) -> String:
 # Баланс и строки магазина по состоянию Game: уровень, эффект и цена следующего уровня, кнопка и причина, если купить нельзя.
 func _refresh_gifts() -> void:
 	radiance_label.text = tr("HUB_RADIANCE") % game.radiance
+	if radiance_slot != null:
+		radiance_slot.set_value(game.radiance)
 	for id in gift_rows:
 		var row: Dictionary = gift_rows[id]
 		var def: Dictionary = game.gift_defs[id]
@@ -340,6 +348,7 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready():
 		_refresh()
 		_refresh_gifts()
+		radiance_slot.refresh()
 		if diary_panel.visible:
 			_open_diary()
 

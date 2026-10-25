@@ -1,7 +1,10 @@
 [gd_resource type="Theme" format=3]
 
+[ext_resource type="Texture2D" path="res://art/ui/x2/ui_bar_fill.png" id="1_c81ik"]
 [ext_resource type="Texture2D" path="res://art/ui/x2/ui_button_c6.png" id="1_qhmkl"]
+[ext_resource type="Texture2D" path="res://art/ui/x2/ui_bar_frame.png" id="2_g86ss"]
 [ext_resource type="Texture2D" path="res://art/ui/x2/ui_panel_c8.png" id="2_oa48i"]
+[ext_resource type="Texture2D" path="res://art/ui/x2/ui_slot_c6.png" id="5_dwyie"]
 
 [sub_resource type="StyleBoxTexture" id="button_disabled"]
 content_margin_left = 20.0
@@ -67,7 +70,24 @@ texture_margin_right = 18.0
 texture_margin_bottom = 18.0
 region_rect = Rect2(0, 0, 96, 96)
 
+[sub_resource type="StyleBoxTexture" id="slot"]
+content_margin_left = 14.0
+content_margin_top = 12.0
+content_margin_right = 14.0
+content_margin_bottom = 12.0
+texture = ExtResource("5_dwyie")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+region_rect = Rect2(0, 0, 200, 56)
+
 [resource]
+FrameBar/constants/fill_left = 4
+FrameBar/constants/fill_right = 4
+FrameBar/constants/step = 2
+FrameBar/icons/fill = ExtResource("1_c81ik")
+FrameBar/icons/frame = ExtResource("2_g86ss")
 FrameButton/base_type = &"Button"
 FrameButton/colors/font_color = Color(0.7529412, 0.79607844, 0.8627451, 1)
 FrameButton/colors/font_disabled_color = Color(0.3529412, 0.4117647, 0.53333336, 1)
@@ -90,3 +110,5 @@ FrameLabel/colors/font_outline_color = Color(0.09411765, 0.078431375, 0.14509805
 FrameLabel/constants/outline_size = 6
 FramePanel/base_type = &"PanelContainer"
 FramePanel/styles/panel = SubResource("panel")
+FrameSlot/base_type = &"PanelContainer"
+FrameSlot/styles/panel = SubResource("slot")

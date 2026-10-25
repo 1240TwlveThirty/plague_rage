@@ -6,6 +6,8 @@ const BG_COLOR := Color.BLACK
 const BUTTON := &"FrameButton"
 const PANEL := &"FramePanel"
 const LABEL := &"FrameLabel"   # тёмный контур текста на светлой панели
+const SLOT := &"FrameSlot"     # окошко верхней панели боя и Сияния (задача 19)
+const BAR := &"FrameBar"       # полоса HP окошка: иконки frame, fill и окно заливки (константы)
 
 
 # Универсальная рамка кнопки. menu — кнопка меню: не меньше min_width x min_height темы (размер рамки арта на экране);
@@ -29,6 +31,18 @@ static func frame_panel(p: PanelContainer) -> void:
 static func panel_margins() -> Vector2:
 	var t := ThemeDB.get_project_theme()
 	return t.get_stylebox("panel", PANEL).get_minimum_size() if t != null and t.has_stylebox("panel", PANEL) else Vector2.ZERO
+
+
+# Окошко (scripts/hud_slot.gd): рамка ui_slot с углом темы.
+static func frame_slot(p: PanelContainer) -> void:
+	p.theme_type_variation = SLOT
+	p.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+
+
+# Поля окошка слева+справа и сверху+снизу (как panel_margins).
+static func slot_margins() -> Vector2:
+	var t := ThemeDB.get_project_theme()
+	return t.get_stylebox("panel", SLOT).get_minimum_size() if t != null and t.has_stylebox("panel", SLOT) else Vector2.ZERO
 
 
 # Подпись на панели: тёмный контур, чтобы светлый текст читался на светлой рамке.

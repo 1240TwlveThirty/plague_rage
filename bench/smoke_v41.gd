@@ -110,8 +110,9 @@ func _run() -> void:
 		and not current_scene.siege_option.visible and current_scene.start_button.has_focus())
 	await click(current_scene.start_button)
 	var m := current_scene as Node2D
-	check("клик «Начать забег» -> бой: передышка, волна 0, HUD «Волна 0/10», осада 1", is_scene("Main") and m.wave_state == m.WS_RESPITE and m.wave_number == 0
-		and m.hud_label.text.begins_with("Волна 0/10 · ") and g.siege == 1 and g.run_index == 1)
+	var hv: Dictionary = m.top_hud.get_values()
+	check("клик «Начать забег» -> бой: передышка, волна 0, панель «Волна 0/10», осада 1", is_scene("Main") and m.wave_state == m.WS_RESPITE and m.wave_number == 0
+		and hv.wave == 0 and hv.wave_max == 10 and g.siege == 1 and g.run_index == 1, str(hv))
 	var drawn := await drawn_units(m)
 	check("юниты нарисованы после смены сцены (не меньше 300 из 400 видны на кадре)", drawn >= 300, "видно %d" % drawn)
 	await key(KEY_R)

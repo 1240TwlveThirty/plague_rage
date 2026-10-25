@@ -73,6 +73,8 @@ const UI_LAYOUT_PATH := "res://data/ui_layout.json"   # размеры кноп�
 const FIT_MIN_FONT := 11   # текст кнопки фиксированного размера ужимается до этого кегля (дальше — перенос по словам)
 const SHOP_PORTRAIT := {"inf_pack": "infantry", "archer_pack": "archer", "spear_pack": "spearman"}   # товар -> тип юнита для иллюстрации
 const UI := preload("res://scripts/ui.gd")   # универсальные рамки кнопки и панели (тема проекта, задача 18)
+const TOP_HUD := preload("res://scripts/top_hud.gd")   # верхняя панель боя из окошек и окошко Сияния (задача 19, data/ui_layout.json)
+const HUD_SLOT := preload("res://scripts/hud_slot.gd")
 const ESC_MENU := preload("res://scripts/esc_menu.gd")   # меню паузы по Esc: «Продолжить», «Выйти в меню», «Выход из игры»
 const ESC_NOTE := "UI_PAUSE_NOTE_LOSS"   # ключ перевода
 const BANNER_WIDTH := 700.0                   # ширина баннера, px: длинный текст переносится по словам
@@ -82,6 +84,7 @@ const SQUAD_MAX := 8                          # ёмкость всех масс
 const START_SQUADS := 2                       # отряды 0 (пехота) и 1 (лучники) есть всегда и не освобождаются
 const ROTATE_STEP := PI / 12.0                # Shift + колесо: поворот отряда на месте, 15°
 const BANNER_BG_ALPHA := 0.55                 # непрозрачность панели баннера и «Командир пал»: строй под ними виден (текст непрозрачный)
+const INFO_WIDTH := 560.0                     # ширина строки разведки и сообщений слева сверху (перенос по словам; баннер не задевает)
 const BANNER_TOP := 120.0                     # верхняя граница баннера, px от верха экрана
 const OVERLAP_MAX := 0.25                     # расстановка: доля площади меньшего блока, с которой пересечение со своим отрядом запрещено
 const DRAG_MIN := 24.0                       # px: короче — обычный клик, длиннее — расстановка строя по линии
@@ -835,7 +838,14 @@ var shop_bought := PackedInt32Array()
 var weapon_stat := "damage"                # что усиливает «Оружие» (shop.json weapons.stat): damage — урон, attack_rate — скорость боя; x dmg_mult за покупку
 var shop_cap := PackedInt32Array()          # inf_pack / archer_pack: максимум живых юнитов этого типа
 var shop_enabled := PackedByteArray()      # товар в игре (shop.json enabled, по умолчанию да; пакет выключенного типа — нет): иначе скрыт, клавиша не покупает
-var hud_label: Label
+var top_hud: TOP_HUD                           # верхняя панель боя: Волна, Зомби, Войска, Ворота, Золото (scripts/top_hud.gd)
+var info_label: Label                         # разведка и сообщения (отказ команды) — бывшие 2-я и 3-я строки HUD, левый верхний угол
+var info_plan := false                        # что сейчас в info_label: строка разведки показана, для какой волны, какое сообщение —
+var info_plan_for := -1                       # текст пересобирается, только когда что-то из этого поменялось
+var info_msg := ""
+var radiance_slot: HUD_SLOT                    # окошко «Сияние» на экране итога (баланс), под ним — заработанное за забег
+var radiance_earned_label: Label
+var war_cry_sig := -1                         # состояние и число в подписи Клича: подпись пересобирается, только когда они сменились
 var shop_panel: VBoxContainer
 var shop_buttons: Array[Button] = []
 var ui_t := 0.0                               # таймер обновления HUD (10 Гц)
@@ -892,6 +902,7 @@ var squad_rows_ui: Array[HBoxContainer] = []   # строки панели, по
 var squad_swatches: Array[ColorRect] = []
 var squad_actions: HBoxContainer          # кнопки «+ Отряд», «Разделить», «Слить» (только в передышке)
 var squad_panel_sig := -1                 # какие строки панели видны (перевёрстка только при изменении)
+var squad_text_sig := PackedInt64Array()    # по отряду: число, приказ, навык, тип, номер среди одного типа — подпись строки только при их смене
 var hud_msg := ""                         # сообщение в HUD (отказ команды), гаснет через hud_msg_t секунд
 var hud_msg_t := 0.0
 var panel_t := 0.0                            # таймер обновления левой панели (4 Гц)
@@ -3266,6 +3277,15 @@ func _show_radiance(n: int) -> void:
 		return
 	radiance_label.text = banner_radiance
 	radiance_label.visible = true
+	if game != null and radiance_slot != null:   # окошко «Сияние» справа сверху: баланс после забега, под ним заработанное
+		radiance_slot.visible = true
+		radiance_slot.set_value(game.radiance)
+		radiance_earned_label.text = banner_radiance
+		radiance_earned_label.visible = true
+		radiance_earned_label.reset_size()
+		var r := radiance_slot.get_rect()
+		radiance_earned_label.position = Vector2(r.end.x - radiance_earned_label.size.x, r.end.y + 4.0)
+		cards_box.position.y = radiance_earned_label.position.y + radiance_earned_label.size.y + 4.0   # список карточек — ниже
 	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
 	banner.position.y = BANNER_TOP
 
@@ -3402,7 +3422,11 @@ func _notification(what: int) -> void:
 		if hidden and banner != null:
 			banner_hidden = true
 			banner.visible = false
-	if hud_label != null:
+	if top_hud != null:
+		top_hud.refresh()
+		info_plan_for = -1   # строка разведки, подписи Клича и отрядов — заново на новом языке
+		war_cry_sig = -1
+		squad_text_sig.fill(-1)
 		_update_split_ui()
 		_update_squad_panel()
 		_update_ui()
@@ -4708,22 +4732,41 @@ func _setup_fps_label() -> void:
 	cards_label.visible = false
 	cards_box.add_child(cards_label)
 	layer.add_child(cards_box)
-	# HUD сверху по центру
-	hud_label = Label.new()
-	hud_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	hud_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hud_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	hud_label.position.y = 8.0
-	hud_label.add_theme_font_size_override("font_size", 22)
-	hud_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	hud_label.add_theme_constant_override("outline_size", 6)
-	layer.add_child(hud_label)
+	# Верхняя панель боя по центру сверху (задача 19); выбранные карточки справа и строка разведки слева — под ней
+	top_hud = TOP_HUD.new()
+	top_hud.source = _hud_value
+	layer.add_child(top_hud)
+	var below_hud := top_hud.bottom() + float(top_hud.cfg.gap)
+	cards_box.position.y = below_hud
+	info_label = Label.new()
+	info_label.position = Vector2(16.0, below_hud)
+	info_label.custom_minimum_size.x = INFO_WIDTH
+	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # уже переведённые строки
+	info_label.add_theme_font_size_override("font_size", 22)
+	info_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	info_label.add_theme_constant_override("outline_size", 6)
+	info_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(info_label)
+	radiance_slot = TOP_HUD.corner_slot()   # «Сияние» на экране итога: баланс после забега и «+N» под окошком
+	radiance_slot.visible = false
+	layer.add_child(radiance_slot)
+	radiance_earned_label = Label.new()
+	radiance_earned_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	radiance_earned_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	radiance_earned_label.add_theme_font_size_override("font_size", 22)
+	radiance_earned_label.add_theme_color_override("font_color", RADIANCE_COLOR)
+	radiance_earned_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	radiance_earned_label.add_theme_constant_override("outline_size", 6)
+	radiance_earned_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	radiance_earned_label.visible = false
+	layer.add_child(radiance_earned_label)
 	# Сигнал всплеска: надпись вверху по центру, под HUD (без чисел и типов)
 	burst_label = Label.new()
 	burst_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	burst_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	burst_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	burst_label.position.y = 72.0
+	burst_label.position.y = top_hud.bottom() + 4.0   # сразу под панелью
 	burst_label.add_theme_font_size_override("font_size", 30)
 	burst_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.2))
 	burst_label.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -4735,7 +4778,7 @@ func _setup_fps_label() -> void:
 	pause_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	pause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pause_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	pause_label.position.y = 112.0   # под HUD и строкой сигнала всплеска
+	pause_label.position.y = burst_label.position.y + 40.0   # под панелью и строкой сигнала всплеска
 	pause_label.add_theme_font_size_override("font_size", 30)
 	pause_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	pause_label.add_theme_constant_override("outline_size", 8)
@@ -4853,6 +4896,8 @@ func _setup_fps_label() -> void:
 # Подписи с клавишами (кнопки отрядов, деления, магазина) — после переназначения в настройках.
 func _on_settings_changed(key: String) -> void:
 	if key == "input":
+		war_cry_sig = -1   # клавиша в подписи Клича и строк отрядов
+		squad_text_sig.fill(-1)
 		_update_split_ui()
 		_update_squad_panel()
 		_update_ui()
@@ -5064,6 +5109,18 @@ func gate_spot(s: int) -> Vector2:
 
 
 # Название отряда для панели и магазина: label типа, а если отрядов этого типа несколько — с номером по порядку.
+# Номер отряда среди отрядов его типа (0 — отряд этого типа один): то, от чего зависит _squad_label, без строк.
+func _squad_rank(s: int) -> int:
+	var same := 0
+	var rank := 0
+	for q in SQUAD_MAX:
+		if squad_used[q] == 1 and squad_type[q] == squad_type[s]:
+			same += 1
+			if q <= s:
+				rank += 1
+	return 0 if same < 2 else rank
+
+
 func _squad_label(s: int) -> String:
 	var same := 0
 	var rank := 0
@@ -5087,6 +5144,14 @@ func _update_squad_panel() -> void:
 		if squad_used[s] == 0:
 			continue
 		sig |= 2 << s
+		squad_buttons[s].set_pressed_no_signal(_is_sel(s))
+		var tsig := (((squad_n[s] * 16 + squad_order[s]) * 2 + squad_skill_on[s]) * 64 + squad_type[s]) * 64 + _squad_rank(s)
+		if squad_text_sig.size() == SQUAD_MAX and tsig == squad_text_sig[s]:
+			continue   # подпись та же: строки не собираются
+		if squad_text_sig.size() != SQUAD_MAX:
+			squad_text_sig.resize(SQUAD_MAX)
+			squad_text_sig.fill(-1)
+		squad_text_sig[s] = tsig
 		squad_swatches[s].color = type_color[squad_type[s]]
 		portraits.apply(squad_buttons[s], type_id.find_key(squad_type[s]))   # тип отряда мог смениться (слияние, новый отряд)
 		squad_buttons[s].text = "%s  %s — %d — %s" % [SETTINGS.key_label("squad_select_%d" % (s + 1)), _squad_label(s), squad_n[s], tr(ORDER_NAMES[squad_order[s]])]
@@ -5094,7 +5159,6 @@ func _update_squad_panel() -> void:
 			squad_buttons[s].text += "  ● " + tr("UI_SKILL_SHIELD_WALL")
 		_fit_text(squad_buttons[s])
 		squad_buttons[s].add_theme_color_override("font_color", CARD_ON if squad_skill_on[s] == 1 else Color.WHITE)
-		squad_buttons[s].set_pressed_no_signal(_is_sel(s))
 	squad_actions.visible = acts
 	for k in action_buttons.size():   # подписи с актуальной клавишей (её могли переназначить)
 		var t: String = tr(ACTION_TEXTS[k]) % SETTINGS.key_label(ACTION_KEYS[k])
@@ -5209,46 +5273,95 @@ func _update_war_cry_ui() -> void:
 	if war_cry_button == null:
 		return
 	var tps := float(Engine.physics_ticks_per_second)
-	var key := SETTINGS.key_label("war_cry")
 	var active := war_cry_until >= 0
 	var gold_tint := Color(1.0, 0.85, 0.35) if active else Color.WHITE
 	war_cry_button.modulate = gold_tint
+	# подпись — только когда сменились состояние или показываемое число (строки не собираются каждые 0.1 с)
+	var sig := 0
 	if active:
-		war_cry_button.text = tr("HUD_WAR_CRY_ACTIVE") % [key, "%.1f" % ((war_cry_until - tick_counter) / tps)]
+		sig = 1000000 + int((war_cry_until - tick_counter) / tps * 10.0)
 		war_cry_bar.value = float(war_cry_until - tick_counter) / maxf(war_cry_dur, 1)
 	elif wave_state != WS_BATTLE:
-		war_cry_button.text = tr("HUD_WAR_CRY_BATTLE") % key
+		sig = 2000000
 		war_cry_bar.value = 1.0
 	elif tick_counter + 1 < war_cry_ready:
-		war_cry_button.text = tr("HUD_WAR_CRY_WAIT") % [key, "%d" % ceili((war_cry_ready - tick_counter) / tps)]
+		sig = 3000000 + ceili((war_cry_ready - tick_counter) / tps)
 		war_cry_bar.value = 1.0 - float(war_cry_ready - tick_counter) / maxf(war_cry_cd, 1)
 	else:
-		war_cry_button.text = tr("HUD_WAR_CRY_READY") % key
+		sig = 4000000
 		war_cry_bar.value = 1.0
 	war_cry_button.disabled = not active and not war_cry_can()
-	_fit_text(war_cry_button)
+	if sig != war_cry_sig:
+		war_cry_sig = sig
+		var key := SETTINGS.key_label("war_cry")
+		if active:
+			war_cry_button.text = tr("HUD_WAR_CRY_ACTIVE") % [key, "%.1f" % ((war_cry_until - tick_counter) / tps)]
+		elif wave_state != WS_BATTLE:
+			war_cry_button.text = tr("HUD_WAR_CRY_BATTLE") % key
+		elif tick_counter + 1 < war_cry_ready:
+			war_cry_button.text = tr("HUD_WAR_CRY_WAIT") % [key, "%d" % ceili((war_cry_ready - tick_counter) / tps)]
+		else:
+			war_cry_button.text = tr("HUD_WAR_CRY_READY") % key
+		_fit_text(war_cry_button)
 	war_cry_bar.modulate = gold_tint
 	for r in war_cry_glow:
 		r.visible = active
 
 
+# Значение окошка верхней панели id: Vector2i(число, максимум или -1). Новое окошко в data/ui_layout.json с одним из этих id —
+# без правки кода панели. Войска — живые юниты игрока в отрядах (сумма squad_n, как в списке отрядов); герой не в отряде и не считается.
+func _hud_value(id: String) -> Vector2i:
+	match id:
+		"wave":
+			return Vector2i(wave_number, waves_per_run if run_limit else -1)
+		"zombies":
+			return Vector2i(zombie_alive, -1)
+		"zombies_left":
+			return Vector2i(zombie_alive + wave_remaining, -1)   # живые и ещё не вышедшие (как было в строке HUD)
+		"troops":
+			var n := 0
+			for s in SQUAD_MAX:
+				if squad_used[s] == 1 and squad_team[s] == 0:
+					n += squad_n[s]
+			return Vector2i(n, -1)
+		"gate":
+			return Vector2i(ceili(maxf(gate_hp, 0.0)), roundi(gate_hp_max))
+		"gold":
+			return Vector2i(floori(gold), -1)
+		"kills":
+			return Vector2i(run_kills, -1)
+	return Vector2i(0, -1)
+
+
+# Разведка (в передышке) и сообщение об отказе команды — под панелью слева; текст собирается, только когда они поменялись.
+func _update_info() -> void:
+	var plan := scout_shown and waves_enabled and wave_state == WS_RESPITE
+	if plan == info_plan and hud_msg == info_msg and (not plan or wave_plan_for == info_plan_for):
+		return
+	info_plan = plan
+	info_plan_for = wave_plan_for
+	info_msg = hud_msg
+	var lines := PackedStringArray()
+	if plan:
+		lines.append(_plan_text())
+	if hud_msg != "":
+		lines.append(hud_msg)
+	info_label.text = "\n".join(lines)
+
+
 # HUD и магазин: раз в 0.1 с (и сразу после покупки).
 func _update_ui() -> void:
-	if hud_label == null:
+	if top_hud == null:
 		return
 	hero_fallen_label.visible = _orders_locked()
 	hero_fallen_panel.visible = hero_fallen_label.visible
-	hud_label.text = tr("HUD_STATUS") % [
-		"%d/%d" % [wave_number, waves_per_run] if run_limit else str(wave_number), zombie_alive + wave_remaining, ceili(maxf(gate_hp, 0.0)), roundi(gate_hp_max), floori(gold)]
-	if scout_shown and waves_enabled and wave_state == WS_RESPITE:
-		hud_label.text += "\n" + _plan_text()   # разведка
+	top_hud.update()
+	_update_info()
 	_update_war_cry_ui()
 	if cards_box != null and not card_defs.is_empty():
 		_update_cards_ui()
 	burst_label.text = burst_msg
 	burst_label.visible = wave_state == WS_BATTLE and burst_msg != "" and wave_t < burst_msg_until
-	if hud_msg != "":
-		hud_label.text += "\n" + hud_msg
 	shop_panel.visible = wave_state == WS_RESPITE
 	if not shop_panel.visible:
 		return

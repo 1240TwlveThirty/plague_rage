@@ -42,6 +42,7 @@ ACTION_BUY_2,Купить: лучники,Buy: archers
 ACTION_BUY_3,Купить: оружие,Buy: weapons
 ACTION_BUY_4,Купить: ремонт ворот,Buy: gate repair
 HUD_STATUS,Волна %s · зомби: %d · ворота: %d/%d · золото: %d,Wave %s · zombies: %d · gate: %d/%d · gold: %d
+HUD_THOUSANDS,%sк,%sk
 HUD_PLAN,Дальше: волна %d,Next: wave %d
 HUD_PLAN_RUNNERS,бегуны %d,runners %d
 HUD_PLAN_KNIGHTS,рыцари %d,knights %d

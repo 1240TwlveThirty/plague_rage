@@ -112,7 +112,7 @@ func _run() -> void:
 		and is_equal_approx(m.pause_dim.color.a, 0.12) and m.tick_counter == tick0 and m.pos == pos0, "тик %d" % tick0)
 	check("(в) на паузе %d кадров с разной долей тика (%d разных значений): буфер MultiMesh (%d юнитов) один и тот же и равен pos + сдвиг, без lerp" % [bufs.size(), fracs.size(), m.count],
 		same_buf and worst < 0.001 and fracs.size() >= 3 and m.count >= 100, "наибольшее отличие от pos %.5f px" % worst)
-	var hud := Rect2(m.hud_label.global_position, m.hud_label.size)
+	var hud: Rect2 = m.top_hud.get_global_rect()
 	var pl := Rect2(m.pause_label.global_position, m.pause_label.size)
 	var sp := Rect2(m.squad_panel.global_position, m.squad_panel.size)
 	check("надпись «ПАУЗА» по центру сверху, под HUD, панель отрядов не перекрывает", pl.position.y >= hud.end.y - 1.0 and absf(pl.get_center().x - 960.0) < 2.0 and not pl.intersects(sp),

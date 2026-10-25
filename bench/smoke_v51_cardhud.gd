@@ -82,7 +82,7 @@ func _run() -> void:
 	m.choose_card("victory_sacrifice")
 	m._update_ui()
 	await shot("cardhud_split.png")
-	check("после выбора «Жертвы» — строка в HUD с результатом", m.hud_label.text.contains("Жертва ради победы: "), m.hud_msg)
+	check("после выбора «Жертвы» — строка под панелью с результатом", m.info_label.text.contains("Жертва ради победы: "), m.hud_msg)
 	m.queue_free()
 	await step(2)
 	DirAccess.remove_absolute(g.save_path)

@@ -96,7 +96,9 @@ func _run() -> void:
 		g.start_run(1)
 		await step(6)
 		var m := current_scene
-		check("%s: бой — HUD «%s»" % [l, m.hud_label.text.get_slice(" ", 0)], m.hud_label.text.begins_with("Волна" if l == "ru" else "Wave"), m.hud_label.text.get_slice("\n", 0))
+		var hv: Dictionary = m.top_hud.get_values()
+		check("%s: бой — панель: волна %d/%d, ворота %d/%d" % [l, hv.wave, hv.wave_max, hv.gate, hv.gate_max], hv.wave_max == 10 and hv.gate > 0 and hv.gate == hv.gate_max
+			and m.top_hud.is_visible_in_tree(), str(hv))
 		check("%s: бой — интерфейс помещается" % l, overflow(m).is_empty(), ", ".join(overflow(m)))
 		await shot("v51_battle_%s.png" % l)
 		m._open_esc_menu()
@@ -109,12 +111,12 @@ func _run() -> void:
 			# смена языка прямо в бою: баннер, HUD и подписи пересобираются сразу
 			await lang("ru")
 			await step(4)
-			check("в бою en -> ru: баннер и HUD на русском", m.banner_parts[3].begins_with("Расставь") and m.hud_label.text.begins_with("Волна")
-				and m.action_buttons[0].text.begins_with("+ Отряд"), "%s | %s" % [m.banner_parts[3], m.hud_label.text.get_slice("\n", 0)])
+			check("в бою en -> ru: баннер и подписи на русском", m.banner_parts[3].begins_with("Расставь")
+				and m.action_buttons[0].text.begins_with("+ Отряд"), m.banner_parts[3])
 			await lang("en")
 			await step(4)
-			check("в бою ru -> en: баннер и HUD на английском", m.banner_parts[3].begins_with("Position") and m.hud_label.text.begins_with("Wave")
-				and m.action_buttons[0].text.begins_with("+ Squad"), "%s | %s" % [m.banner_parts[3], m.hud_label.text.get_slice("\n", 0)])
+			check("в бою ru -> en: баннер и подписи на английском", m.banner_parts[3].begins_with("Position")
+				and m.action_buttons[0].text.begins_with("+ Squad"), m.banner_parts[3])
 		m._abandon_run()
 	var cfg := ConfigFile.new()
 	check("язык сохранён в settings.cfg (general/language = en)", cfg.load(st.path) == OK and cfg.get_value("general", "language", "") == "en")
