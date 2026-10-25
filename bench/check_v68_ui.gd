@@ -1,4 +1,5 @@
 extends SceneTree
+const FONTS := preload("res://scripts/fonts.gd")   # контур и кегли — под шрифт по умолчанию (задача 22)
 # Тесты задачи 18 (без окна): универсальные рамки кнопки и панели. Тема проекта art/ui/theme.tres совпадает с data/ui_theme.json
 # (масштаб, срез, отступы, цвета), увеличенные копии — ближайший сосед исходника; тема задаёт только вариации FrameButton,
 # FramePanel и FrameLabel. Рамку получили меню, настройки, хаб, меню паузы, баннер, «Командир пал», итог забега, кнопки действий
@@ -95,7 +96,7 @@ func t_theme() -> void:
 	check("цвета текста (Endesga 32): обычный %s, наведение %s, нажатая %s, недоступная %s; тёмный контур %s" % [fc.normal, fc.hover, fc.pressed, fc.disabled, b.outline_color],
 		t.get_color("font_color", UI.BUTTON) == Color(fc.normal) and t.get_color("font_hover_color", UI.BUTTON) == Color(fc.hover)
 		and t.get_color("font_pressed_color", UI.BUTTON) == Color(fc.pressed) and t.get_color("font_disabled_color", UI.BUTTON) == Color(fc.disabled)
-		and t.get_color("font_outline_color", UI.BUTTON) == Color(b.outline_color) and t.get_constant("outline_size", UI.BUTTON) == int(b.outline_size))
+		and t.get_color("font_outline_color", UI.BUTTON) == Color(b.outline_color) and t.get_constant("outline_size", UI.BUTTON) == FONTS.outline(int(b.outline_size)))
 	check("кнопка меню не меньше %d x %d (рамка арта на экране)" % [int(b.min_size[0]), int(b.min_size[1])], t.get_constant("min_width", UI.BUTTON) == int(b.min_size[0])
 		and t.get_constant("min_height", UI.BUTTON) == int(b.min_size[1]))
 	var ps := t.get_stylebox("panel", UI.PANEL) as StyleBoxTexture

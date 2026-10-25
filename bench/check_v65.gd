@@ -1,4 +1,5 @@
 extends SceneTree
+const FONTS := preload("res://scripts/fonts.gd")   # контур и кегли — под шрифт по умолчанию (задача 22)
 # Тесты задачи 15 (без окна): спрайтшит героя — сетка и анимации из hero.json, ошибки в данных — прежнее поведение (вся картинка,
 # отражение); кадр удара растянут на вспышку arc_fx_time. Иллюстрации отрядов — data/unit_portraits.json: вырезка с пропорциями
 # кнопки, уменьшенные копии art/ui совпадают с данными, другой crop — полоса из исходника при запуске, неверные записи отбрасываются,
@@ -179,9 +180,9 @@ func t_portraits() -> void:
 	b.custom_minimum_size = Vector2(SHOP)
 	p.apply(b, "infantry")
 	var pic := b.get_node_or_null("Portrait") as TextureRect
-	check("кнопка с иллюстрацией: картинка и градиент за текстом, фильтр linear с mipmaps, контур текста %d px, рамка выбора 3 px #feae34" % p.OUTLINE_PX,
+	check("кнопка с иллюстрацией: картинка и градиент за текстом, фильтр linear с mipmaps, контур текста %d px, рамка выбора 3 px #feae34" % FONTS.outline(p.OUTLINE_PX),
 		pic != null and pic.visible and pic.show_behind_parent and b.get_node("Shade").show_behind_parent and pic.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		and b.get_theme_constant("outline_size") == p.OUTLINE_PX and (b.get_theme_stylebox("pressed") as StyleBoxFlat).border_width_left == 3
+		and b.get_theme_constant("outline_size") == FONTS.outline(p.OUTLINE_PX) and (b.get_theme_stylebox("pressed") as StyleBoxFlat).border_width_left == 3
 		and (b.get_theme_stylebox("pressed") as StyleBoxFlat).border_color == Color("#feae34") and b.get_child_count() == 0)
 	p.apply(b, "spearman")
 	check("тип сменился на тип без иллюстрации — обычная кнопка", not pic.visible and not b.has_theme_stylebox_override("normal") and not b.has_theme_constant_override("outline_size"))
@@ -222,6 +223,6 @@ func t_layout() -> void:
 	m._fit_text(b)
 	var fs1 := b.get_theme_font_size("font_size")
 	check("подгонка: короткий текст — кегль %d, длинный — %d (не меньше %d), размер кнопки не меняется (%s), перенос по словам" % [fs0, fs1, m.FIT_MIN_FONT, str(b.get_combined_minimum_size())],
-		fs1 < fs0 and fs1 >= m.FIT_MIN_FONT and b.get_combined_minimum_size().x <= shop.x and b.clip_text and b.autowrap_mode == TextServer.AUTOWRAP_WORD_SMART)
+		(fs1 < fs0 or FONTS.fit_sizes(fs0, m.FIT_MIN_FONT).size() == 1) and fs1 >= FONTS.px(m.FIT_MIN_FONT) and b.get_combined_minimum_size().x <= shop.x and b.clip_text and b.autowrap_mode == TextServer.AUTOWRAP_WORD_SMART)
 	b.free()
 	m.free()

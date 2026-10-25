@@ -1,4 +1,5 @@
 extends SceneTree
+const FONTS := preload("res://scripts/fonts.gd")   # допустимые кегли под шрифт по умолчанию (задача 22)
 # Тесты задачи 19 (без окна): верхняя панель боя из окошек и окошко «Сияние». Рамка окошка и полоса — в теме (FrameSlot, FrameBar),
 # копии ×scale — ближайший сосед исходника; состав, порядок, размеры, иконки панели — из data/ui_layout.json (ничего не зашито);
 # значения окошек = состоянию боя (Войска — сумма squad_n отрядов игрока, без героя); подпись не пересобирается без смены числа;
@@ -132,13 +133,19 @@ func t_slot() -> void:
 	check("другое число — подпись новая: «%s»" % s.label.text, s.label.text == "100 000")
 	s.text_width = 60.0   # искусственно узко: при font_size не влезает — кегль вниз до font_min, дальше сокращение
 	s.refresh()
-	check("узкое место (60 px): кегль %d, «%s»" % [s.label.get_theme_font_size("font_size"), s.label.text], s.label.get_theme_font_size("font_size") == int(lay.font_min)
-		and s.label.text == "100.0к")
+	var sizes := FONTS.fit_sizes(int(lay.font_size), int(lay.font_min))   # допустимые кегли подгонки (пиксельный шрифт — только кратные)
+	check("узкое место (60 px): кегль %d (наименьший допустимый %d), «%s»" % [s.label.get_theme_font_size("font_size"), sizes[-1], s.label.text],
+		s.label.get_theme_font_size("font_size") == sizes[-1] and s.label.text == "100.0к")
 	s.text_width = 60.0
 	s.set_value(12345)
 	var mid := int(s.label.get_theme_font_size("font_size"))
-	check("чуть уже 5 цифр при %d (60 px): кегль %d — между %d и %d, без сокращения («%s»)" % [int(lay.font_size), mid, int(lay.font_min), int(lay.font_size),
-		s.label.text], s.label.text == "12 345" and mid >= int(lay.font_min) and mid <= int(lay.font_size) and s.text_px() <= 60.0 and mid < int(lay.font_size))
+	if sizes.size() > 1:
+		check("чуть уже 5 цифр при %d (60 px): кегль %d — между %d и %d, без сокращения («%s»)" % [sizes[0], mid, sizes[-1], sizes[0],
+			s.label.text], s.label.text == "12 345" and mid >= sizes[-1] and mid < sizes[0] and s.text_px() <= 60.0)
+	else:
+		var fits: bool = s.label.get_theme_font("font").get_string_size("12 345", HORIZONTAL_ALIGNMENT_LEFT, -1, sizes[0]).x + s.label.get_theme_constant("outline_size") <= 60.0
+		check("один допустимый кегль %d: 5 цифр в 60 px — %s («%s»)" % [sizes[0], "целиком" if fits else "сокращение", s.label.text],
+			mid == sizes[0] and s.label.text == ("12 345" if fits else "12.3к"))
 	# ворота: заливка обрезается по доле, не растягивается
 	var gw := 600.0
 	for d in lay.slots:

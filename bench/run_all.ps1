@@ -89,6 +89,7 @@ Godot "рамки: тема и где применена (v68)" "res://bench/che
 Godot "верхняя панель боя и окошко Сияния (v69)" "res://bench/check_v69_hud.gd" "CHECK: провалов 0"
 Godot "шрифты: покрытие символов (v70)" "res://bench/check_font_coverage.gd" "COVERAGE: символов"
 Godot "шрифты: варианты, кегли, хаб (v70)" "res://bench/check_v70_fonts.gd" "CHECK: провалов 0"
+Godot "итоговые размеры кнопок под шрифт (v72)" "res://bench/check_v72_layout.gd" "CHECK: провалов 0"
 Godot "меню, хаб, пауза по Esc (v45)" "res://bench/check_v45.gd" "CHECK: провалов 0"
 Godot "подгонка слоя замка (v48)" "res://bench/check_v48.gd" "CHECK: провалов 0"
 Godot "настройки, полный экран (v49)" "res://bench/check_v49.gd" "CHECK: провалов 0"

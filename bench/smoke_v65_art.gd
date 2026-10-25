@@ -1,4 +1,5 @@
 extends SceneTree
+const FONTS := preload("res://scripts/fonts.gd")   # контур и кегли — под шрифт по умолчанию (задача 22)
 # Смоук задачи 15 с окном: новые арты. Забег через Game (герой включён по данным). Скриншоты в папку из аргумента:
 # art_shop_ru.png, art_shop_en.png — магазин в передышке (пехота и лучники с иллюстрацией, «Оружие» и «Ворота» обычные);
 # art_shop_disabled.png — золота нет: кнопки серые и темнее; art_squads.png — панель отрядов: выбранный (рамка #feae34),
@@ -62,6 +63,9 @@ func shader(b: Button, key: String) -> float:
 # Текст кнопки фиксированного размера (с переносом по словам, текущим кеглем) помещается в неё за вычетом отступов.
 func text_fits(b: Button) -> bool:
 	var room := b.size - b.get_theme_stylebox("normal").get_minimum_size()
+	if b.autowrap_mode == TextServer.AUTOWRAP_OFF and b.text_overrun_behavior != TextServer.OVERRUN_NO_TRIMMING:
+		# одна строка с многоточием (строки отрядов, задача 22): помещается по высоте, целиком — в подсказке
+		return b.get_theme_font("font").get_height(b.get_theme_font_size("font_size")) <= room.y + 0.5 and b.tooltip_text == b.text
 	var sz := b.get_theme_font("font").get_multiline_string_size(b.text, HORIZONTAL_ALIGNMENT_LEFT, room.x, b.get_theme_font_size("font_size"), -1,
 		TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE)
 	return sz.x <= room.x + 0.5 and sz.y <= room.y + 0.5
@@ -129,9 +133,9 @@ func t_shop(m: Node2D) -> void:
 			and plain.all(func(b): return b.get_node_or_null("Portrait") == null))
 		var vis: Array = m.shop_buttons.filter(func(b): return b.visible)
 		var lay: Vector2 = m.ui_layout.shop_button_size
-		check("%s: все кнопки магазина ровно %dx%d (ui_layout), текст помещается, кегль %s — не ниже кегля темы %d, контур 4 px, панель на экране" % [loc, lay.x, lay.y,
-			str(vis.map(func(b): return b.get_theme_font_size("font_size"))), BASE_FONT], vis.all(func(b): return b.size == lay) and vis.all(text_fits)
-			and vis.all(func(b): return b.get_theme_font_size("font_size") >= BASE_FONT) and inf.get_theme_constant("outline_size") == 4 and on_screen(m.shop_panel),
+		check("%s: все кнопки магазина ровно %dx%d (ui_layout), текст помещается, кегль %s — не ниже кегля темы %d, контур %d px, панель на экране" % [loc, lay.x, lay.y,
+			str(vis.map(func(b): return b.get_theme_font_size("font_size"))), BASE_FONT, FONTS.outline(4)], vis.all(func(b): return b.size == lay) and vis.all(text_fits)
+			and vis.all(func(b): return b.get_theme_font_size("font_size") >= BASE_FONT) and inf.get_theme_constant("outline_size") == FONTS.outline(4) and on_screen(m.shop_panel),
 			" | ".join(vis.map(func(b): return b.text.replace("\n", " / "))))
 	TranslationServer.set_locale("ru")
 	check("обычное состояние: картинка не серая, яркость 1", inf.get_draw_mode() == BaseButton.DRAW_NORMAL and shader(inf, "gray") == 0.0 and shader(inf, "bright") == 1.0)

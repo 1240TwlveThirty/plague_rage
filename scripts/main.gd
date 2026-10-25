@@ -8,6 +8,8 @@ const WAVES_ENABLED := true   # false: как bak21 (300 зомби на ста�
 const WAVES_PATH := "res://data/waves.json"
 const SHOP_PATH := "res://data/shop.json"
 const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate", "spear_pack"]   # товары магазина передышки
+const SHOP_LINE_TITLE_COST := "%s — %s"   # товар — цена (первая строка кнопки набора)   # tr-skip: разделитель
+const SHOP_LINE_COST_TARGET := "%s  %s"   # цена и отряд во второй строке, если первая не помещается   # tr-skip: разделитель
 const SHOP_ACTIONS := ["buy_1", "buy_2", "buy_3", "buy_4", "buy_spear"]   # действие покупки товара k (по умолчанию Z X C V B)
 const SHOP_COST_STATS := ["unit_cost", "unit_cost", "weapon_cost", "repair_cost", "unit_cost"]   # стат цены товара для Mods.value, порядок SHOP_ITEMS
 const SHOP_COST_TARGET := ["", "archer", "", "", "spearman"]   # дополнительная цель стата цены (unit_cost / archer, unit_cost / spearman)
@@ -552,7 +554,7 @@ var leash_ticks := 0    # статистика: юнито-тики, где пр
 var type_id := {}   # имя -> номер
 var portraits = PORTRAITS.new()   # иллюстрации в кнопках (только интерфейс)
 # data/ui_layout.json: фиксированные размеры кнопок (минимум и он же ширина — текст ужимается, кнопка не растягивается).
-var ui_layout := {"shop_button_size": Vector2(464, 56), "squad_button_size": Vector2(352, 48), "action_button_height": 48.0, "war_cry_size": Vector2(352, 48)}
+var ui_layout := {"shop_button_size": Vector2(464, 64), "squad_button_size": Vector2(352, 48), "action_button_height": 48.0, "war_cry_size": Vector2(352, 48)}
 var type_label := PackedStringArray()   # название типа для интерфейса
 
 # --- Ворота и поражение (data/castle.json) ---
@@ -4836,6 +4838,8 @@ func _setup_fps_label() -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		b.toggle_mode = true   # нажатая = выбранная
 		_fixed_button(b, ui_layout.squad_button_size)
+		b.autowrap_mode = TextServer.AUTOWRAP_OFF   # одна строка фиксированной высоты (задача 22): длинное — многоточием,
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS   # целиком — во всплывающей подсказке; панель не растёт
 		b.pressed.connect(_on_row_pressed.bind(s))
 		row.add_child(b)
 		squad_panel.add_child(row)
@@ -5158,6 +5162,7 @@ func _update_squad_panel() -> void:
 		squad_buttons[s].text = "%s  %s — %d — %s" % [SETTINGS.key_label("squad_select_%d" % (s + 1)), _squad_label(s), squad_n[s], tr(ORDER_NAMES[squad_order[s]])]
 		if squad_skill_on[s] == 1:   # навык «Стена щитов» действует — отметка и золотой цвет, как у горящих карточек
 			squad_buttons[s].text += "  ● " + tr("UI_SKILL_SHIELD_WALL")
+		squad_buttons[s].tooltip_text = squad_buttons[s].text   # строка может быть сокращена многоточием
 		_fit_text(squad_buttons[s])
 		squad_buttons[s].add_theme_color_override("font_color", CARD_ON if squad_skill_on[s] == 1 else Color.WHITE)
 	squad_actions.visible = acts
@@ -5372,21 +5377,41 @@ func _update_ui() -> void:
 			continue
 		var price := _price(k)
 		var capped := _at_cap(k)
-		var cost: String = tr("HUD_SHOP_MAX") if capped else tr("HUD_SHOP_PRICE") % ceili(price)
-		# Юниты идут в выбранный отряд своего типа, иначе в первый отряд типа (копейщиков без отряда — в новый).
-		var pack_type: int = {"inf_pack": infantry_type, "archer_pack": archer_type, "spear_pack": spearman_type}.get(SHOP_ITEMS[k], -1)
-		if pack_type < 0:   # «Оружие», «Ворота»: цена — второй строкой (в одну при кегле 16 не помещается, задача 17)
-			shop_buttons[k].text = tr("HUD_SHOP_ROW_TITLE") % [SETTINGS.key_label(SHOP_ACTIONS[k]), _shop_title(k)] + "\n" + tr("HUD_SHOP_ROW_PRICE") % [cost, shop_bought[k]]
-		else:
-			shop_buttons[k].text = tr("HUD_SHOP_ROW") % [SETTINGS.key_label(SHOP_ACTIONS[k]), _shop_title(k), cost, shop_bought[k]]
-		if pack_type >= 0:
-			var target := _buy_target(pack_type)
-			if squad_used[target] == 1 and squad_type[target] == pack_type:
-				shop_buttons[k].text += "\n" + tr("HUD_SHOP_TARGET") % [target + 1, _squad_label(target)]
-			else:
-				shop_buttons[k].text += "\n" + tr("HUD_SHOP_NEW_SQUAD")
+		_shop_text(k, tr("HUD_SHOP_MAX") if capped else tr("HUD_SHOP_PRICE") % ceili(price))
 		shop_buttons[k].disabled = capped or gold < price   # серая при нехватке золота или на пределе
 		_fit_text(shop_buttons[k])
+
+
+# Подпись кнопки магазина — всегда две строки (задача 22: высота кнопки — две строки кегля темы с полями, data/ui_layout.json):
+#   наборы:          «Z  +50 пехоты — 100 зол.» / «→ Отряд 1 (Пехота)»; не влезает в ширину — цена во вторую строку;
+#   оружие, ворота:  «C  Оружие: скорость атаки +10%» / «150 зол.».
+# Вторичное — во всплывающей подсказке: сколько куплено и клавиша целиком (длинная клавиша, например «Средняя кнопка мыши»,
+# в подписи сокращается многоточием, если иначе строка не помещается).
+func _shop_text(k: int, cost: String) -> void:
+	var b := shop_buttons[k]
+	var key := SETTINGS.key_label(SHOP_ACTIONS[k])
+	var title := _shop_title(k)
+	# Юниты идут в выбранный отряд своего типа, иначе в первый отряд типа (копейщиков без отряда — в новый).
+	var pack_type: int = {"inf_pack": infantry_type, "archer_pack": archer_type, "spear_pack": spearman_type}.get(SHOP_ITEMS[k], -1)
+	var font := b.get_theme_font("font")
+	var fs := FONTS.px(FONTS.DEFAULT_SIZE)
+	var room := b.custom_minimum_size.x - b.get_theme_stylebox("normal").get_minimum_size().x
+	var line1 := title
+	var line2 := cost
+	if pack_type >= 0:
+		var target := _buy_target(pack_type)
+		var to: String = tr("HUD_SHOP_TARGET") % [target + 1, _squad_label(target)] if squad_used[target] == 1 and squad_type[target] == pack_type \
+			else tr("HUD_SHOP_NEW_SQUAD")
+		line1 = SHOP_LINE_TITLE_COST % [title, cost]
+		line2 = to
+		if font.get_string_size(tr("HUD_SHOP_ROW_TITLE") % [key, line1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > room:
+			line1 = title   # цена — во вторую строку, перед отрядом
+			line2 = SHOP_LINE_COST_TARGET % [cost, to]
+	var shown := key
+	while shown.length() > 1 and font.get_string_size(tr("HUD_SHOP_ROW_TITLE") % [shown, line1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > room:
+		shown = shown.left(shown.length() - (1 if shown == key else 2)) + "…"
+	b.text = tr("HUD_SHOP_ROW_TITLE") % [shown, line1] + "\n" + line2
+	b.tooltip_text = tr("HUD_SHOP_TIP") % [key, shop_bought[k]]
 
 
 # Симуляция: фиксированный шаг (по умолчанию 30 раз в секунду)

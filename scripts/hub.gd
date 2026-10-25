@@ -17,7 +17,7 @@ const HUD_SLOT := preload("res://scripts/hud_slot.gd")
 const GIFT_ICON_AT := Vector2(8, 5)   # иконка 16 x 16 в окне рамки 32 x 48 (масштаб 1, как у рамки в строке)
 const GIFT_ICON := "res://art/card_meta_perk.png"   # общая заглушка; своя иконка дара — art/gift_<id>.png, если есть
 const GIFT_ICON_SIZE := Vector2(32.0, 48.0)   # 12 строк даров помещаются на экран 1080
-const GIFT_FONT := 26
+const GIFT_FONT := 24   # задача 22: 26 в fusion10 давало 30 — таблица даров не помещалась по высоте
 const GIFT_MAX := "—"
 const REASON_MARGIN := 16.0   # вкладка «Дары» с причинами отказа — не ближе к краю экрана
 

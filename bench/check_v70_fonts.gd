@@ -74,7 +74,8 @@ func _run() -> void:
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/ui_theme.json"))
 	var variants: Dictionary = cfg.fonts.variants
 	print("варианты: %s, по умолчанию %s" % [", ".join(variants.keys()), cfg.font_variant])
-	check("font_variant по умолчанию — default (вид как раньше, пока не выбран другой)", cfg.font_variant == "default" and variants.has("default"))
+	check("font_variant по умолчанию — %s (есть в fonts.variants; default и остальные — переключателем --font)" % cfg.font_variant,
+		variants.has(cfg.font_variant) and variants.has("default"))
 	var sizes := game_sizes()
 	print("кегли в игре: %s" % ", ".join(sizes.map(func(x): return str(x))))
 	var pixel := []

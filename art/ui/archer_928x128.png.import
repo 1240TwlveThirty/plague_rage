@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bs51esmer4mn4"
-path="res://.godot/imported/archer_928x112.png-c14f27fe05692261ac4992b356c72b5e.ctex"
+uid="uid://cwbt6sov1cx6a"
+path="res://.godot/imported/archer_928x128.png-ce5ba09846b87a44b9d3c62bb8a9eeeb.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/ui/archer_928x112.png"
-dest_files=["res://.godot/imported/archer_928x112.png-c14f27fe05692261ac4992b356c72b5e.ctex"]
+source_file="res://art/ui/archer_928x128.png"
+dest_files=["res://.godot/imported/archer_928x128.png-ce5ba09846b87a44b9d3c62bb8a9eeeb.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
