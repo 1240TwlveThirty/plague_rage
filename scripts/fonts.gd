@@ -1,8 +1,9 @@
 extends RefCounted
 # Шрифт игры (задача 20): вариант — data/ui_theme.json font_variant, параметр запуска --font=default|fusion12|fusion10 важнее.
 # default — встроенный шрифт Godot, кегли и контуры как заданы в коде. Пиксельный вариант (fonts.variants: file, native,
-# outline_max) — шрифт проекта (тема и запасной шрифт ThemeDB), кегль — ближайший кратный родному (native) не больше заданного
-# (но не меньше native), контур текста — не толще outline_max. Все кегли и контуры в коде задаются через px() и outline().
+# outline_max) — шрифт проекта (тема и запасной шрифт ThemeDB), кегль — native x k (задача 21: правило fonts.rounding —
+# nearest: ближайший, при равной разнице больший; down: вниз, как в задаче 20), k не меньше fonts.min_scale (2 — не мельче
+# двойного родного); контур текста — не толще outline_max. Все кегли и контуры в коде задаются через px() и outline().
 # Чёткость: в импорте шрифтов fonts/fusion_pixel/*.ttf.import сглаживание, хинтинг и субпиксельное позиционирование выключены.
 const CFG := "res://data/ui_theme.json"
 const DEFAULT_SIZE := 16   # кегль темы Godot по умолчанию (кнопки магазина, отрядов, вкладки без своего кегля)
@@ -11,6 +12,8 @@ static var _loaded := false
 static var variant := "default"
 static var native := 0          # родной кегль пиксельного варианта; 0 — default
 static var outline_max := 0
+static var min_scale := 2       # наименьший множитель родного кегля
+static var rounding := "nearest"   # nearest (при равной разнице — больший) | down
 static var font: FontFile = null
 static var _applied := false
 static var override := ""       # тесты: вариант вместо font_variant и --font (после reset)
@@ -23,6 +26,8 @@ static func reset(v := "") -> void:
 	variant = "default"
 	native = 0
 	outline_max = 0
+	min_scale = 2
+	rounding = "nearest"
 	font = null
 
 
@@ -53,14 +58,21 @@ static func load_cfg() -> void:
 		return
 	native = maxi(int(d.get("native", 0)), 1)
 	outline_max = int(d.get("outline_max", 4))
+	var f: Dictionary = cfg.fonts
+	min_scale = maxi(int(d.get("min_scale", f.get("min_scale", 2))), 1)   # у варианта своё — важнее общего
+	rounding = str(d.get("rounding", f.get("rounding", "nearest")))
+	if rounding != "nearest" and rounding != "down":
+		push_warning("%s: fonts.rounding «%s» — nearest или down; беру nearest" % [CFG, rounding])
+		rounding = "nearest"
 
 
-# Кегль для заданного в коде size: default — как есть; пиксельный — ближайший кратный native не больше size (не меньше native).
+# Кегль для заданного в коде size: default — как есть; пиксельный — native x k, k по правилу rounding и не меньше min_scale.
 static func px(size: int) -> int:
 	load_cfg()
 	if native <= 0:
 		return size
-	return maxi(native, size / native * native)
+	var k := size / native if rounding == "down" else (size * 2 + native) / (native * 2)   # nearest: floor(size/native + 0.5)
+	return native * maxi(k, min_scale)
 
 
 # Толщина контура текста: default — как есть; пиксельный — не толще outline_max.
@@ -69,7 +81,7 @@ static func outline(size: int) -> int:
 	return size if native <= 0 else mini(size, outline_max)
 
 
-# Кегли для подгонки текста от base вниз до minimum: default — каждый; пиксельный — только кратные native.
+# Кегли для подгонки текста от base вниз до minimum: default — каждый; пиксельный — только допустимые (native x k, k >= min_scale).
 static func fit_sizes(base: int, minimum: int) -> Array:
 	load_cfg()
 	var out := []

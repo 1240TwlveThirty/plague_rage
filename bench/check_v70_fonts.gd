@@ -1,8 +1,8 @@
 extends SceneTree
 # Тесты задачи 20 (без окна): варианты шрифта из data/ui_theme.json. Файлы шрифтов загружаются, в импорте сглаживание, хинтинг
 # и субпиксельное позиционирование выключены; кегли игры (собраны из scripts/*.gd и data/ui_layout.json, не зашиты) через
-# FONTS.px: default — без изменений, пиксельный — кратный родному и не больше заданного; контур не толще outline_max; подгонка
-# текста кнопок — только кратные. Печатает таблицу кеглей «KEGL|заданный|default|fusion12|...». Хаб: на вкладке «Дары» с
+# FONTS.px: default — без изменений, пиксельный — допустимый (родной x k, k >= fonts.min_scale) по правилу fonts.rounding
+# (задача 21: ближайший, при равной разнице больший); контур не толще outline_max; подгонка текста кнопок — только допустимые. Печатает таблицу кеглей «KEGL|заданный|default|fusion12|...». Хаб: на вкладке «Дары» с
 # причинами отказа у всех строк таблица целиком на экране (баг «Откроется после осады…» за правым краем).
 # Временное сохранение user://bench_v70 (user://save.json не трогается).
 const FONTS := preload("res://scripts/fonts.gd")
@@ -55,6 +55,21 @@ func game_sizes() -> Array:
 	out.sort()
 	return out
 
+# p — допустимый (n x k, k >= ms) и по правилу: nearest — ближе всех к s среди допустимых, при равной разнице больший; down — наибольший не больше s.
+func allowed_ok(p: int, s: int, n: int, ms: int, rule: String) -> bool:
+	if p % n != 0 or p < n * ms:
+		return false
+	for k in range(ms, ms + 20):
+		var q := n * k
+		if q == p:
+			continue
+		if rule == "down":
+			if q <= s and q > p:
+				return false
+		elif absi(q - s) < absi(p - s) or (absi(q - s) == absi(p - s) and q > p):
+			return false
+	return rule != "down" or p <= s or p == n * ms
+
 func _run() -> void:
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/ui_theme.json"))
 	var variants: Dictionary = cfg.fonts.variants
@@ -94,11 +109,13 @@ func _run() -> void:
 		for s in sizes:
 			var p := FONTS.px(s)
 			rows[s].append(str(p))
-			ok = ok and p % n == 0 and (p <= s or (s < n and p == n)) and p + n > s
+			ok = ok and allowed_ok(p, s, n, FONTS.min_scale, FONTS.rounding)
 		var fit := FONTS.fit_sizes(FONTS.DEFAULT_SIZE, 11)
 		ok = ok and fit.all(func(f): return f % n == 0) and FONTS.outline(8) == int(variants[v].outline_max) and FONTS.outline(1) == 1
 		head.append(v)
-		check("%s: кегль — ближайший кратный %d не больше заданного (меньше %d — %d); подгонка кнопок %s; контур 8 -> %d" % [v, n, n, n, str(fit), FONTS.outline(8)], ok)
+		check("%s: кегль — %d x k, k >= %d, правило %s (ближайший, при равной разнице больший); подгонка кнопок %s; контур 8 -> %d" % [v, n,
+			FONTS.min_scale, FONTS.rounding, str(fit), FONTS.outline(8)], ok and FONTS.min_scale == int(cfg.fonts.get("min_scale", 2))
+			and FONTS.rounding == str(cfg.fonts.get("rounding", "nearest")))
 	FONTS.reset()
 	print("KEGL|" + "|".join(head))
 	for s in sizes:

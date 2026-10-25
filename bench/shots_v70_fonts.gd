@@ -1,7 +1,9 @@
 extends SceneTree
 # Снимки вариантов шрифта (задача 20, окно 1920x1080). Запуск: godot --path . -s res://bench/shots_v70_fonts.gd -- --font=<вариант> <папка>
-# (вариант — default | fusion12 | fusion10, см. data/ui_theme.json). Для ru и en: главное меню, хаб (вкладка «Дары»), передышка
-# (магазин и панель отрядов), бой (верхняя панель), выбор карточки. Файлы <вариант>_<язык>_<экран>.png.
+# (вариант — default | fusion12 | fusion10, см. data/ui_theme.json). Для ru и en: главное меню, хаб (вкладка «Дары» и она же
+# с причинами отказа), передышка (магазин и панель отрядов), выбор карточки, бой (верхняя панель), меню паузы (задача 21).
+# Файлы <вариант>_<язык>_<экран>.png. CLIP также — окошко верхней панели шире своей ширины из ui_layout.json (подпись
+# растянула его) и контрол, чей минимальный размер по содержимому больше фактического (текст вылез за рамку карточки, кнопки).
 # Печатает «CLIP|вариант|язык|экран|контрол|текст» — где текст не помещается (кнопки магазина и отрядов, окошки верхней панели,
 # карточки, подписи хаба и меню выходят за свой прямоугольник или за экран). Временное сохранение user://bench_v70s.
 const FONTS := preload("res://scripts/fonts.gd")
@@ -63,10 +65,39 @@ func clipped(c: Control) -> String:
 func scan(screen: String, node: Node) -> void:
 	for c in node.find_children("*", "Control", true, false):
 		var why := clipped(c)
+		if why == "" and c.is_visible_in_tree() and (c is Container or c is Button):
+			var need: Vector2 = c.get_combined_minimum_size()
+			if need.x > c.size.x + 0.5 or need.y > c.size.y + 0.5:
+				why = "содержимому нужно %dx%d, места %dx%d" % [need.x, need.y, c.size.x, c.size.y]
+		if why == "" and c.get_script() != null and c.get_script().resource_path == "res://scripts/hud_slot.gd" and c.is_visible_in_tree():
+			var want: float = c.custom_minimum_size.x
+			if c.size.x > want + 0.5:
+				why = "окошко растянуто: %d вместо %d" % [c.size.x, want]
 		if why != "":
 			clips += 1
 			var t: String = c.text if "text" in c else ""
 			print("CLIP|%s|%s|%s|%s|%s|%s" % [FONTS.variant, lang, screen, c.name, t.replace("\n", " / ").left(60), why])
+
+# Кнопки фиксированного размера (data/ui_layout.json): магазин, отряды, кнопки действий (высота), Клич — не растянуты текстом.
+func fixed(screen: String, m: Node) -> void:
+	var lay: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/ui_layout.json"))
+	var list := []
+	for b in m.shop_buttons:
+		list.append([b, Vector2(lay.shop_button_size[0], lay.shop_button_size[1])])
+	for b in m.squad_buttons:
+		list.append([b, Vector2(lay.squad_button_size[0], lay.squad_button_size[1])])
+	for b in m.action_buttons:
+		list.append([b, Vector2(b.size.x, lay.action_button_height)])
+	if m.war_cry_button != null:
+		list.append([m.war_cry_button, Vector2(lay.war_cry_size[0], lay.war_cry_size[1])])
+	for e in list:
+		var b: Button = e[0]
+		var want: Vector2 = e[1]
+		if b.is_visible_in_tree() and (b.size.x > want.x + 0.5 or b.size.y > want.y + 0.5):
+			clips += 1
+			print("CLIP|%s|%s|%s|%s|%s|кнопка растянута текстом: %dx%d вместо %dx%d (кегль %d)" % [FONTS.variant, lang, screen, b.name,
+				b.text.replace("
+", " / ").left(60), b.size.x, b.size.y, want.x, want.y, b.get_theme_font_size("font_size")])
 
 func _on_node_added(n: Node) -> void:
 	if n.get_parent() == root and n is Node2D and n.get_script() != null and n.get_script().resource_path == "res://scripts/main.gd":
@@ -121,6 +152,7 @@ func _run() -> void:
 		refresh(m)
 		await shot("respite")
 		scan("respite", m)
+		fixed("respite", m)
 		m.card_screen.open(m.card_defs.keys().slice(0, 3), m.card_defs, [])
 		await step(3)
 		await shot("cards")
@@ -133,6 +165,12 @@ func _run() -> void:
 		refresh(m)
 		await shot("battle")
 		scan("battle", m)
+		fixed("battle", m)
+		m.esc_menu.open(m.ESC_NOTE)
+		await step(3)
+		await shot("pause")
+		scan("pause", m.esc_menu)
+		m.esc_menu.close()
 		m.queue_free()
 		await step(2)
 	TranslationServer.set_locale(locale)

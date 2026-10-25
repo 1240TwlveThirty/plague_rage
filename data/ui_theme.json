@@ -4,6 +4,8 @@
 	"theme_path": "res://art/ui/theme.tres",
 	"font_variant": "default",
 	"fonts": {
+		"min_scale": 2,
+		"rounding": "nearest",
 		"variants": {
 			"default": {},
 			"fusion12": {"file": "res://fonts/fusion_pixel/fusion-pixel-12px-proportional-zh_hans.ttf", "native": 12, "outline_max": 2},

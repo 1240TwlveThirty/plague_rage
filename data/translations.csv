@@ -191,13 +191,13 @@ CARD_SERRATED_ARROWS_DESC,+15% к урону лучников,+15% archer damage
 CARD_INFANTRY_TEMPER_NAME,Закалка пехоты,Hardened Infantry
 CARD_INFANTRY_TEMPER_DESC,+12% к здоровью пехоты,+12% infantry health
 CARD_HEAVY_SHIELDS_NAME,Тяжёлые щиты,Heavy Shields
-CARD_HEAVY_SHIELDS_DESC,+20% к здоровью всех воинов; −10% к скорости,+20% health for all troops; −10% speed
+CARD_HEAVY_SHIELDS_DESC,+20% к здоровью всех воинов; -10% к скорости,+20% health for all troops; -10% speed
 CARD_LIGHT_INFANTRY_NAME,Лёгкая пехота,Light Infantry
-CARD_LIGHT_INFANTRY_DESC,+15% к скорости пехоты; −8% к её здоровью,+15% infantry speed; −8% infantry health
+CARD_LIGHT_INFANTRY_DESC,+15% к скорости пехоты; -8% к её здоровью,+15% infantry speed; -8% infantry health
 CARD_LONG_SHOT_NAME,Дальний бой,Long Shot
-CARD_LONG_SHOT_DESC,+15% к дальности лучников; −5% к их скорости атаки,+15% archer range; −5% archer attack speed
+CARD_LONG_SHOT_DESC,+15% к дальности лучников; -5% к их скорости атаки,+15% archer range; -5% archer attack speed
 CARD_QUICK_RELOAD_NAME,Быстрая перезарядка,Quick Reload
-CARD_QUICK_RELOAD_DESC,+20% к скорострельности лучников; −10% к их здоровью,+20% archer fire rate; −10% archer health
+CARD_QUICK_RELOAD_DESC,+20% к скорострельности лучников; -10% к их здоровью,+20% archer fire rate; -10% archer health
 CARD_SHIELD_WALL_NAME,Строй щитов,Shield Wall
 CARD_SHIELD_WALL_DESC,+15 п. п. к блоку щитом при приказе «Держать»,+15 pp shield block while holding
 CARD_STEADFAST_NAME,Стойкость,Steadfast
@@ -217,7 +217,7 @@ CARD_QUICK_REPAIR_DESC,Ремонт ворот дешевле на 30%,Gate repa
 CARD_LAST_STAND_NAME,Последний рубеж,Last Stand
 CARD_LAST_STAND_DESC,"+25% к скорости атаки всех, пока ворота ниже 30%",+25% attack speed for all while the gate is below 30%
 CARD_BLOOD_HARVEST_NAME,Кровавая жатва,Blood Harvest
-CARD_BLOOD_HARVEST_DESC,+20% золота за убитых; −8% к здоровью всех,+20% gold per kill; −8% health for all
+CARD_BLOOD_HARVEST_DESC,+20% золота за убитых; -8% к здоровью всех,+20% gold per kill; -8% health for all
 CARD_MARAUDERS_NAME,Мародёры,Marauders
 CARD_MARAUDERS_DESC,+12% золота за убитых,+12% gold per kill
 CARD_PURSE_NAME,Кошель,Purse
@@ -233,25 +233,25 @@ CARD_VOW_OF_VENGEANCE_DESC,"+0.3% к урону всех за каждого п�
 CARD_DESPERATE_CHARGE_NAME,Отчаянный натиск,Desperate Charge
 CARD_DESPERATE_CHARGE_DESC,"+25% к скорости атаки отряда, пока в нём меньше половины",+25% squad attack speed while below half strength
 CARD_HUNGER_RATION_NAME,Голодный паёк,Hunger Ration
-CARD_HUNGER_RATION_DESC,+30% к доходу; −10% к здоровью всех,+30% income; −10% health for all
+CARD_HUNGER_RATION_DESC,+30% к доходу; -10% к здоровью всех,+30% income; -10% health for all
 CARD_LONG_SPEARS_NAME,Длинные копья,Long Spears
 CARD_LONG_SPEARS_DESC,+15% к скорости атаки всех; враги крепче на 10%,+15% attack speed for all; enemies 10% tougher
 CARD_BET_ON_BRAVE_NAME,Ставка на смелых,Bet on the Brave
 CARD_BET_ON_BRAVE_DESC,+25% золота за убитых; ворота слабее на 20%,+25% gold per kill; gate 20% weaker
 CARD_HEAVY_BAGGAGE_NAME,Тяжёлый обоз,Heavy Baggage
-CARD_HEAVY_BAGGAGE_DESC,+20 пехотинцев сразу; −10% к скорости,+20 infantry at once; −10% speed
+CARD_HEAVY_BAGGAGE_DESC,+20 пехотинцев сразу; -10% к скорости,+20 infantry at once; -10% speed
 CARD_VICTORY_SACRIFICE_NAME,Жертва ради победы,Sacrifice for Victory
 CARD_VICTORY_SACRIFICE_DESC,"Случайно: одним урон ×1.5, другим ×0.85","Random: one troop type ×1.5 damage, the other ×0.85"
 CARD_IRON_WALL_NAME,Железная стена,Iron Wall
-CARD_IRON_WALL_DESC,+30% к здоровью пехоты при «Держать»; −10% к её скорости атаки,+30% infantry health while holding; −10% infantry attack speed
+CARD_IRON_WALL_DESC,+30% к здоровью пехоты при «Держать»; -10% к её скорости атаки,+30% infantry health while holding; -10% infantry attack speed
 CARD_FIRST_VOLLEY_NAME,Первый залп,First Volley
 CARD_FIRST_VOLLEY_DESC,+30% к урону лучников первые 10 секунд волны,+30% archer damage for the first 10 seconds of a wave
 CARD_SHIELD_COVER_NAME,Укрытие за щитами,Shield Cover
-CARD_SHIELD_COVER_DESC,+20% к здоровью лучников; −5% к скорости атаки пехоты,+20% archer health; −5% infantry attack speed
+CARD_SHIELD_COVER_DESC,+20% к здоровью лучников; -5% к скорости атаки пехоты,+20% archer health; -5% infantry attack speed
 CARD_ARROW_RAIN_NAME,Дождь стрел,Rain of Arrows
 CARD_ARROW_RAIN_DESC,+25% к скорострельности лучников; лучники дороже на 25%,+25% archer fire rate; archers cost 25% more
 CARD_RICH_VEIN_NAME,Богатая жила,Rich Vein
-CARD_RICH_VEIN_DESC,+40% к доходу; −15% золота за убитых,+40% income; −15% gold per kill
+CARD_RICH_VEIN_DESC,+40% к доходу; -15% золота за убитых,+40% income; -15% gold per kill
 CARD_RESERVE_FUND_NAME,Резервный фонд,Reserve Fund
 CARD_RESERVE_FUND_DESC,"+10% к скорости атаки всех, если в начале волны золота от 300",+10% attack speed for all when a wave starts with 300+ gold
 CARD_BLOOD_FOR_BLOOD_NAME,Кровь за кровь,Blood for Blood
@@ -269,7 +269,7 @@ CARD_QUICK_HANDS_DESC,+20% к скорости атаки Командира,+20
 CARD_COMMANDER_TEMPER_NAME,Закалка командира,Commander's Mettle
 CARD_COMMANDER_TEMPER_DESC,+50% к здоровью Командира,+50% Commander health
 CARD_LAST_BASTION_NAME,Из последних сил,Against the Odds
-CARD_LAST_BASTION_DESC,"−30% к урону по Командиру, пока его здоровье ниже 40%",−30% damage taken by the Commander while below 40% health
+CARD_LAST_BASTION_DESC,"-30% к урону по Командиру, пока его здоровье ниже 40%",-30% damage taken by the Commander while below 40% health
 CARD_COMMANDER_BANNER_NAME,Знамя командира,Commander's Banner
 CARD_COMMANDER_BANNER_DESC,"+15% к скорости атаки отрядов, чей центр ближе {hero_near_radius} px к Командиру",+15% attack speed for squads within {hero_near_radius} px of the Commander
 UI_CARDS_TITLE,Выберите карточку,Choose a card

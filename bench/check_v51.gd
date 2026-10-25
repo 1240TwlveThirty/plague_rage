@@ -106,8 +106,8 @@ func t_text() -> void:
 	check("строки со ступенями и павшими: «Кровь за кровь +25%», «Обет мести +15%»", m.card_row_text({"id": "blood_for_blood"}) == "Кровь за кровь +25%"
 		and m.card_row_text({"id": "vow_of_vengeance"}) == "Обет мести +15%", "%s | %s" % [m.card_row_text({"id": "blood_for_blood"}), m.card_row_text({"id": "vow_of_vengeance"})])
 	var tip: String = m.card_tooltip({"id": "heavy_shields"})
-	check("подсказка Тяжёлых щитов: название, описание без издержки, «Издержка: −10% к скорости», без условия", tip.split("\n").size() == 3
-		and tip.begins_with("Тяжёлые щиты\n+20% к здоровью всех воинов") and tip.ends_with("Издержка: −10% к скорости"), tip)
+	check("подсказка Тяжёлых щитов: название, описание без издержки, «Издержка: -10% к скорости», без условия", tip.split("\n").size() == 3
+		and tip.begins_with("Тяжёлые щиты\n+20% к здоровью всех воинов") and tip.ends_with("Издержка: -10% к скорости"), tip)
 	check("подсказка Стойкости: «Условие: у отряда приказ «Держать»»", m.card_tooltip({"id": "steadfast"}).ends_with("Условие: у отряда приказ «Держать»"), m.card_tooltip({"id": "steadfast"}))
 	var tips := []
 	for id in ["last_stand", "desperate_charge", "first_volley", "reserve_fund", "blood_for_blood", "mobile_reserve", "vow_of_vengeance"]:
