@@ -90,6 +90,7 @@ Godot "верхняя панель боя и окошко Сияния (v69)" "r
 Godot "шрифты: покрытие символов (v70)" "res://bench/check_font_coverage.gd" "COVERAGE: символов"
 Godot "шрифты: варианты, кегли, хаб (v70)" "res://bench/check_v70_fonts.gd" "CHECK: провалов 0"
 Godot "итоговые размеры кнопок под шрифт (v72)" "res://bench/check_v72_layout.gd" "CHECK: провалов 0"
+Godot "резня, слой крови, тряска, жестокость (v73)" "res://bench/check_v73_fx.gd" "CHECK: провалов 0"
 Godot "меню, хаб, пауза по Esc (v45)" "res://bench/check_v45.gd" "CHECK: провалов 0"
 Godot "подгонка слоя замка (v48)" "res://bench/check_v48.gd" "CHECK: провалов 0"
 Godot "настройки, полный экран (v49)" "res://bench/check_v49.gd" "CHECK: провалов 0"
@@ -115,6 +116,7 @@ Godot "смоук с окном: герой (v60)" "res://bench/smoke_v60.gd" "S
 Godot "смоук с окном: удар героя (v61)" "res://bench/smoke_v61.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: кровь, искры, пятна (v62)" "res://bench/smoke_v62.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: куски тела, тряска на удар (v63)" "res://bench/smoke_v63.gd" "SMOKE: провалов 0" @("$tmp") -Window
+Godot "смоук с окном: тряска при ударе в движении и на месте (v73)" "res://bench/diag_v73_shake.gd" "SMOKE: провалов 0" @() -Window
 Godot "смоук с окном: карточки героя (v64)" "res://bench/smoke_v64_cards.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: арты — кнопки, герой (v65)" "res://bench/smoke_v65_art.gd" "SMOKE: провалов 0" @("$tmp") -Window
 if (-not $Quick) {

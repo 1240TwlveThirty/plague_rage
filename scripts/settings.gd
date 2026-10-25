@@ -16,7 +16,21 @@ const VOLUME_DEFAULT := 0.8
 var path := PATH
 var persist := true            # false — не писать файл (тестовый запуск)
 var fullscreen := false        # display/fullscreen: безрамочный полноэкранный режим
-var screen_shake := true       # display/screen_shake: тряска экрана при ударе героя (задача 12; ещё и data/fx.json screen_shake_enabled)
+# display/screen_shake_level: тряска экрана при ударе героя (задача 23) — SHAKE_OFF..SHAKE_STRONG; множители амплитуды —
+# data/fx.json shake_levels. Прежний ключ display/screen_shake (вкл/выкл) читается, если нового нет. screen_shake — вкл/выкл
+# поверх уровня (тесты и старый код): выключить — уровень 0, включить — «обычная», если была выключена.
+const SHAKE_OFF := 0
+const SHAKE_NORMAL := 2
+const SHAKE_LEVELS := ["UI_SHAKE_OFF", "UI_SHAKE_WEAK", "UI_SHAKE_NORMAL", "UI_SHAKE_STRONG"]
+const GORE_LEVELS := ["UI_GORE_OFF", "UI_GORE_NORMAL"]   # gameplay/gore: 0 — без крови и кусков (искры, пыль, серые пятна), 1 — обычная
+var screen_shake_level := SHAKE_NORMAL
+var screen_shake: bool:
+	get:
+		return screen_shake_level > SHAKE_OFF
+	set(on):
+		if on != (screen_shake_level > SHAKE_OFF):
+			screen_shake_level = SHAKE_NORMAL if on else SHAKE_OFF
+var gore := 1
 var language := "ru"           # general/language: "ru" или "en"
 var music_volume := VOLUME_DEFAULT   # audio/music: линейная громкость шины Music, 0..1
 var sfx_volume := VOLUME_DEFAULT     # audio/sfx: шины SFX
@@ -44,7 +58,9 @@ func load_settings() -> void:
 		push_warning("%s не читается: настройки по умолчанию" % path)
 		cfg = ConfigFile.new()
 	fullscreen = bool(cfg.get_value("display", "fullscreen", false))
-	screen_shake = bool(cfg.get_value("display", "screen_shake", true))
+	var old_shake := bool(cfg.get_value("display", "screen_shake", true))
+	screen_shake_level = clampi(int(cfg.get_value("display", "screen_shake_level", SHAKE_NORMAL if old_shake else SHAKE_OFF)), 0, SHAKE_LEVELS.size() - 1)
+	gore = clampi(int(cfg.get_value("gameplay", "gore", 1)), 0, GORE_LEVELS.size() - 1)
 	language = str(cfg.get_value("general", "language", default_language()))
 	if not language in LANGUAGES:
 		language = default_language()
@@ -60,7 +76,9 @@ func save_settings() -> void:
 		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("display", "fullscreen", fullscreen)
-	cfg.set_value("display", "screen_shake", screen_shake)
+	cfg.set_value("display", "screen_shake", screen_shake)   # прежний ключ — для старых сборок
+	cfg.set_value("display", "screen_shake_level", screen_shake_level)
+	cfg.set_value("gameplay", "gore", gore)
 	cfg.set_value("general", "language", language)
 	cfg.set_value("audio", "music", music_volume)
 	cfg.set_value("audio", "sfx", sfx_volume)
@@ -84,6 +102,24 @@ func set_screen_shake(on: bool) -> void:
 	screen_shake = on
 	save_settings()
 	changed.emit("display/screen_shake")
+
+
+func set_screen_shake_level(level: int) -> void:
+	level = clampi(level, 0, SHAKE_LEVELS.size() - 1)
+	if level == screen_shake_level:
+		return
+	screen_shake_level = level
+	save_settings()
+	changed.emit("display/screen_shake")
+
+
+func set_gore(level: int) -> void:
+	level = clampi(level, 0, GORE_LEVELS.size() - 1)
+	if level == gore:
+		return
+	gore = level
+	save_settings()
+	changed.emit("gameplay/gore")
 
 
 # Язык по умолчанию: русский, если язык системы русский, иначе английский.

@@ -90,20 +90,42 @@ func _run() -> void:
 	check("переключатель включает полный экран", st.fullscreen)
 	st.set_fullscreen(false)
 	check("переключатель следует за F11 и Settings", not sm.fullscreen_check.button_pressed)
-	check("«Тряска экрана» (задача 12) на вкладке «Видео» под полным экраном, по умолчанию включена", tr(sm.shake_check.text) == "Тряска экрана"
-		and sm.shake_check.get_parent() == sm.fullscreen_check.get_parent() and sm.shake_check.button_pressed and st.screen_shake)
-	sm.shake_check.button_pressed = false
+	# «Тряска экрана» — уровни (задача 23): выкл / слабая / обычная / сильная, по умолчанию «обычная»; «Жестокость» — выкл / обычная
+	var srow: Node = sm.shake_option.get_parent()
+	check("«Тряска экрана» на вкладке «Видео» под полным экраном: %d уровня, по умолчанию «%s»" % [sm.shake_option.item_count, tr(sm.shake_option.get_item_text(sm.shake_option.selected))],
+		tr(srow.get_child(0).text) == "Тряска экрана" and srow.get_parent() == sm.fullscreen_check.get_parent() and sm.shake_option.item_count == st.SHAKE_LEVELS.size()
+		and sm.shake_option.selected == st.SHAKE_NORMAL and st.screen_shake_level == st.SHAKE_NORMAL and st.screen_shake)
+	sm.shake_option.select(0)
+	sm.shake_option.item_selected.emit(0)
 	var sc := ConfigFile.new()
-	check("переключатель выключает тряску и пишет display/screen_shake = false", not st.screen_shake and sc.load(path) == OK
-		and sc.get_value("display", "screen_shake", true) == false)
-	st.screen_shake = true
+	check("уровень «выкл.» выключает тряску и пишет display/screen_shake_level = 0 (и прежний ключ screen_shake = false)", not st.screen_shake and sc.load(path) == OK
+		and sc.get_value("display", "screen_shake_level", -1) == 0 and sc.get_value("display", "screen_shake", true) == false)
+	st.screen_shake_level = 3
 	st.load_settings()
-	check("после «перезапуска» тряска выключена", not st.screen_shake)
-	st.set_screen_shake(true)
+	check("после «перезапуска» тряска выключена", not st.screen_shake and st.screen_shake_level == 0)
+	st.set_screen_shake_level(3)
+	check("«Сильная»: уровень 3 в Settings и в списке", st.screen_shake_level == 3 and sm.shake_option.selected == 3)
+	var old := ConfigFile.new()   # прежний файл: только display/screen_shake = false — уровень «выкл.»
+	old.set_value("display", "screen_shake", false)
+	old.save(path)
+	st.load_settings()
+	check("прежний ключ display/screen_shake = false читается как уровень «выкл.»", st.screen_shake_level == 0)
+	st.set_screen_shake_level(st.SHAKE_NORMAL)
+	var grow: Node = sm.gore_option.get_parent()
+	check("«Жестокость» там же: выкл / обычная, по умолчанию «обычная»", tr(grow.get_child(0).text) == "Жестокость" and sm.gore_option.item_count == st.GORE_LEVELS.size()
+		and sm.gore_option.selected == 1 and st.gore == 1)
+	sm.gore_option.select(0)
+	sm.gore_option.item_selected.emit(0)
+	sc = ConfigFile.new()
+	check("«Жестокость: выкл.» пишет gameplay/gore = 0", st.gore == 0 and sc.load(path) == OK and sc.get_value("gameplay", "gore", -1) == 0)
+	st.set_gore(1)
 	TranslationServer.set_locale("en")
-	var en := tr(sm.shake_check.text)
+	var en := tr(srow.get_child(0).text)
+	var en2 := tr(sm.shake_option.get_item_text(3))
+	var en3 := tr(grow.get_child(0).text)
 	TranslationServer.set_locale("ru")
-	check("переключатель следует за Settings; en: «%s»" % en, sm.shake_check.button_pressed and en == "Screen shake")
+	check("списки следуют за Settings; en: «%s», «%s», «%s»" % [en, en2, en3], sm.shake_option.selected == st.SHAKE_NORMAL and sm.gore_option.selected == 1
+		and en == "Screen shake" and en2 == "Strong" and en3 == "Gore")
 	sm._input(key(KEY_ESCAPE))
 	await step(1)
 	check("Esc закрывает настройки, меню на месте, фокус на «Настройки»", not sm.visible and mn.is_inside_tree() and mn.settings_button.has_focus())

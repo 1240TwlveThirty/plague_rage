@@ -12,7 +12,8 @@ signal closed
 var settings: Node
 var tabs: TabContainer
 var fullscreen_check: CheckButton
-var shake_check: CheckButton   # «Тряска экрана» (задача 12)
+var shake_option: OptionButton   # «Тряска экрана»: выкл / слабая / обычная / сильная (задача 23)
+var gore_option: OptionButton    # «Жестокость»: выкл / обычная (задача 23)
 var back_button: Button
 var key_titles := {}            # действие -> подпись строки на вкладке «Управление»
 var key_buttons := {}           # действие -> кнопка с клавишей на вкладке «Управление»
@@ -90,12 +91,28 @@ func _setup_video() -> void:
 	fullscreen_check.button_pressed = settings.fullscreen
 	fullscreen_check.toggled.connect(settings.set_fullscreen)
 	col.add_child(fullscreen_check)
-	shake_check = CheckButton.new()
-	shake_check.text = "UI_SETTINGS_SCREEN_SHAKE"
-	shake_check.add_theme_font_size_override("font_size", FONTS.px(FONT))
-	shake_check.button_pressed = settings.screen_shake
-	shake_check.toggled.connect(settings.set_screen_shake)
-	col.add_child(shake_check)
+	shake_option = _option_row(col, "UI_SETTINGS_SCREEN_SHAKE", settings.SHAKE_LEVELS, settings.screen_shake_level, settings.set_screen_shake_level)
+	gore_option = _option_row(col, "UI_SETTINGS_GORE", settings.GORE_LEVELS, settings.gore, settings.set_gore)
+
+
+# Строка «подпись — выбор из списка» (ключи перевода items, индекс — значение).
+func _option_row(col: Container, title: String, items: Array, value: int, on_change: Callable) -> OptionButton:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 24)
+	col.add_child(row)
+	var l := Label.new()
+	l.text = title
+	l.custom_minimum_size.x = 300.0
+	l.add_theme_font_size_override("font_size", FONTS.px(FONT))
+	row.add_child(l)
+	var o := OptionButton.new()
+	o.add_theme_font_size_override("font_size", FONTS.px(FONT))
+	for k in items.size():
+		o.add_item(items[k], k)
+	o.select(value)
+	o.item_selected.connect(on_change)
+	row.add_child(o)
+	return o
 
 
 # Вкладка «Звук»: ползунки «Музыка» и «Эффекты» (линейная громкость 0..1, Settings переводит в dB).
@@ -220,7 +237,8 @@ func assign_key(event: InputEvent) -> void:
 
 func _on_changed(_key: String) -> void:
 	fullscreen_check.set_pressed_no_signal(settings.fullscreen)
-	shake_check.set_pressed_no_signal(settings.screen_shake)
+	shake_option.select(settings.screen_shake_level)
+	gore_option.select(settings.gore)
 	music_slider.set_value_no_signal(settings.music_volume)
 	sfx_slider.set_value_no_signal(settings.sfx_volume)
 	for l in lang_buttons:

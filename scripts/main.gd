@@ -758,19 +758,50 @@ var hit_size := PackedFloat32Array()
 var hit_col := PackedColorArray()
 var hit_drag := PackedFloat32Array()     # затухание скорости, 1/с (искры стоят)
 var hit_dropped := 0            # частиц не создано из-за лимита (статистика, тесты)
-var stain_mm: MultiMesh         # пятна крови; null — выключены
-var stain_buf := PackedFloat32Array()
-var stain_pos := PackedVector2Array()
-var stain_age := PackedFloat32Array()    # с с появления; >= stain_life — погасло
-var stain_size := PackedFloat32Array()
-var stain_col := PackedColorArray()
-var stain_head := 0             # следующая ячейка кольцевого буфера (новое пятно заменяет самое старое)
-var stain_used := 0             # занятых ячеек (до max_stains)
-var stain_live := 0             # пятен, ещё не погасших (буфер обновляется, пока есть живые)
-var shake_t := 0.0              # осталось тряски экрана за добивание screen_shake_kills, с
-var shake_count := 0            # трясок за добивание за бой (статистика, тесты)
-var shake_hit_t := 0.0          # осталось тряски за попадание (задача 13: на каждый удар, задевший кого-то), с
-var shake_hit_count := 0
+# Слой крови на земле (задача 23): пятна впечатываются в одну текстуру поля — SubViewport без очистки, каждый кадр в него рисуются
+# только новые пятна (MultiMesh очереди кадра), поэтому цена не растёт с числом пятен; слой показывает Sprite2D под юнитами.
+var stain_vp: SubViewport       # null — пятен нет
+var stain_layer: Sprite2D
+var stain_stamp_mm: MultiMesh   # пятна этого кадра
+var stain_stamp_buf := PackedFloat32Array()
+var stain_stamp_n := 0          # в очереди кадра (не больше stains_per_frame)
+var stain_fade: ColorRect       # шаг подсыхания: умножение слоя на stain_dry_mult (CanvasItemMaterial BLEND_MODE_MUL)
+var stain_fade_on := false      # шаг подсыхания ждёт отрисовки слоя
+var stain_pending := false      # очередь пятен отдана слою — очистится, когда кадр движка сменится (значит, слой нарисован)
+var stain_pending_frame := 0    # Engine.get_process_frames() в момент отдачи очереди
+var stain_dry_left := 0         # осталось шагов подсыхания после волны
+var stain_dry_t := 0.0
+var stain_total := 0            # впечатано пятен с начала забега (тесты, отчёт)
+var stain_skipped := 0          # пятен сверх stains_per_frame (не впечатаны)
+var stain_redraws := 0          # кадров, когда слой перерисовывался
+var shake_amp := 0.0            # амплитуда тряски текущего удара, px экрана (shake_base_px + за попавших, x уровень настройки)
+var shake_cap := 0.0            # потолок смещения, px экрана (shake_max_px x уровень)
+var shake_hit_t := 0.0          # осталось тряски, с
+var shake_hit_count := 0        # трясок (ударов с попаданием при включённой тряске; тесты)
+var shake_last_amp := 0.0       # амплитуда последней тряски (тесты)
+# События смертей для эффектов (задача 23): _remove_dead записывает (только чтение состояния симуляции, ГСЧ не трогается),
+# _hit_fx_frame разбирает раз в кадр. Пусто — эффекты выключены.
+var death_pos := PackedVector2Array()
+var death_team := PackedByteArray()
+var death_type := PackedInt32Array()
+var death_dir := PackedByteArray()
+var death_n := 0
+var death_over := 0             # смертей сверх death_buffer за кадр (не записаны)
+var mass_shown := 0             # смертей с брызгами (в видимой области, после выборки; статистика, тесты)
+var mass_sampled_out := 0       # видимых смертей, пропущенных выборкой (больше mass_deaths_per_frame за кадр)
+var mass_frame_max := 0         # наибольшее число смертей с брызгами за кадр (тесты)
+# Брызги смертей (задача 23): один квад на смерть, капли считает шейдер scripts/splash.gdshader — CPU пишет инстанс один раз
+# (кольцевой буфер mass_splash_max), покадрово — только время now. Без покадрового цикла по частицам: резня не грузит кадр.
+const SPLASH_FPI := 16          # float на брызги: 8 (трансформ 2D) + 4 (цвет) + 4 (custom: появление, зерно, жизнь, 0)
+var splash_mm: MultiMesh        # null — брызг смертей нет
+var splash_mat: ShaderMaterial
+var splash_buf := PackedFloat32Array()
+var splash_head := 0            # следующая ячейка кольца
+var splash_used := 0            # занятых ячеек (до mass_splash_max)
+var splash_time := 0.0          # время эффектов, с (стоит на паузе)
+var splash_dirty := false       # буфер изменился — отдать MultiMesh
+var gib_mass := 0               # пар кусков у смертей не от героя
+var hero_kill_pos := PackedVector2Array()   # добитые героем в этом кадре: их смерть уже показана ударом
 var hit_bursts := 0             # всплесков (ударов героя с попаданием, замеченных кадром не на паузе; тесты)
 var hit_streak := 0             # добитых героем подряд (между добиваниями не больше big_drop_window с): крупные капли
 var hit_streak_t := 0.0         # с с последнего добивания (время кадра)
@@ -2795,6 +2826,7 @@ func _kills_text() -> String:
 func _wave_cleared() -> void:
 	_end_war_cry()   # в передышке клич не действует
 	_cards_off()     # в передышке условия карточек не горят
+	_stain_dry_start()   # кровь на земле подсыхает к следующей волне (только отрисовка)
 	if run_limit and wave_number == waves_per_run:
 		_on_win()   # последняя волна забега: передышки не будет
 		return
@@ -3788,31 +3820,44 @@ func _hero_fx_frame(delta: float) -> void:
 		hero_fx.queue_redraw()
 
 
-# data/fx.json (эффекты попаданий героя). Не читается или неверный — эффектов нет, игра идёт (это только отрисовка).
+# data/fx.json (эффекты: удар героя, резня, слой крови, тряска). Не читается или неверный — эффектов нет, игра идёт (это только отрисовка).
 func _load_hit_fx() -> Dictionary:
 	if not FileAccess.file_exists(HIT_FX_PATH):
-		push_warning("Нет %s: эффекты попаданий героя выключены" % HIT_FX_PATH)
+		push_warning("Нет %s: эффекты выключены" % HIT_FX_PATH)
 		return {}
 	var d = JSON.parse_string(FileAccess.get_file_as_string(HIT_FX_PATH))
 	var nums := ["max_particles", "blood_drag", "blood_spread_deg", "spark_count", "spark_life", "spark_size",
-		"big_drop_streak", "big_drop_window", "big_drop_size", "big_drop_drag",
-		"screen_shake_px", "screen_shake_time", "screen_shake_kills", "screen_shake_per_hit_px", "screen_shake_per_hit_time", "screen_shake_max_px",
-		"max_stains", "stain_life", "stain_alpha", "max_gibs", "gib_life", "gib_fade", "gib_drag", "gib_type_tint"]
+		"big_drop_streak", "big_drop_window", "big_drop_size", "big_drop_drag", "hero_blood_mult", "hero_drop_speed_mult", "hero_drop_spread_deg",
+		"shake_base_px", "shake_extra_px", "shake_extra_per", "shake_max_px", "shake_time",
+		"stain_layer_scale", "stains_per_frame", "stain_alpha", "stain_dry_steps", "stain_dry_step_time",
+		"mass_deaths_per_frame", "mass_splash_max", "mass_splash_px", "mass_splash_density", "mass_stains", "gib_chance_mass", "death_buffer",
+		"max_gibs", "gib_life", "gib_fade", "gib_drag", "gib_type_tint"]
 	var pairs := ["blood_hit", "blood_kill", "blood_life", "blood_speed", "blood_size", "big_drop_count", "big_drop_life", "big_drop_speed",
-		"stain_size", "gib_top_fwd", "gib_top_side", "gib_bottom_side", "gib_bottom_back"]
-	var ok: bool = d is Dictionary and d.get("screen_shake_enabled") is bool and d.get("stains_enabled") is bool and d.get("gibs_enabled") is bool \
-		and d.get("gib_top_path") is String and d.get("gib_bottom_path") is String
+		"stain_size", "mass_splash_life", "dust_count", "gib_top_fwd", "gib_top_side", "gib_bottom_side", "gib_bottom_back"]
+	var lists := ["blood_colors", "big_drop_colors", "spark_colors", "stain_colors", "dust_colors", "stain_colors_no_gore"]
+	var flags := ["screen_shake_enabled", "stains_enabled", "gibs_enabled", "mass_enabled", "hero_big_drop_every_kill"]
+	var ok: bool = d is Dictionary and d.get("gib_top_path") is String and d.get("gib_bottom_path") is String
+	for k in flags:
+		ok = ok and d.get(k) is bool
 	for k in nums:
 		ok = ok and d.get(k) is float and d[k] >= 0.0
 	for k in pairs:
 		ok = ok and d.get(k) is Array and d[k].size() == 2 and d[k][0] is float and d[k][1] is float and d[k][0] <= d[k][1]
-	for k in ["blood_colors", "big_drop_colors", "spark_colors", "stain_colors"]:
+	for k in lists:
 		ok = ok and d.get(k) is Array and not d[k].is_empty() and d[k].all(func(c): return c is String and Color.html_is_valid(c))
+	for k in ["gib_tint_human", "gib_tint_zombie"]:
+		ok = ok and d.get(k) is String and Color.html_is_valid(d[k])
+	ok = ok and d.get("shake_levels") is Array and not d.shake_levels.is_empty() and d.shake_levels.all(func(x): return x is float and x >= 0.0)
+	ok = ok and d.get("stain_dry_mult") is Array and d.stain_dry_mult.size() == 4 and d.stain_dry_mult.all(func(x): return x is float and x >= 0.0)
+	ok = ok and d.stain_layer_scale > 0.0 and d.shake_extra_per >= 1.0
 	if not ok:
-		push_error("%s: нужны числа >= 0 (%s), пары [от, до] (%s), списки цветов hex, screen_shake_enabled, stains_enabled и gibs_enabled (bool), gib_top_path и gib_bottom_path — эффекты выключены" % [HIT_FX_PATH, ", ".join(nums), ", ".join(pairs)])
+		push_error("%s: нужны числа >= 0 (%s), пары [от, до] (%s), списки цветов hex (%s), цвета gib_tint_human и gib_tint_zombie, bool (%s), shake_levels (числа), stain_dry_mult (4 числа), stain_layer_scale > 0, shake_extra_per >= 1, gib_top_path и gib_bottom_path — эффекты выключены" % [
+			HIT_FX_PATH, ", ".join(nums), ", ".join(pairs), ", ".join(lists), ", ".join(flags)])
 		return {}
-	for k in ["blood_colors", "big_drop_colors", "spark_colors", "stain_colors"]:
+	for k in lists:
 		d[k] = d[k].map(func(c): return Color(c))
+	d.gib_tint_human = Color(d.gib_tint_human)
+	d.gib_tint_zombie = Color(d.gib_tint_zombie)
 	return d
 
 
@@ -3836,6 +3881,8 @@ func _fx_quad_mm(n: int) -> MultiMesh:
 
 
 func _setup_hit_fx() -> void:
+	if not hit_cfg.is_empty() or hit_mm != null:
+		return   # уже (герой и бой без героя зовут одну установку)
 	hit_cfg = _load_hit_fx()
 	if hit_cfg.is_empty():
 		return
@@ -3855,20 +3902,134 @@ func _setup_hit_fx() -> void:
 	pn.z_index = LEAF_Z + 1   # как герой: над юнитами и замком, ниже интерфейса; добавлена после героя — поверх спрайта
 	add_child(pn)
 	_setup_gibs()
-	if not hit_cfg.stains_enabled or int(hit_cfg.max_stains) <= 0:
-		return
-	var m := int(hit_cfg.max_stains)
-	stain_pos.resize(m)
-	stain_age.resize(m)
-	stain_size.resize(m)
-	stain_col.resize(m)
-	stain_buf.resize(m * HIT_FPI)
-	stain_mm = _fx_quad_mm(m)
+	if hit_cfg.mass_enabled or hit_cfg.stains_enabled:
+		var dn := int(hit_cfg.death_buffer)
+		death_pos.resize(dn)
+		death_team.resize(dn)
+		death_type.resize(dn)
+		death_dir.resize(dn)
+	if hit_cfg.stains_enabled and int(hit_cfg.stains_per_frame) > 0:
+		_setup_stain_layer()
+	if hit_cfg.mass_enabled and int(hit_cfg.mass_splash_max) > 0:
+		_setup_splash()
+
+
+# Брызги смертей: MultiMesh квадов (цвет и custom) с шейдером scripts/splash.gdshader над юнитами (как частицы), ближайший сосед.
+func _setup_splash() -> void:
+	var n := int(hit_cfg.mass_splash_max)
+	splash_mm = MultiMesh.new()
+	splash_mm.transform_format = MultiMesh.TRANSFORM_2D
+	splash_mm.use_colors = true
+	splash_mm.use_custom_data = true
+	splash_mm.mesh = _fx_quad_mm(1).mesh
+	splash_mm.instance_count = n
+	splash_mm.visible_instance_count = 0
+	splash_mm.custom_aabb = AABB(Vector3(-FIELD.x, -FIELD.y, 0.0), Vector3(FIELD.x * 3.0, FIELD.y * 3.0, 0.0))
+	splash_buf.resize(n * SPLASH_FPI)
+	splash_mat = ShaderMaterial.new()
+	splash_mat.shader = load("res://scripts/splash.gdshader")
+	splash_mat.set_shader_parameter("cells", float(hit_cfg.mass_splash_px))
+	splash_mat.set_shader_parameter("density", float(hit_cfg.mass_splash_density))
 	var sn := MultiMeshInstance2D.new()
-	sn.multimesh = stain_mm
+	sn.multimesh = splash_mm
+	sn.material = splash_mat
+	sn.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	sn.z_index = LEAF_Z + 1   # над юнитами и замком, как кровь удара героя
 	add_child(sn)
+
+
+# Брызги смерти в точке p цветом col: ячейка кольца (самые старые заменяются), время появления — сейчас.
+func _splash(p: Vector2, col: Color) -> void:
+	var o := splash_head * SPLASH_FPI
+	splash_head = (splash_head + 1) % (splash_buf.size() / SPLASH_FPI)
+	splash_used = mini(splash_used + 1, splash_buf.size() / SPLASH_FPI)
+	var sz := float(hit_cfg.mass_splash_px)
+	splash_buf[o + 0] = sz
+	splash_buf[o + 1] = 0.0
+	splash_buf[o + 3] = roundf(p.x)
+	splash_buf[o + 4] = 0.0
+	splash_buf[o + 5] = sz
+	splash_buf[o + 7] = roundf(p.y)
+	splash_buf[o + 8] = col.r
+	splash_buf[o + 9] = col.g
+	splash_buf[o + 10] = col.b
+	splash_buf[o + 11] = 1.0
+	splash_buf[o + 12] = splash_time
+	splash_buf[o + 13] = hit_rng.randf()
+	splash_buf[o + 14] = hit_rng.randf_range(hit_cfg.mass_splash_life[0], hit_cfg.mass_splash_life[1])
+	splash_buf[o + 15] = 0.0
+	splash_dirty = true
+
+
+# Слой крови: SubViewport размером с поле x stain_layer_scale, прозрачный, без очистки (пятна копятся), перерисовывается только
+# в кадры с новыми пятнами или шагом подсыхания (UPDATE_ONCE); внутри — шаг подсыхания (умножение, первым) и пятна кадра.
+# Показ — Sprite2D в мире под юнитами (над фоном), ближайший сосед (пиксельно), смешивание premultiplied: слой хранит цвет x альфа.
+func _setup_stain_layer() -> void:
+	var sc := float(hit_cfg.stain_layer_scale)
+	stain_vp = SubViewport.new()
+	stain_vp.size = Vector2i(ceili(FIELD.x * sc), ceili(FIELD.y * sc))
+	stain_vp.transparent_bg = true
+	stain_vp.disable_3d = true
+	stain_vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	stain_vp.process_mode = Node.PROCESS_MODE_ALWAYS   # перерисовка слоя не зависит от паузы и от выключенной обработки сцены (тесты, снимки)
+	add_child(stain_vp)
+	stain_fade = ColorRect.new()
+	stain_fade.size = Vector2(stain_vp.size)
+	var mul := CanvasItemMaterial.new()
+	mul.blend_mode = CanvasItemMaterial.BLEND_MODE_MUL
+	stain_fade.material = mul
+	stain_fade.visible = false
+	stain_vp.add_child(stain_fade)
+	var cap := int(hit_cfg.stains_per_frame)
+	stain_stamp_mm = _fx_quad_mm(cap)
+	stain_stamp_buf.resize(cap * HIT_FPI)
+	var sn := MultiMeshInstance2D.new()
+	sn.multimesh = stain_stamp_mm
+	sn.scale = Vector2.ONE * sc
+	stain_vp.add_child(sn)
+	stain_layer = Sprite2D.new()
+	stain_layer.texture = stain_vp.get_texture()
+	stain_layer.centered = false
+	stain_layer.scale = Vector2.ONE / sc
+	stain_layer.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var pm := CanvasItemMaterial.new()
+	pm.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+	stain_layer.material = pm
+	add_child(stain_layer)
 	if unit_node != null:
-		move_child(sn, unit_node.get_index())   # тот же z, раньше в дереве — под юнитами, над фоном (z -1)
+		move_child(stain_layer, unit_node.get_index())   # тот же z, раньше в дереве — под юнитами, над фоном (z -1)
+	reset_stain_layer()
+
+
+# Новый кадр движка после отдачи очереди: слой уже нарисован (отрисовка — в конце кадра), впечатанные пятна и шаг подсыхания
+# в нём — очередь пуста, шаг спрятан. В пределах одного кадра очередь копится, сколько бы раз ни звали _process (тесты, снимки).
+func _stain_drawn_check() -> void:
+	if not stain_pending or Engine.get_process_frames() == stain_pending_frame:
+		return
+	stain_pending = false
+	stain_stamp_n = 0
+	if stain_fade_on:
+		stain_fade.visible = false
+		stain_fade_on = false
+
+
+# Новый забег (новая сцена) или явный сброс: слой очищается на ближайшем кадре, подсыхание и счётчики — с нуля.
+func reset_stain_layer() -> void:
+	stain_stamp_n = 0
+	stain_pending = false
+	stain_total = 0
+	stain_skipped = 0
+	stain_dry_left = 0
+	if stain_vp != null:
+		stain_vp.render_target_clear_mode = SubViewport.CLEAR_MODE_ONCE
+		stain_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
+# Конец волны: кровь подсыхает (stain_dry_steps шагов через stain_dry_step_time с), остаётся тёмным следом.
+func _stain_dry_start() -> void:
+	if stain_vp != null:
+		stain_dry_left = int(hit_cfg.stain_dry_steps)
+		stain_dry_t = float(hit_cfg.stain_dry_step_time)
 
 
 # Новая частица; лимит — новые не создаются (hit_dropped).
@@ -3887,17 +4048,36 @@ func _hit_particle(p: Vector2, v: Vector2, life: float, size: float, col: Color,
 	hit_drag[i] = drag
 
 
-func _hit_stain(p: Vector2) -> void:
-	if stain_mm == null:
+# «Жестокость» (настройка, задача 23): false — без крови и кусков (искры, пыль, серые пятна).
+func _fx_gore() -> bool:
+	var st := get_node_or_null("/root/Settings")
+	return st == null or int(st.gore) > 0
+
+
+# Пятно в очередь кадра (впечатается в слой); сверх stains_per_frame — не впечатывается (stain_skipped). Размер — целые px мира.
+func _hit_stain(p: Vector2, gore := true) -> void:
+	if stain_vp == null:
 		return
-	var i := stain_head
-	stain_head = (stain_head + 1) % stain_pos.size()
-	stain_used = mini(stain_used + 1, stain_pos.size())
-	stain_pos[i] = p
-	stain_age[i] = 0.0
-	stain_size[i] = hit_rng.randf_range(hit_cfg.stain_size[0], hit_cfg.stain_size[1])
-	var cols: Array = hit_cfg.stain_colors
-	stain_col[i] = cols[hit_rng.randi() % cols.size()]
+	_stain_drawn_check()
+	if stain_stamp_n * HIT_FPI >= stain_stamp_buf.size():
+		stain_skipped += 1
+		return
+	var o := stain_stamp_n * HIT_FPI
+	stain_stamp_n += 1
+	stain_total += 1
+	var sz := float(hit_rng.randi_range(int(hit_cfg.stain_size[0]), int(hit_cfg.stain_size[1])))
+	var cols: Array = hit_cfg.stain_colors if gore else hit_cfg.stain_colors_no_gore
+	var col: Color = cols[hit_rng.randi() % cols.size()]
+	stain_stamp_buf[o + 0] = sz
+	stain_stamp_buf[o + 1] = 0.0
+	stain_stamp_buf[o + 3] = roundf(p.x)
+	stain_stamp_buf[o + 4] = 0.0
+	stain_stamp_buf[o + 5] = sz
+	stain_stamp_buf[o + 7] = roundf(p.y)
+	stain_stamp_buf[o + 8] = col.r
+	stain_stamp_buf[o + 9] = col.g
+	stain_stamp_buf[o + 10] = col.b
+	stain_stamp_buf[o + 11] = float(hit_cfg.stain_alpha)
 
 
 # Картинка половины зомби (fx.json gib_top_path / gib_bottom_path): импортированный ресурс, иначе PNG с диска (файл подложен без
@@ -3954,8 +4134,9 @@ func _setup_gibs() -> void:
 			move_child(gn, at + k)
 
 
-# Пара кусков добитого в точке p: верх летит по удару (dir) и немного вбок, низ — в другую сторону вбок и чуть назад.
-func _hit_gib(p: Vector2, dir: Vector2, ut: int, udir: int) -> void:
+# Пара кусков в точке p: верх летит по удару (dir) и немного вбок, низ — в другую сторону вбок и чуть назад; тонировка по стороне
+# (side_team 0 — люди, gib_tint_human; 1 — зомби, gib_tint_zombie).
+func _hit_gib(p: Vector2, dir: Vector2, ut: int, udir: int, side_team := 1) -> void:
 	if gib_top_mm == null:
 		return
 	if gib_n >= gib_age.size():
@@ -3972,22 +4153,26 @@ func _hit_gib(p: Vector2, dir: Vector2, ut: int, udir: int) -> void:
 	gib_age[k] = 0.0
 	gib_dir[k] = udir
 	gib_scale[k] = type_sprite_scale[ut] if ut < type_sprite_scale.size() else 1.0
-	gib_col[k] = Color.WHITE.lerp(type_color[ut], clampf(c.gib_type_tint, 0.0, 1.0)) if ut < type_color.size() else Color.WHITE
+	gib_col[k] = Color.WHITE.lerp(c.gib_tint_human if side_team == 0 else c.gib_tint_zombie, clampf(c.gib_type_tint, 0.0, 1.0))   # люди красные, зомби тёмные
 
 
-# Удар героя по кому-то: в точке каждого задетого — искры (spark_count), всплеск крови от героя по направлению удара с разбросом
-# (добитый — больше), пятно на земле; добитый — пара кусков тела, а с big_drop_streak-го добитого подряд (между добиваниями не больше
-# big_drop_window с) — ещё крупные капли. Тряска экрана (fx.json screen_shake_enabled и настройка «Тряска экрана»): на каждый удар
-# с попаданием — screen_shake_per_hit_*, добил не меньше screen_shake_kills — ещё screen_shake_* (таймеры заводятся заново, не копятся).
+# Удар героя по кому-то (задачи 12–13, 23): в точке каждого задетого — искры (spark_*), всплеск крови от героя по направлению удара
+# с разбросом (добитый — больше; x hero_blood_mult), пятна в слой; добитый — пара кусков тела (всегда), крупные капли (на каждом добитом
+# при hero_big_drop_every_kill, иначе с big_drop_streak-го подряд) — быстрее (hero_drop_speed_mult) и уже (hero_drop_spread_deg) по удару.
+# «Жестокость: выкл» — без крови и кусков: искры и пыль (dust_*), пятна серые. Тряска (fx.json screen_shake_enabled и настройка
+# «Тряска экрана»): shake_base_px + shake_extra_px за каждые shake_extra_per попавших, не больше shake_max_px, x уровень настройки.
 func _hit_fx_spawn() -> void:
 	if hit_cfg.is_empty() or hero_hit_idx.is_empty():
 		return
 	var c := hit_cfg
+	var gore := _fx_gore()
 	hit_bursts += 1
 	if hit_streak_t > float(c.big_drop_window):
 		hit_streak = 0
 	var spread := deg_to_rad(float(c.blood_spread_deg))
-	var bcols: Array = c.blood_colors
+	var dspread := deg_to_rad(float(c.hero_drop_spread_deg))
+	var bmult := float(c.hero_blood_mult)
+	var bcols: Array = c.blood_colors if gore else c.dust_colors
 	var dcols: Array = c.big_drop_colors
 	var scols: Array = c.spark_colors
 	var kills := 0
@@ -3998,38 +4183,115 @@ func _hit_fx_spawn() -> void:
 		var base := d.angle() if d.length_squared() > 0.01 else hero_swing_ang
 		for k in int(c.spark_count):
 			_hit_particle(p, Vector2.ZERO, c.spark_life, c.spark_size, scols[hit_rng.randi() % scols.size()], 0.0)
-		var rng_n: Array = c.blood_kill if dead else c.blood_hit
-		for k in hit_rng.randi_range(int(rng_n[0]), int(rng_n[1])):
+		var rng_n: Array = (c.blood_kill if dead else c.blood_hit) if gore else c.dust_count
+		var nb := hit_rng.randi_range(int(rng_n[0]), int(rng_n[1]))
+		if gore:
+			nb = roundi(nb * bmult)
+		for k in nb:
 			var v := Vector2.from_angle(base + hit_rng.randf_range(-spread, spread)) * hit_rng.randf_range(c.blood_speed[0], c.blood_speed[1])
 			_hit_particle(p, v, hit_rng.randf_range(c.blood_life[0], c.blood_life[1]), float(hit_rng.randi_range(int(c.blood_size[0]), int(c.blood_size[1]))),
 				bcols[hit_rng.randi() % bcols.size()], c.blood_drag)
 		for k in (3 if dead else 1):
-			_hit_stain(p + Vector2.from_angle(base + hit_rng.randf_range(-spread, spread)) * hit_rng.randf_range(1.0, 9.0))
+			_hit_stain(p + Vector2.from_angle(base + hit_rng.randf_range(-spread, spread)) * hit_rng.randf_range(1.0, 9.0), gore)
 		if not dead:
 			continue
 		kills += 1
 		hit_streak += 1
-		_hit_gib(p, Vector2.from_angle(base), hero_hit_type[n], hero_hit_dir[n])
-		if hit_streak >= int(c.big_drop_streak):
+		hero_kill_pos.append(p)
+		if not gore:
+			continue
+		_hit_gib(p, Vector2.from_angle(base), hero_hit_type[n], hero_hit_dir[n], 1)
+		if c.hero_big_drop_every_kill or hit_streak >= int(c.big_drop_streak):
 			for k in hit_rng.randi_range(int(c.big_drop_count[0]), int(c.big_drop_count[1])):
-				var v := Vector2.from_angle(base + hit_rng.randf_range(-spread, spread)) * hit_rng.randf_range(c.big_drop_speed[0], c.big_drop_speed[1])
+				var v := Vector2.from_angle(base + hit_rng.randf_range(-dspread, dspread)) \
+					* hit_rng.randf_range(c.big_drop_speed[0], c.big_drop_speed[1]) * float(c.hero_drop_speed_mult)
 				_hit_particle(p, v, hit_rng.randf_range(c.big_drop_life[0], c.big_drop_life[1]), c.big_drop_size, dcols[hit_rng.randi() % dcols.size()], c.big_drop_drag)
 	if kills > 0:
 		hit_streak_t = 0.0
-	var st := get_node_or_null("/root/Settings")
-	var on: bool = c.screen_shake_enabled and (st == null or st.screen_shake)
-	if on and camera != null:
-		if c.screen_shake_per_hit_time > 0.0 and c.screen_shake_per_hit_px > 0.0:
-			shake_hit_t = c.screen_shake_per_hit_time
+	var lvl := _shake_level_mult()
+	if lvl > 0.0 and camera != null and float(c.shake_time) > 0.0:
+		var hits := hero_hit_pos.size()
+		var amp := minf(float(c.shake_base_px) + float(c.shake_extra_px) * floorf(hits / float(c.shake_extra_per)), float(c.shake_max_px))
+		if amp > 0.0:
+			shake_amp = amp * lvl
+			shake_cap = float(c.shake_max_px) * lvl
+			shake_last_amp = shake_amp
+			shake_hit_t = float(c.shake_time)   # заводится заново, не копится
 			shake_hit_count += 1
-		if kills >= int(c.screen_shake_kills):
-			shake_t = c.screen_shake_time
-			shake_count += 1
 
 
-# Кадр эффектов (dt 0 — пауза: всё стоит): частицы летят с затуханием скорости и гаснут, погасшие удаляются (последняя на место);
-# пятна стареют и гаснут во второй половине жизни; тряска — случайное смещение камеры, убывающее к концу.
+# Множитель тряски: 0 — выключена (fx.json screen_shake_enabled или настройка «Тряска экрана: выкл»), иначе shake_levels[уровень].
+func _shake_level_mult() -> float:
+	if not hit_cfg.screen_shake_enabled:
+		return 0.0
+	var levels: Array = hit_cfg.shake_levels
+	var st := get_node_or_null("/root/Settings")
+	var lvl: int = st.screen_shake_level if st != null else 2
+	return float(levels[clampi(lvl, 0, levels.size() - 1)])
+
+
+# Смерти тиков с прошлого кадра (задача 23): пятна в слой — от всех (сначала видимые; не больше stains_per_frame за кадр); брызги
+# и куски — только в видимой области камеры и не больше mass_deaths_per_frame смертей (лишние — случайная выборка, hit_rng); брызги —
+# квад с шейдером на смерть (_splash); кусок — с шансом gib_chance_mass, тонировка по стороне. Добитые героем пропускаются — их уже
+# показал удар. «Жестокость: выкл» — пыль вместо крови, без кусков, пятна серые.
+func _mass_fx() -> void:
+	var c := hit_cfg
+	var gore := _fx_gore()
+	var vr := view_rect().grow(8.0)
+	var seen := PackedInt32Array()
+	var off := PackedInt32Array()
+	for k in death_n:
+		var p := death_pos[k]
+		var by_hero := false
+		for q in hero_kill_pos:
+			if q.distance_squared_to(p) < 64.0:
+				by_hero = true
+				break
+		if by_hero:
+			continue
+		if vr.has_point(p):
+			seen.append(k)
+		else:
+			off.append(k)
+	var ns := int(c.mass_stains)
+	for k in seen:
+		for q in ns:
+			_hit_stain(death_pos[k] + Vector2(hit_rng.randf_range(-4.0, 4.0), hit_rng.randf_range(-4.0, 4.0)), gore)
+	for k in off:
+		for q in ns:
+			_hit_stain(death_pos[k] + Vector2(hit_rng.randf_range(-4.0, 4.0), hit_rng.randf_range(-4.0, 4.0)), gore)
+	if not c.mass_enabled:
+		return
+	var limit := int(c.mass_deaths_per_frame)
+	if seen.size() > limit:   # выборка: первые limit после частичного перемешивания
+		for q in limit:
+			var r := hit_rng.randi_range(q, seen.size() - 1)
+			var t := seen[q]
+			seen[q] = seen[r]
+			seen[r] = t
+		mass_sampled_out += seen.size() - limit
+		seen.resize(limit)
+	var cols: Array = c.blood_colors if gore else c.dust_colors
+	for k in seen:
+		var p := death_pos[k]
+		mass_shown += 1
+		if splash_mm != null:
+			_splash(p, cols[hit_rng.randi() % cols.size()])   # брызги во все стороны — шейдер
+		if gore and hit_rng.randf() < float(c.gib_chance_mass):
+			gib_mass += 1
+			_hit_gib(p, Vector2.from_angle(hit_rng.randf() * TAU), death_type[k], death_dir[k], death_team[k])
+	mass_frame_max = maxi(mass_frame_max, seen.size())
+
+
+# Кадр эффектов (dt 0 — пауза: всё стоит): смерти тиков — резня и пятна; частицы летят с затуханием скорости и гаснут, погасшие
+# удаляются (последняя на место); пятна кадра впечатываются в слой, шаги подсыхания после волны; тряска — случайное смещение камеры,
+# убывающее к концу.
 func _hit_fx_frame(dt: float) -> void:
+	_stain_drawn_check()
+	if death_n > 0 and dt > 0.0:
+		_mass_fx()
+		death_n = 0
+	hero_kill_pos.clear()
 	var i := 0
 	while i < hit_n:
 		hit_life[i] -= dt
@@ -4064,46 +4326,55 @@ func _hit_fx_frame(dt: float) -> void:
 		hit_mm.visible_instance_count = hit_n
 		if hit_n > 0:
 			hit_mm.buffer = hit_buf
-	if stain_mm != null and (stain_live > 0 or stain_used != stain_mm.visible_instance_count):
-		var life: float = hit_cfg.stain_life
-		var a0: float = hit_cfg.stain_alpha
-		stain_live = 0
-		for k in stain_used:
-			stain_age[k] += dt
-			var o := k * HIT_FPI
-			var sz := stain_size[k]
-			stain_buf[o + 0] = sz
-			stain_buf[o + 5] = sz
-			stain_buf[o + 3] = roundf(stain_pos[k].x)
-			stain_buf[o + 7] = roundf(stain_pos[k].y)
-			var col := stain_col[k]
-			stain_buf[o + 8] = col.r
-			stain_buf[o + 9] = col.g
-			stain_buf[o + 10] = col.b
-			var a := a0 * clampf((life - stain_age[k]) / (life * 0.5), 0.0, 1.0)
-			stain_buf[o + 11] = a
-			if a > 0.0:
-				stain_live += 1
-		stain_mm.visible_instance_count = stain_used
-		stain_mm.buffer = stain_buf
+	if stain_vp != null:
+		_stain_frame(dt)
+	if splash_mm != null:
+		splash_time += dt
+		splash_mat.set_shader_parameter("now", splash_time)
+		if splash_dirty:
+			splash_dirty = false
+			splash_mm.buffer = splash_buf
+			splash_mm.visible_instance_count = splash_used
 	if gib_n > 0 or (gib_top_mm != null and gib_top_mm.visible_instance_count > 0):
 		_gib_frame(dt)
 	hit_streak_t += dt
-	if camera != null and (shake_t > 0.0 or shake_hit_t > 0.0 or camera.offset != Vector2.ZERO):
-		shake_t = maxf(shake_t - dt, 0.0)
+	if camera != null and (shake_hit_t > 0.0 or camera.offset != Vector2.ZERO):
 		shake_hit_t = maxf(shake_hit_t - dt, 0.0)
-		if shake_t > 0.0 or shake_hit_t > 0.0:
+		if shake_hit_t > 0.0:
 			if dt > 0.0 or camera.offset == Vector2.ZERO:   # на паузе смещение стоит
-				var a := float(hit_cfg.screen_shake_px) * shake_t / maxf(float(hit_cfg.screen_shake_time), 0.001) 					+ float(hit_cfg.screen_shake_per_hit_px) * shake_hit_t / maxf(float(hit_cfg.screen_shake_per_hit_time), 0.001)
-				camera.offset = _shake_offset(a)
+				camera.offset = _shake_offset(shake_amp * shake_hit_t / maxf(float(hit_cfg.shake_time), 0.001))
 		elif dt > 0.0:
 			camera.offset = Vector2.ZERO
 
 
-# Смещение камеры тряски силой a px (сумма видов): целые пиксели экрана (иначе пиксель-арт мылится), не меньше 1 px, не больше
-# screen_shake_max_px; направление случайное (hit_rng). Смещение камеры — в px мира, поэтому делится на зум.
+# Слой крови за кадр: шаг подсыхания (если пора) и пятна очереди — одна перерисовка SubViewport; очередь пуста после отрисовки.
+func _stain_frame(dt: float) -> void:
+	var redraw := stain_stamp_n > 0
+	if stain_dry_left > 0 and dt > 0.0 and not stain_fade_on:
+		stain_dry_t -= dt
+		if stain_dry_t <= 0.0:
+			stain_dry_left -= 1
+			stain_dry_t = float(hit_cfg.stain_dry_step_time)
+			var m: Array = hit_cfg.stain_dry_mult
+			stain_fade.color = Color(m[0], m[1], m[2], m[3])
+			stain_fade.visible = true
+			stain_fade_on = true
+			redraw = true
+	if not redraw:
+		return
+	stain_stamp_mm.visible_instance_count = stain_stamp_n
+	stain_stamp_mm.buffer = stain_stamp_buf
+	stain_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	if not stain_pending:
+		stain_redraws += 1
+	stain_pending = true
+	stain_pending_frame = Engine.get_process_frames()
+
+
+# Смещение камеры тряски силой a px экрана: целые пиксели экрана (иначе пиксель-арт мылится), не меньше 1 px, не больше shake_cap;
+# направление случайное (hit_rng). Смещение камеры — в px мира, поэтому делится на зум.
 func _shake_offset(a: float) -> Vector2:
-	var r := clampf(roundf(a), 1.0, maxf(floorf(float(hit_cfg.screen_shake_max_px)), 1.0))
+	var r := clampf(roundf(a), 1.0, maxf(floorf(shake_cap), 1.0))
 	var v := Vector2.from_angle(hit_rng.randf() * TAU) * r
 	var px := Vector2(roundf(v.x), roundf(v.y))
 	if px.length() > r:   # диагональ после округления длиннее r — только по большей оси
@@ -4659,6 +4930,7 @@ func _setup_rendering() -> void:
 	unit_node = node
 	if hero_on:
 		_setup_hero_view()   # после MultiMesh: над юнитами; интерфейс — в CanvasLayer, выше
+	_setup_hit_fx()   # резня, слой крови (задача 23) — и без героя; с героем уже установлено (после его спрайта)
 
 
 func _setup_fps_label() -> void:
@@ -5641,8 +5913,8 @@ func _process(delta: float) -> void:
 		buf[o + 12] = cell_white
 	if hero_view != null:
 		_hero_fx_frame(delta)   # вспышка удара и мигание задетых (до записи буфера)
-		if not hit_cfg.is_empty():
-			_hit_fx_frame(0.0 if paused else delta)   # кровь, искры, пятна, тряска: на паузе стоят
+	if not hit_cfg.is_empty():
+		_hit_fx_frame(0.0 if paused else delta)   # резня, кровь, искры, слой пятен, тряска: на паузе стоят
 	multimesh.visible_instance_count = count
 	multimesh.buffer = buf          # один вызов вместо UNIT_COUNT
 	if hero_view != null:
@@ -5907,6 +6179,14 @@ func _remove_dead() -> void:
 	var i := 0
 	while i < count:
 		if hp[i] <= 0.0:
+			if death_n < death_pos.size():   # событие смерти для эффектов (только отрисовка; эффекты выключены — буфер пуст)
+				death_pos[death_n] = pos[i]
+				death_team[death_n] = team[i]
+				death_type[death_n] = unit_type[i]
+				death_dir[death_n] = unit_dir[i]
+				death_n += 1
+			elif not death_pos.is_empty():
+				death_over += 1
 			if first_death_tick < 0:
 				first_death_tick = tick_counter
 			if team[i] == 1:   # убит зомби: счёт волны и золото

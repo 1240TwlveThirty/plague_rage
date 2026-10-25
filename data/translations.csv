@@ -17,6 +17,13 @@ UI_SETTINGS_TAB_CONTROLS,Управление,Controls
 UI_SETTINGS_TAB_LANGUAGE,Язык,Language
 UI_SETTINGS_FULLSCREEN,Полный экран (F11),Fullscreen (F11)
 UI_SETTINGS_SCREEN_SHAKE,Тряска экрана,Screen shake
+UI_SHAKE_OFF,Выкл.,Off
+UI_SHAKE_WEAK,Слабая,Weak
+UI_SHAKE_NORMAL,Обычная,Normal
+UI_SHAKE_STRONG,Сильная,Strong
+UI_SETTINGS_GORE,Жестокость,Gore
+UI_GORE_OFF,Выкл.,Off
+UI_GORE_NORMAL,Обычная,Normal
 UI_SETTINGS_KEY_WAIT,Нажмите клавишу или кнопку мыши… (Esc — отмена),Press a key or mouse button… (Esc to cancel)
 UI_MOUSE_MIDDLE,Средняя кнопка мыши,Middle mouse button
 UI_MOUSE_X1,Мышь 4,Mouse 4

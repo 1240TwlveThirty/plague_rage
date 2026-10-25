@@ -102,18 +102,16 @@ func _run() -> void:
 	var h: int = m.hero_idx
 	m.pos[h] = P
 	m.prev_pos[h] = P
-	check("fx.json: частиц за удар %s, за добивание %s, max_particles %d, max_gibs %d, тряска за удар %.0f px %.2f с, предел %.0f px" % [c.blood_hit, c.blood_kill,
-		c.max_particles, c.max_gibs, c.screen_shake_per_hit_px, c.screen_shake_per_hit_time, c.screen_shake_max_px],
-		c.blood_hit == [8.0, 12.0] and c.blood_kill == [14.0, 22.0] and c.max_particles == 500.0 and c.max_gibs == 80.0 and c.spark_count == 1.0
-		and c.screen_shake_per_hit_px == 1.0 and c.screen_shake_per_hit_time == 0.05 and c.screen_shake_max_px == 3.0 and c.screen_shake_px == 1.5
-		and c.screen_shake_time == 0.08 and m.gib_age.size() == 40 and st.screen_shake)
+	check("fx.json: частиц за удар %s, за добивание %s, max_particles %d, max_gibs %d (пар %d), тряска %d px + %d за %d попавших на %.2f с, предел %d px" % [
+		c.blood_hit, c.blood_kill, c.max_particles, c.max_gibs, m.gib_age.size(), int(c.shake_base_px), int(c.shake_extra_px), int(c.shake_extra_per), c.shake_time,
+		int(c.shake_max_px)], m.hit_pos.size() == int(c.max_particles) and m.gib_age.size() == int(c.max_gibs) / 2 and st.screen_shake)
 	# Ноды кусков: картинки из fx.json, nearest, сразу после юнитов (над пятнами), z юнитов — ниже героя
 	var gn := []
 	var sn: Node = null
 	for ch in m.get_children():
 		if ch is MultiMeshInstance2D and (ch.multimesh == m.gib_top_mm or ch.multimesh == m.gib_bot_mm):
 			gn.append(ch)
-		if ch is MultiMeshInstance2D and ch.multimesh == m.stain_mm:
+		if ch == m.stain_layer:
 			sn = ch
 	var ui: int = m.unit_node.get_index()
 	check("куски: 2 ноды MultiMesh (art/gib_top.png и art/gib_bottom.png 16x16, nearest) после юнитов и пятен, z юнитов, ниже героя",
@@ -148,7 +146,11 @@ func _run() -> void:
 			sparks += 1
 		else:
 			blood += 1
-	check("добивание: искра 1 и крови %d (blood_kill 14–22)" % blood, sparks == 1 and blood >= 14 and blood <= 22)
+	var bk: Array = c.blood_kill
+	var mult := float(c.hero_blood_mult)
+	var bd: Array = c.big_drop_count if c.hero_big_drop_every_kill else [0, 0]
+	check("добивание: искр %d (spark_count %d) и крови %d (blood_kill %s x%.1f + крупных капель %s)" % [sparks, int(c.spark_count), blood, str(bk), mult, str(bd)],
+		sparks == int(c.spark_count) and blood >= roundi(bk[0] * mult) + int(bd[0]) and blood <= roundi(bk[1] * mult) + int(bd[1]))
 	check("ГСЧ симуляции (unit_rng, arrow_rng) не тронуты", rng_state == [m.unit_rng.state, m.arrow_rng.state])
 	for k in 4:
 		m._process(0.05)
@@ -194,14 +196,15 @@ func _run() -> void:
 		for f in 2:
 			m._process(1.0 / 60.0)
 	check("12 ударов подряд с попаданием: всплесков %d, трясок за удар %d" % [m.hit_bursts - b0, m.shake_hit_count - sh0], m.hit_bursts - b0 == 12 and m.shake_hit_count - sh0 == 12)
-	check("тряска за удар: смещение целыми px экрана (%s), есть в %d из 12 кадров удара, не больше 1 px (%.2f)" % [whole, nonzero, max_off], whole and nonzero == 12 and max_off <= 1.0 + 1e-3)
+	var one: float = roundf(minf(float(c.shake_base_px), float(c.shake_max_px)) * float(c.shake_levels[root.get_node("Settings").screen_shake_level]))
+	check("тряска за удар по одному: смещение целыми px экрана (%s), есть в %d из 12 кадров удара, не больше %.0f px (%.2f)" % [whole, nonzero, one, max_off], whole and nonzero == 12 and max_off <= one + 1e-3)
 	# Удержание: удары каждый тик без затухания — смещение не копится
 	max_off = 0.0
 	for k in 30:
 		swing(m)
 		m._process(1.0 / 240.0)
 		max_off = maxf(max_off, m.camera.offset.length() * m.camera.zoom.x)
-	check("удержание (30 ударов подряд, кадры по 4 мс): смещение не копится — не больше %.2f px" % max_off, max_off <= 1.0 + 1e-3)
+	check("удержание (30 ударов подряд, кадры по 4 мс): смещение не копится — %.2f px, не больше %.0f" % [max_off, one], max_off <= one + 1e-3)
 	clear_units(m, tough)
 	settle(m)
 	# 4. Тряска не сдвигает интерфейс; добил 3 — сумма не больше screen_shake_max_px
@@ -213,8 +216,9 @@ func _run() -> void:
 	var ct1: Transform2D = m.get_viewport().get_canvas_transform()
 	var hud1: Vector2 = m.fps_label.get_global_transform_with_canvas().origin
 	var d := ct1.origin - ct0.origin
-	check("добил 3: тряска за удар и за добивание вместе %.2f px экрана (не больше %d), мир сдвинут на (%.2f, %.2f), сдвиг целый, интерфейс на месте" % [off.length(), int(c.screen_shake_max_px), d.x, d.y],
-		off.length() > 0.0 and off.length() <= c.screen_shake_max_px + 1e-3 and d != Vector2.ZERO
+	var cap: float = float(c.shake_max_px) * float(c.shake_levels[st.screen_shake_level])
+	check("удар по 3: тряска %.2f px экрана (не больше %.1f), мир сдвинут на (%.2f, %.2f), сдвиг целый, интерфейс на месте" % [off.length(), cap, d.x, d.y],
+		off.length() > 0.0 and off.length() <= cap + 1e-3 and d != Vector2.ZERO
 		and absf(d.x - roundf(d.x)) < 1e-3 and absf(d.y - roundf(d.y)) < 1e-3 and hud1 == hud0 and shot_img != null)
 	for k in 3:
 		m._process(0.05)
@@ -223,10 +227,10 @@ func _run() -> void:
 	st.screen_shake = false
 	var two := zombies(m, [Vector2(10, 0), Vector2(14, 5), Vector2(15, -5)], 1.0)
 	m._build_grid()
-	var s0: int = m.shake_count + m.shake_hit_count
+	var s0: int = m.shake_hit_count
 	swing(m)
 	m._process(1.0 / 60.0)
-	check("«Тряска экрана» выкл. — нет ни тряски за удар, ни за добивание", m.shake_count + m.shake_hit_count == s0 and m.camera.offset == Vector2.ZERO)
+	check("«Тряска экрана» выкл. — тряски нет", m.shake_hit_count == s0 and m.camera.offset == Vector2.ZERO)
 	st.screen_shake = true
 	settle(m)
 	# 6. Крупные капли при добиваниях подряд
@@ -246,7 +250,9 @@ func _run() -> void:
 		big = nb
 		m._process(0.2)
 	var burst := await shot(m, "burst.png", 0.0)
-	check("добивания подряд: у первого крупных капель %d, к четвёртому живых %d (2x2, big_drop_count %s)" % [first_big, big, c.big_drop_count], first_big == 0 and big >= int(c.big_drop_count[0]) and burst != null)
+	var first_want: bool = first_big >= int(c.big_drop_count[0]) if c.hero_big_drop_every_kill else first_big == 0
+	check("добивания подряд: у первого крупных капель %d (hero_big_drop_every_kill %s), к четвёртому живых %d (2x2, big_drop_count %s)" % [first_big,
+		c.hero_big_drop_every_kill, big, c.big_drop_count], first_want and big >= int(c.big_drop_count[0]) and burst != null)
 	for k in 30:
 		m._process(0.1)
 	# 7. Пауза: удар, замеченный кадром на паузе, кусков не создаёт; на паузе куски стоят
@@ -270,17 +276,19 @@ func _run() -> void:
 	check("пауза: удар на паузе кусков не создал (%d), на паузе куски стоят" % g_paused, g_paused == 0 and frozen)
 	settle(m)
 	var stains := await shot(m, "stains.png", 0.0)
-	check("через 1.7 с: кусков и частиц нет, пятна есть (%d)" % m.stain_used, m.gib_n == 0 and m.hit_n == 0 and m.stain_used > 0 and stains != null)
-	# 8. Лимит max_gibs: 50 добитых за 10 ударов
+	check("через 1.7 с: кусков и частиц нет, пятна в слое есть (%d)" % m.stain_total, m.gib_n == 0 and m.hit_n == 0 and m.stain_total > 0 and stains != null)
+	# 8. Лимит max_gibs: добитых на 10 больше, чем пар
 	var made := 0
 	var gdrop0: int = m.gib_dropped
-	for k in 10:
+	var pairs: int = m.gib_age.size()
+	while made < pairs + 10:
 		zombies(m, [Vector2(10, -4), Vector2(12, 4), Vector2(14, 0), Vector2(16, -6), Vector2(17, 6)], 1.0)
 		m._build_grid()
 		swing(m)
 		made += m.hero_hit_dead.count(1)
 		m._process(0.0)
-	check("лимит: добито %d, пар кусков %d (max_gibs 80 — 40 пар), не создано %d" % [made, m.gib_n, m.gib_dropped - gdrop0], made == 50 and m.gib_n == 40 and m.gib_dropped - gdrop0 == 10)
+	check("лимит: добито %d, пар кусков %d (max_gibs %d — %d пар), не создано %d" % [made, m.gib_n, int(c.max_gibs), pairs, m.gib_dropped - gdrop0],
+		m.gib_n == pairs and m.gib_dropped - gdrop0 == made - pairs)
 	settle(m)
 	# 9. Армия кусков не создаёт
 	m.hero_feed = func(_t): return {"move": Vector2.ZERO}
@@ -295,7 +303,8 @@ func _run() -> void:
 			m._process(1.0 / 60.0)
 			seen = maxi(seen, m.gib_n)
 		t += 1
-	check("армия убила %d без ударов героя — кусков не было (%d)" % [m.wave_kills - kills0, seen], m.wave_kills >= kills0 + 20 and seen == 0 and m.gib_dropped == gd0)
+	check("армия убила %d без ударов героя — куски только у смертей в камере с шансом gib_chance_mass %s (пар %d, не больше %d)" % [m.wave_kills - kills0,
+		str(c.gib_chance_mass), seen, pairs], m.wave_kills >= kills0 + 20 and seen <= pairs)
 	m.queue_free()
 	await step(2)
 	DirAccess.remove_absolute(g.save_path)
