@@ -8,6 +8,7 @@ const UI := preload("res://scripts/ui.gd")
 const SETTINGS_MENU := preload("res://scripts/settings_menu.gd")
 const DIM := Color(0.0, 0.0, 0.0, 0.7)
 
+var panel: PanelContainer
 var continue_button: Button
 var settings_button: Button
 var settings_menu: CanvasLayer  # экран «Настройки» поверх меню паузы
@@ -28,15 +29,20 @@ func _ready() -> void:
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
+	panel = PanelContainer.new()   # подложка меню — универсальная панель
+	UI.frame_panel(panel)
+	center.add_child(panel)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 24)
-	center.add_child(box)
+	panel.add_child(box)
 	var title := Label.new()
 	title.text = "UI_PAUSE_TITLE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 64)
+	UI.frame_label(title)
 	box.add_child(title)
 	note_label = Label.new()
+	UI.frame_label(note_label)
 	note_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	note_label.add_theme_font_size_override("font_size", 26)
 	note_label.visible = false
@@ -61,7 +67,7 @@ func _button(box: Container, text: String) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.add_theme_font_size_override("font_size", 36)
-	UI.gold_button(b)
+	UI.frame_button(b)
 	b.focus_mode = Control.FOCUS_NONE   # пока меню закрыто, кнопки фокус не берут: Space и Enter в бою их не нажимают
 	box.add_child(b)
 	return b

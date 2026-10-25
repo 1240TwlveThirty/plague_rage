@@ -56,7 +56,7 @@ func _ready() -> void:
 	back_button.text = "UI_SETTINGS_BACK"
 	back_button.add_theme_font_size_override("font_size", 36)
 	back_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	UI.gold_button(back_button)
+	UI.frame_button(back_button)
 	back_button.pressed.connect(close)
 	box.add_child(back_button)
 	settings.changed.connect(_on_changed)
@@ -152,6 +152,7 @@ func _setup_controls() -> void:
 		b.custom_minimum_size = Vector2(320, 0)
 		b.add_theme_font_size_override("font_size", 26)
 		b.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # названия клавиш не переводятся
+		UI.frame_button(b, false)   # строка таблицы: ширина 320 своя, высота по тексту
 		b.pressed.connect(_wait_key.bind(a))
 		grid.add_child(b)
 		key_buttons[a] = b
@@ -164,6 +165,7 @@ func _setup_controls() -> void:
 	reset_keys_button.text = "UI_SETTINGS_KEYS_RESET"
 	reset_keys_button.add_theme_font_size_override("font_size", 26)
 	reset_keys_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	UI.frame_button(reset_keys_button)
 	reset_keys_button.pressed.connect(_reset_keys)
 	col.add_child(reset_keys_button)
 	_refresh_keys()

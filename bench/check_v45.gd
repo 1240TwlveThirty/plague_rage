@@ -1,5 +1,5 @@
 extends SceneTree
-# Тесты v45: меню и хаб по центру экрана, золотые кнопки на чёрном фоне, меню паузы по Esc в хабе и в бою.
+# Тесты v45: меню и хаб по центру экрана, кнопки с универсальной рамкой на чёрном фоне, меню паузы по Esc в хабе и в бою.
 # Узел Game с временным сохранением в user://bench_v45 (настоящий user://save.json не трогается). «Выход» не нажимается.
 const GAME := "res://scripts/game.gd"
 const MAIN := "res://scripts/main.gd"
@@ -28,9 +28,10 @@ func _on_node_added(n: Node) -> void:
 	if n.get_parent() == root and n is Node2D and n.get_script() != null and n.get_script().resource_path == MAIN:
 		n.process_mode = Node.PROCESS_MODE_DISABLED
 
+# Универсальная рамка кнопки (задача 18): вариация темы проекта, StyleBoxTexture с текстурой кнопки.
 func gold(b: Button) -> bool:
 	var s := b.get_theme_stylebox("normal")
-	return s is StyleBoxFlat and s.bg_color == UI.GOLD
+	return b.theme_type_variation == UI.BUTTON and s is StyleBoxTexture and s.texture != null and s.texture.resource_path.contains("ui_button")
 
 # Прямоугольник узла целиком на экране и по центру по горизонтали.
 func centered(c: Control) -> bool:
@@ -65,7 +66,7 @@ func _run() -> void:
 	await step(3)
 	var mn := current_scene as Control
 	check("меню занимает весь экран, фон чёрный на весь экран", mn != null and mn.name == "Menu" and mn.size == SCREEN and bg_of(mn).color == Color.BLACK and bg_of(mn).size == SCREEN, str(mn.size))
-	check("«Играть» и «Выход» по центру, золотые, фокус на «Играть»", centered(mn.play_button) and centered(mn.quit_button) and gold(mn.play_button) and gold(mn.quit_button)
+	check("«Играть» и «Выход» по центру, с рамкой, фокус на «Играть»", centered(mn.play_button) and centered(mn.quit_button) and gold(mn.play_button) and gold(mn.quit_button)
 		and mn.play_button.has_focus() and mn.play_button.get_global_rect().get_center().y > 300.0, str(mn.play_button.get_global_rect()))
 	mn.play_button.pressed.emit()
 	await step(3)
@@ -73,12 +74,12 @@ func _run() -> void:
 	print("хаб")
 	var h := current_scene as Control
 	check("хаб занимает весь экран, фон чёрный на весь экран", h != null and h.name == "Hub" and h.size == SCREEN and bg_of(h).color == Color.BLACK and bg_of(h).size == SCREEN, str(h.size))
-	check("вкладка «Осада»: вкладки и кнопки по центру и целиком на экране, кнопки золотые", centered(h.tabs) and centered(h.start_button) and centered(h.diary_button) and centered(h.menu_button)
+	check("вкладка «Осада»: вкладки и кнопки по центру и целиком на экране, кнопки с рамкой", centered(h.tabs) and centered(h.start_button) and centered(h.diary_button) and centered(h.menu_button)
 		and gold(h.start_button) and gold(h.diary_button) and gold(h.menu_button), str(h.tabs.get_global_rect()))
 	h.tabs.current_tab = 1
 	await step(2)
 	var row: Dictionary = h.gift_rows["reserve"]
-	check("вкладка «Дары»: по центру, целиком на экране (ширина %d), баланс виден, «Купить» золотая" % int(h.tabs.get_global_rect().size.x), centered(h.tabs) and centered(h.radiance_label.get_parent())
+	check("вкладка «Дары»: по центру, целиком на экране (ширина %d), баланс виден, «Купить» с рамкой" % int(h.tabs.get_global_rect().size.x), centered(h.tabs) and centered(h.radiance_label.get_parent())
 		and gold(row.button) and Rect2(Vector2.ZERO, SCREEN).encloses(row.reason.get_global_rect()), str(h.tabs.get_global_rect()))
 	h.tabs.current_tab = 0
 	await step(1)
@@ -88,7 +89,7 @@ func _run() -> void:
 	check("меню паузы скрыто, дерево не на паузе", em != null and not em.visible and not paused)
 	h._unhandled_input(esc())
 	await step(2)
-	check("Esc: меню паузы открыто, дерево на паузе, фокус на «Продолжить»; кнопки «Продолжить», «Выйти в меню», «Выход из игры» золотые и по центру, предупреждения нет", em.visible and paused and em.continue_button.has_focus()
+	check("Esc: меню паузы открыто, дерево на паузе, фокус на «Продолжить»; кнопки «Продолжить», «Выйти в меню», «Выход из игры» с рамкой и по центру, предупреждения нет", em.visible and paused and em.continue_button.has_focus()
 		and tr(em.continue_button.text) == "Продолжить" and tr(em.menu_button.text) == "Выйти в меню" and tr(em.quit_button.text) == "Выход из игры" and not em.note_label.visible and gold(em.continue_button) and gold(em.quit_button)
 		and centered(em.continue_button) and centered(em.menu_button) and centered(em.quit_button))
 	check("«Выход из игры» ведёт в Game.quit_game (сохранить и закрыть игру); не нажимается", em.quit_button.pressed.is_connected(em._on_quit) and g.has_method("quit_game"))

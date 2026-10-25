@@ -32,6 +32,7 @@ var diary_box: VBoxContainer   # строки дневника внутри пр
 var diary_close: Button
 var esc_menu: CanvasLayer      # меню паузы по Esc: «Продолжить», «Выйти в меню», «Выход из игры»
 var tabs: TabContainer         # «Осада» и «Дары»
+var gifts_panel: PanelContainer   # вкладка «Дары»: универсальная панель
 var radiance_label: Label      # баланс Сияния на вкладке «Дары»
 var gift_rows := {}            # id дара -> {level, effect, price, button, reason}: подписи и кнопка строки магазина
 
@@ -109,23 +110,28 @@ func _button(box: Container, text: String) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.add_theme_font_size_override("font_size", 36)
-	UI.gold_button(b)
+	UI.frame_button(b)
 	box.add_child(b)
 	return b
 
 
-# Вкладка «Дары»: баланс Сияния и таблица — иконка, название, уровень, эффект следующего уровня, цена, «Купить», причина отказа.
+# Вкладка «Дары» на универсальной панели: баланс Сияния и таблица — иконка, название, уровень, эффект следующего уровня, цена,
+# «Купить», причина отказа.
 func _setup_gifts() -> void:
+	gifts_panel = PanelContainer.new()
+	UI.frame_panel(gifts_panel)
+	tabs.add_child(gifts_panel)
+	tabs.set_tab_title(1, "HUB_TAB_GIFTS")
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 16)
-	tabs.add_child(col)
-	tabs.set_tab_title(1, "HUB_TAB_GIFTS")
+	gifts_panel.add_child(col)
 	var bal := HBoxContainer.new()
 	bal.alignment = BoxContainer.ALIGNMENT_CENTER
 	bal.add_theme_constant_override("separation", 12)
 	col.add_child(bal)
 	bal.add_child(_icon(RADIANCE_ICON, Vector2(40.0, 40.0)))
 	radiance_label = _label(bal, "", 40)
+	UI.frame_label(radiance_label)
 	radiance_label.add_theme_color_override("font_color", RADIANCE_COLOR)
 	var grid := GridContainer.new()
 	grid.columns = 7
@@ -149,7 +155,7 @@ func _setup_gifts() -> void:
 		var b := Button.new()
 		b.text = "HUB_GIFT_BUY"
 		b.add_theme_font_size_override("font_size", GIFT_FONT)
-		UI.gold_button(b)
+		UI.frame_button(b, false)   # строка таблицы: высота по тексту, как у строки дара
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		b.pressed.connect(_on_buy.bind(id))
 		grid.add_child(b)
@@ -157,7 +163,7 @@ func _setup_gifts() -> void:
 		row["reason"] = _cell(grid, "", WARN_COLOR)
 		gift_rows[id] = row
 	if game.gift_defs.is_empty():
-		_label(col, "HUB_GIFTS_LOAD_FAILED", 28)   # gifts.json с ошибкой: она уже выведена
+		UI.frame_label(_label(col, "HUB_GIFTS_LOAD_FAILED", 28))   # gifts.json с ошибкой: она уже выведена
 	_refresh_gifts()
 
 
@@ -178,6 +184,7 @@ func _cell(grid: GridContainer, text := "", color := Color.WHITE) -> Label:
 	l.text = text
 	l.add_theme_font_size_override("font_size", GIFT_FONT)
 	l.add_theme_color_override("font_color", color)
+	UI.frame_label(l)
 	grid.add_child(l)
 	return l
 
@@ -226,21 +233,18 @@ func _on_tab_changed(tab: int) -> void:
 		_refresh_gifts()
 
 
-# Панель дневника поверх хаба: заголовок, прокрутка со строками, «Закрыть». Скрыта, пока не открыта кнопкой.
+# Панель дневника поверх хаба (универсальная панель): заголовок, прокрутка со строками, «Закрыть». Скрыта, пока не открыта кнопкой.
 func _setup_diary() -> void:
 	diary_panel = PanelContainer.new()
 	diary_panel.anchor_left = 0.5 - DIARY_SIZE.x * 0.5
 	diary_panel.anchor_right = 0.5 + DIARY_SIZE.x * 0.5
 	diary_panel.anchor_top = 0.5 - DIARY_SIZE.y * 0.5
 	diary_panel.anchor_bottom = 0.5 + DIARY_SIZE.y * 0.5
-	var panel_bg := StyleBoxFlat.new()
-	panel_bg.bg_color = Color(0.03, 0.03, 0.04)
-	panel_bg.set_content_margin_all(24.0)
-	diary_panel.add_theme_stylebox_override("panel", panel_bg)
+	UI.frame_panel(diary_panel)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 16)
 	diary_panel.add_child(col)
-	_label(col, "UI_DIARY_TITLE", 40)
+	UI.frame_label(_label(col, "UI_DIARY_TITLE", 40))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -292,6 +296,7 @@ func _diary_text(text: String, size: int, color: Color) -> void:
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
+	UI.frame_label(l)
 	diary_box.add_child(l)
 
 

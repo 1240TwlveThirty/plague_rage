@@ -47,7 +47,7 @@ func _button(box: Container, text: String) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.add_theme_font_size_override("font_size", 36)
-	UI.gold_button(b)
+	UI.frame_button(b)
 	box.add_child(b)
 	return b
 

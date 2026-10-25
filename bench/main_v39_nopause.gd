@@ -72,6 +72,7 @@ const PORTRAITS := preload("res://scripts/portraits.gd")   # иллюстрац�
 const UI_LAYOUT_PATH := "res://data/ui_layout.json"   # размеры кнопок магазина, отрядов, действий и Клича (задача 16)
 const FIT_MIN_FONT := 11   # текст кнопки фиксированного размера ужимается до этого кегля (дальше — перенос по словам)
 const SHOP_PORTRAIT := {"inf_pack": "infantry", "archer_pack": "archer", "spear_pack": "spearman"}   # товар -> тип юнита для иллюстрации
+const UI := preload("res://scripts/ui.gd")   # универсальные рамки кнопки и панели (тема проекта, задача 18)
 const ESC_MENU := preload("res://scripts/esc_menu.gd")   # меню паузы по Esc: «Продолжить», «Выйти в меню», «Выход из игры»
 const ESC_NOTE := "UI_PAUSE_NOTE_LOSS"   # ключ перевода
 const BANNER_WIDTH := 700.0                   # ширина баннера, px: длинный текст переносится по словам
@@ -80,8 +81,8 @@ const RADIANCE_COLOR := Color(0.6, 0.9, 1.0)  # цвет строки «+N Си�
 const SQUAD_MAX := 8                          # ёмкость всех массивов отрядов (выделяются один раз)
 const START_SQUADS := 2                       # отряды 0 (пехота) и 1 (лучники) есть всегда и не освобождаются
 const ROTATE_STEP := PI / 12.0                # Shift + колесо: поворот отряда на месте, 15°
+const BANNER_BG_ALPHA := 0.55                 # непрозрачность панели баннера и «Командир пал»: строй под ними виден (текст непрозрачный)
 const BANNER_TOP := 120.0                     # верхняя граница баннера, px от верха экрана
-const BANNER_BG_ALPHA := 0.55                 # непрозрачность фона баннера
 const OVERLAP_MAX := 0.25                     # расстановка: доля площади меньшего блока, с которой пересечение со своим отрядом запрещено
 const DRAG_MIN := 24.0                       # px: короче — обычный клик, длиннее — расстановка строя по линии
 const FORM_MARGIN := 12.0                     # строй при расстановке не ниже WALL_Y - FORM_MARGIN
@@ -547,7 +548,7 @@ var leash_ticks := 0    # статистика: юнито-тики, где пр
 var type_id := {}   # имя -> номер
 var portraits = PORTRAITS.new()   # иллюстрации в кнопках (только интерфейс)
 # data/ui_layout.json: фиксированные размеры кнопок (минимум и он же ширина — текст ужимается, кнопка не растягивается).
-var ui_layout := {"shop_button_size": Vector2(464, 56), "squad_button_size": Vector2(352, 48), "action_button_height": 36.0, "war_cry_size": Vector2(352, 40)}
+var ui_layout := {"shop_button_size": Vector2(464, 56), "squad_button_size": Vector2(352, 48), "action_button_height": 48.0, "war_cry_size": Vector2(352, 48)}
 var type_label := PackedStringArray()   # название типа для интерфейса
 
 # --- Ворота и поражение (data/castle.json) ---
@@ -709,6 +710,7 @@ var hero_dead := false   # герой пал в этой волне: прика�
 var hero_near_r := CARDS.HERO_NEAR_DEFAULT   # радиус условия hero_near (hero.json hero_near_radius, px); читает _load_hero
 var hero_taken_mult := 1.0   # множитель урона по герою по условию hero_low (карточка 44, damage_taken); пишет _update_card_conditions, без карточки ровно 1.0
 var hero_fallen_label: Label   # «Командир пал» в HUD
+var hero_fallen_panel: PanelContainer   # её подложка (универсальная панель), видна вместе с ней
 var hero_view: Node2D          # герой на экране: кольцо-маркер и полоса HP (_draw_hero_marker), спрайт — дочерний; null в бенчах без дерева
 var hero_sprite: Sprite2D
 # Спрайтшит героя (задача 15; hero.json sprite_path, frame_w, frame_h, frames, animations, pivot, orient; только отрисовка):
@@ -4643,20 +4645,19 @@ func _setup_fps_label() -> void:
 	layer.add_child(pause_dim)
 	fps_label = Label.new()
 	layer.add_child(fps_label)
-	# Баннер по центру сверху (верх на BANNER_TOP): заголовок, текст, дневник, подсказка на полупрозрачном фоне;
-	# ширина BANNER_WIDTH вместе с полями, перенос по словам
+	# Баннер по центру сверху (верх на BANNER_TOP): заголовок, текст, дневник, подсказка на универсальной панели;
+	# ширина BANNER_WIDTH вместе с полями панели, перенос по словам
 	banner = PanelContainer.new()
-	var banner_bg := StyleBoxFlat.new()
-	banner_bg.bg_color = Color(0.0, 0.0, 0.0, BANNER_BG_ALPHA)
-	banner_bg.set_content_margin_all(16.0)
-	banner.add_theme_stylebox_override("panel", banner_bg)
+	UI.frame_panel(banner)
+	banner.self_modulate.a = BANNER_BG_ALPHA   # только рамка панели, не текст
+	var banner_pad := UI.panel_margins().x   # поля панели слева и справа
 	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE   # клики по карте проходят сквозь баннер
 	var banner_box := VBoxContainer.new()
 	banner_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	banner.add_child(banner_box)
 	for k in 4:
 		var l := Label.new()
-		l.custom_minimum_size.x = BANNER_WIDTH - 32.0
+		l.custom_minimum_size.x = BANNER_WIDTH - banner_pad
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.add_theme_font_size_override("font_size", 44 if k == 0 else 36)
@@ -4679,6 +4680,7 @@ func _setup_fps_label() -> void:
 	hub_button = Button.new()   # только на экране конца забега; баннер клики пропускает, кнопка — нет
 	hub_button.text = "HUD_TO_HUB"
 	hub_button.add_theme_font_size_override("font_size", 36)
+	UI.frame_button(hub_button)
 	hub_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	hub_button.visible = false
 	hub_button.pressed.connect(_to_hub)
@@ -4739,18 +4741,24 @@ func _setup_fps_label() -> void:
 	pause_label.add_theme_constant_override("outline_size", 8)
 	pause_label.visible = false
 	layer.add_child(pause_label)
-	hero_fallen_label = Label.new()   # «Командир пал» (задача 10): пока приказы заблокированы
+	hero_fallen_panel = PanelContainer.new()   # «Командир пал» (задача 10) на универсальной панели: пока приказы заблокированы
+	UI.frame_panel(hero_fallen_panel)
+	hero_fallen_panel.self_modulate.a = BANNER_BG_ALPHA
+	hero_fallen_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hero_fallen_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	hero_fallen_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	hero_fallen_panel.position.y = 156.0   # под меткой паузы
+	hero_fallen_label = Label.new()
 	hero_fallen_label.text = "HUD_HERO_FALLEN"
-	hero_fallen_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	hero_fallen_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hero_fallen_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	hero_fallen_label.position.y = 156.0   # под меткой паузы
 	hero_fallen_label.add_theme_font_size_override("font_size", 30)
 	hero_fallen_label.add_theme_color_override("font_color", Color("#e43b44"))   # Endesga 32
 	hero_fallen_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	hero_fallen_label.add_theme_constant_override("outline_size", 8)
 	hero_fallen_label.visible = false
-	layer.add_child(hero_fallen_label)
+	hero_fallen_panel.add_child(hero_fallen_label)
+	hero_fallen_panel.visible = false
+	layer.add_child(hero_fallen_panel)
 	# Магазин справа (виден только в передышке)
 	shop_panel = VBoxContainer.new()
 	shop_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
@@ -4797,6 +4805,7 @@ func _setup_fps_label() -> void:
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
 		b.custom_minimum_size = Vector2(0, ui_layout.action_button_height)
+		UI.frame_button(b, false)   # универсальная рамка, высота из ui_layout
 		b.pressed.connect(action_calls[k])
 		squad_actions.add_child(b)
 		action_buttons.append(b)
@@ -5164,6 +5173,7 @@ func _setup_war_cry_ui(layer: CanvasLayer) -> void:
 	war_cry_button = Button.new()
 	war_cry_button.focus_mode = Control.FOCUS_NONE
 	_fixed_button(war_cry_button, ui_layout.war_cry_size)
+	UI.frame_button(war_cry_button, false)   # универсальная рамка, размер из ui_layout
 	war_cry_button.pressed.connect(request_war_cry)
 	war_cry_box.add_child(war_cry_button)
 	war_cry_bar = ProgressBar.new()
@@ -5227,6 +5237,7 @@ func _update_ui() -> void:
 	if hud_label == null:
 		return
 	hero_fallen_label.visible = _orders_locked()
+	hero_fallen_panel.visible = hero_fallen_label.visible
 	hud_label.text = tr("HUD_STATUS") % [
 		"%d/%d" % [wave_number, waves_per_run] if run_limit else str(wave_number), zombie_alive + wave_remaining, ceili(maxf(gate_hp, 0.0)), roundi(gate_hp_max), floori(gold)]
 	if scout_shown and waves_enabled and wave_state == WS_RESPITE:
