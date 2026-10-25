@@ -8,6 +8,7 @@ extends RefCounted
 # градиент (задача 16) — в том же файле: gradient_left_alpha у левого края, gradient_right_alpha на доле gradient_width ширины
 # кнопки и дальше вправо; общего затемнения картинки нет. Наведение — картинка ярче и тонкая светлая рамка; нажатая или выбранная —
 # рамка #feae34 3 px; недоступная — серая и темнее.
+const FONTS := preload("res://scripts/fonts.gd")   # кегли и контуры текста под вариант шрифта (задача 20)
 const PATH := "res://data/unit_portraits.json"
 const UI_DIR := "res://art/ui/"
 const MADE_PATH := "res://art/ui/unit_portraits_made.json"
@@ -218,7 +219,7 @@ func apply(b: Button, type_name: String) -> void:
 	for st in _styles():
 		b.add_theme_stylebox_override(st, styles[st])
 	b.add_theme_color_override("font_outline_color", Color.BLACK)
-	b.add_theme_constant_override("outline_size", OUTLINE_PX)
+	b.add_theme_constant_override("outline_size", FONTS.outline(OUTLINE_PX))
 	pic.texture = tex
 	pic.visible = true
 	b.get_node("Shade").visible = true

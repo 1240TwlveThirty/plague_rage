@@ -6,6 +6,7 @@ extends CanvasLayer
 signal picked(id: String)
 
 const DIM := Color(0.0, 0.0, 0.0, 0.85)
+const FONTS := preload("res://scripts/fonts.gd")   # кегли и контуры текста под вариант шрифта (задача 20)
 const ICONS := preload("res://scripts/icons.gd")
 const CARDS := preload("res://scripts/cards.gd")   # fill_desc: {hero_near_radius} в описании
 const FRAME_TIMER := "res://art/card_perk_timer.png"   # рамка временной карточки
@@ -51,7 +52,7 @@ func _ready() -> void:
 	var title := Label.new()
 	title.text = "UI_CARDS_TITLE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 56)
+	title.add_theme_font_size_override("font_size", FONTS.px(56))
 	box.add_child(title)
 	row = HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -60,14 +61,14 @@ func _ready() -> void:
 	var hint := Label.new()
 	hint.text = "UI_CARDS_HINT"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.add_theme_font_size_override("font_size", 24)
+	hint.add_theme_font_size_override("font_size", FONTS.px(24))
 	hint.modulate = Color(1, 1, 1, 0.7)
 	box.add_child(hint)
 	owned_label = Label.new()
 	owned_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	owned_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	owned_label.custom_minimum_size = Vector2(1400, 0)
-	owned_label.add_theme_font_size_override("font_size", 22)
+	owned_label.add_theme_font_size_override("font_size", FONTS.px(22))
 	box.add_child(owned_label)
 
 
@@ -156,7 +157,7 @@ func _card(k: int, d: Dictionary) -> Button:
 	desc.fit_content = true
 	desc.scroll_active = false
 	desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	desc.add_theme_font_size_override("normal_font_size", 18)
+	desc.add_theme_font_size_override("normal_font_size", FONTS.px(18))
 	desc.add_theme_color_override("default_color", INK)
 	desc.custom_minimum_size.x = col.size.x
 	desc.text = desc_bbcode(CARDS.fill_desc(tr(d.desc_key)), COST_ON_CARD)
@@ -201,7 +202,7 @@ func _text(parent: Control, text: String, size: int, color: Color) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_font_size_override("font_size", FONTS.px(size))
 	l.add_theme_color_override("font_color", color)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(l)

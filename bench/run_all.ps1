@@ -87,6 +87,8 @@ Godot "арты: спрайтшит героя, иллюстрации отря�
 Godot "рамки: арт и срез 9-slice (v68)" "res://bench/make_ui_scaled.gd" "UI_ART: проверка пройдена" @("check")
 Godot "рамки: тема и где применена (v68)" "res://bench/check_v68_ui.gd" "CHECK: провалов 0"
 Godot "верхняя панель боя и окошко Сияния (v69)" "res://bench/check_v69_hud.gd" "CHECK: провалов 0"
+Godot "шрифты: покрытие символов (v70)" "res://bench/check_font_coverage.gd" "COVERAGE: символов"
+Godot "шрифты: варианты, кегли, хаб (v70)" "res://bench/check_v70_fonts.gd" "CHECK: провалов 0"
 Godot "меню, хаб, пауза по Esc (v45)" "res://bench/check_v45.gd" "CHECK: провалов 0"
 Godot "подгонка слоя замка (v48)" "res://bench/check_v48.gd" "CHECK: провалов 0"
 Godot "настройки, полный экран (v49)" "res://bench/check_v49.gd" "CHECK: провалов 0"
@@ -97,6 +99,7 @@ Godot "отряды: создание, слияние (v28)" "res://bench/check_
 Godot "управление строем (v29)" "res://bench/check_v29.gd" "да"
 Godot "смоук с окном: пауза (v39)" "res://bench/smoke_v39.gd" "SMOKE: провалов 0" @() -Window
 Godot "смоук с окном: мышь (v40)" "res://bench/smoke_v40.gd" "SMOKE: провалов 0" @() -Window
+Godot "смоук с окном: мышь, окно на другом мониторе (v40)" "res://bench/smoke_v40.gd" "SMOKE: провалов 0" @("other_screen") -Window
 Godot "смоук с окном: меню, хаб (v41)" "res://bench/smoke_v41.gd" "SMOKE: провалов 0" @() -Window
 Godot "смоук с окном: дневник (v42)" "res://bench/smoke_v42.gd" "SMOKE: провалов 0" @() -Window
 Godot "смоук с окном: F11 (v49)" "res://bench/smoke_v49.gd" "SMOKE: провалов 0" @("$tmp") -Window

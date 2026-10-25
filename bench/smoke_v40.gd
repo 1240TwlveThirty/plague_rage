@@ -1,8 +1,37 @@
 extends SceneTree
 # Smoke v40, этап 2, со сценой и окном (без --headless): ЛКМ клик, двойной клик, рамка, ПКМ клик и протяжка,
 # Shift, Ctrl+A, Esc, цифры, строки панели — синтетическими событиями через окно (интерфейс получает их первым).
+# Перед каждым нажатием мыши курсор ОС переносится в ту же точку окна (Viewport.warp_mouse) и окно — на передний план, если
+# фокус потерян (задача 20: настоящая мышь вне окна, например на другом мониторе, давала событиям ОС сбивать наведение GUI).
+# Аргумент other_screen: окно — на другой монитор, курсор ОС — в середину прежнего (проверка, что тест от этого не зависит).
 var fails := 0
 var m: Node2D
+var refocus := 0   # сколько раз окно пришлось возвращать на передний план
+
+var os_moves := 0   # движения мыши, пришедшие от ОС (не синтетические)
+
+func _on_window_input(e: InputEvent) -> void:
+	if e is InputEventMouseMotion:
+		os_moves += 1
+
+# Окно в фокусе (иначе — на передний план); курсор ОС — в точку at окна. Если курсор ОС сдвинулся, ждём его событие движения
+# (до 30 кадров): пришедшее позже синтетических, оно сбило бы рамку и протяжку (box_cur, drag_cur).
+func aim(at: Vector2) -> void:
+	if not DisplayServer.window_is_focused():
+		refocus += 1
+		DisplayServer.window_move_to_foreground()
+		await process_frame
+		await process_frame
+	var was := DisplayServer.mouse_get_position()
+	var n := os_moves
+	root.warp_mouse(at)
+	if DisplayServer.mouse_get_position() == was:
+		return
+	for i in 30:
+		await process_frame
+		if os_moves > n:
+			break
+	await process_frame
 
 func check(what: String, ok: bool, info := "") -> void:
 	if not ok:
@@ -29,6 +58,8 @@ func scr(w: Vector2) -> Vector2:
 	return m.get_global_transform_with_canvas() * w
 
 func button(btn: MouseButton, at: Vector2, pressed: bool, shift := false, dbl := false) -> void:
+	if pressed:
+		await aim(at)   # отпускание — без переноса: протяжка идёт синтетическими событиями
 	var e := InputEventMouseButton.new()
 	e.button_index = btn
 	e.pressed = pressed
@@ -55,6 +86,7 @@ func click(btn: MouseButton, at: Vector2, shift := false, dbl := false) -> void:
 # окна, движение настоящей мыши) — GUI тогда сбрасывает фокус мыши (Viewport на NOTIFICATION_WM_WINDOW_FOCUS_OUT) и отпускание
 # уже не нажимает кнопку. Так падал пункт «б» в run_all (задачи 8–10); внутри одного кадра события ОС не обрабатываются.
 func tap(btn: MouseButton, at: Vector2, shift := false) -> void:
+	await aim(at)
 	for pressed in [true, false]:
 		var e := InputEventMouseButton.new()
 		e.button_index = btn
@@ -96,6 +128,21 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
+	root.window_input.connect(_on_window_input)
+	if "other_screen" in OS.get_cmdline_user_args():
+		var n := DisplayServer.get_screen_count()
+		var was := DisplayServer.window_get_current_screen()
+		if n < 2:
+			print("  другой монитор: экран один — проверка с курсором ОС вне окна (в углу экрана)")
+			Input.warp_mouse(Vector2(-DisplayServer.window_get_position()) + Vector2(4, 4))
+		else:
+			DisplayServer.window_set_current_screen((was + 1) % n)
+			await step(5)
+			var mid := DisplayServer.screen_get_position(was) + DisplayServer.screen_get_size(was) / 2
+			Input.warp_mouse(Vector2(mid - DisplayServer.window_get_position()))   # курсор ОС — на прежний монитор
+			await step(2)
+			print("  другой монитор: окно на экране %d из %d, курсор ОС на экране %d (%s)" % [DisplayServer.window_get_current_screen(), n, was,
+				str(DisplayServer.mouse_get_position())])
 	m = load("res://scenes/main.tscn").instantiate()
 	m.record_path = "user://record_bench.json"
 	root.add_child(m)
@@ -181,14 +228,22 @@ func _run() -> void:
 		sel_keys and group_move and flipped and face_up and absf(m.squad_pos[2].y - m.squad_pos[3].y) < 0.01 and m.squad_pos[2].x < m.squad_pos[3].x and m.squad_target[2] == m.squad_pos[2],
 		"отряды %s и %s" % [m.squad_pos[2].round(), m.squad_pos[3].round()])
 	teleport()
-	# Esc во время ПКМ-протяжки
+	# Esc во время ПКМ-протяжки. Физика стоит: отряды не доезжают до целей прошлого пункта (сколько тиков проходит за кадр —
+	# зависит от частоты монитора), squad_pos меняет только сама протяжка
+	m.set_physics_process(false)
 	var p_before: PackedVector2Array = m.squad_pos.duplicate()
+	var t_before: PackedVector2Array = m.squad_target.duplicate()
 	await button(MOUSE_BUTTON_RIGHT, scr(Vector2(700, 600)), true)
 	await move(scr(Vector2(1000, 600)))
+	var dragging: bool = m.drag_active
 	await key(KEY_ESCAPE)
 	await button(MOUSE_BUTTON_RIGHT, scr(Vector2(1000, 600)), false)
-	check("(л) Esc во время ПКМ-протяжки отменяет её", m.squad_pos == p_before and not m.drag_active)
-	# Ctrl+A и строки панели
+	check("(л) Esc во время ПКМ-протяжки отменяет её", dragging and m.squad_pos == p_before and m.squad_target == t_before and not m.drag_active,
+		"протяжка шла: %s" % dragging)
+	m.set_physics_process(true)
+	# Ctrl+A и строки панели. Физика стоит: цели меняют только клики (отряды «атака» сами берут цели, а сколько тиков пройдёт,
+	# пока курсор ОС переносится в окно, зависит от монитора)
+	m.set_physics_process(false)
 	await key(KEY_A, false, true)
 	var all: bool = m.sel_mask == mask_of([0, 1, 2, 3])
 	var t1: PackedVector2Array = m.squad_target.duplicate()
@@ -203,6 +258,7 @@ func _run() -> void:
 		all and row_one and row_add and row_off and m.squad_target == t1 and not m.box_active and not m.drag_active,
 		"все %s, строка %s, добавить %s, убрать %s, цели %s, рамка %s, протяжка %s, маска %d, мышь ОС %s, фокус окна %s" % [all, row_one, row_add, row_off,
 		m.squad_target == t1, m.box_active, m.drag_active, m.sel_mask, root.get_mouse_position(), DisplayServer.window_is_focused()])
+	m.set_physics_process(true)
 	# команды набора клавишами и бой с паузой
 	await key(KEY_A, false, true)
 	await key(KEY_Y)
@@ -238,5 +294,6 @@ func _run() -> void:
 	await step(5)
 	await key(KEY_P)
 	await step(5)
+	print("  окно возвращалось на передний план: %d раз" % refocus)
 	print("SMOKE: провалов %d" % fails)
 	quit()

@@ -8,7 +8,7 @@ const SLOT := preload("res://scripts/hud_slot.gd")
 const LAYOUT_PATH := "res://data/ui_layout.json"
 # Значения по умолчанию (нет файла или поле неверно): как в data/ui_layout.json
 const DEFAULT := {"top": 16, "gap": 12, "height": 56, "icon_scale": 2, "icon_gap": 8, "font_size": 18, "font_min": 16,
-	"slots": [{"id": "wave", "icon": "hourglass", "width": 200}, {"id": "zombies", "icon": "skull", "width": 200},
+	"slots": [{"id": "wave", "icon": "hourglass", "width": 200}, {"id": "zombies_left", "icon": "skull", "width": 200},
 		{"id": "troops", "icon": "soldiers", "width": 200}, {"id": "gate", "icon": "gate", "width": 600, "bar": true},
 		{"id": "gold", "icon": "coin", "width": 200}]}
 const DEFAULT_CORNER := {"id": "radiance", "icon": "radiance", "width": 200, "top": 16, "right": 16}

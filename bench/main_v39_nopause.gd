@@ -21,6 +21,7 @@ const CARD_IDLE := Color(1.0, 1.0, 1.0, 0.55)   # условная карточ�
 const BLOCK_CAP := 0.95   # общий шанс блока не выше
 const COND_EVERY := 15   # условия карточек пересчитываются раз в столько тиков симуляции
 const CD_CARRY := 2.0 / 30.0   # перенос остатка перезарядки: не больше одного шага решения юнита (2 тика при 30 Гц)
+const FONTS := preload("res://scripts/fonts.gd")   # кегли и контуры текста под вариант шрифта (задача 20)
 const SETTINGS := preload("res://scripts/settings.gd")   # key_label(действие): клавиша для подсказок
 # Действия клавиатуры в порядке проверки (_key_action): с модификаторами раньше, чтобы Ctrl+A не ушло в действие на A
 const ACTION_TEXTS := ["HUD_SQUAD_NEW", "HUD_SQUAD_SPLIT", "HUD_SQUAD_MERGE"]   # кнопки под панелью отрядов (ключи, %s — клавиша)
@@ -1261,7 +1262,7 @@ func _tune_show() -> void:
 		var layer := CanvasLayer.new()
 		tune_label = Label.new()
 		tune_label.position = Vector2(16, 40)
-		tune_label.add_theme_constant_override("outline_size", 6)
+		tune_label.add_theme_constant_override("outline_size", FONTS.outline(6))
 		tune_label.add_theme_color_override("font_outline_color", Color.BLACK)
 		tune_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		layer.add_child(tune_label)
@@ -1381,13 +1382,13 @@ func _draw() -> void:
 			if g.n > 0:
 				_draw_block_preview(type_color[squad_type[list[0]]], g.centre, g.front, g.angle, g.width, g.rows, g.adjusted or g.overlap >= 0)
 				draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), tr("HUD_PREVIEW_ONE") % [g.width, g.rows, g.n],
-					HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
+					HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONTS.px(20), Color.WHITE)
 		elif list.size() > 1:
 			var mg := _multi_geometry(list, drag_start, drag_cur, drag_flip)
 			for it in mg.items:
 				_draw_block_preview(type_color[squad_type[it.s]], it.centre, it.front, mg.angle, it.width, it.rows, mg.adjusted or not mg.fits or mg.overlap >= 0)
 			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), tr("HUD_PREVIEW_MANY") % [list.size(), roundi(mg.length)],
-				HORIZONTAL_ALIGNMENT_LEFT, -1.0, 20, Color.WHITE)
+				HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONTS.px(20), Color.WHITE)
 	# Сигнал всплеска: пульсирующая золотая полоса вдоль края экрана и мигающий (2 Гц) треугольник 48 px у своей стороны
 	var vr := view_rect()
 	var view_lo := vr.position
@@ -1443,7 +1444,7 @@ func _draw() -> void:
 		for q in items.size():
 			var cell := Vector2(x0 + q * 78.0, at.y - 7.0)
 			draw_rect(Rect2(cell, Vector2(14, 14)), type_color[items[q][0]])
-			draw_string(ThemeDB.fallback_font, cell + Vector2(18.0, 13.0), "×%d" % items[q][1], HORIZONTAL_ALIGNMENT_LEFT, -1.0, 18, Color.WHITE)
+			draw_string(ThemeDB.fallback_font, cell + Vector2(18.0, 13.0), "×%d" % items[q][1], HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONTS.px(18), Color.WHITE)
 	if not DEBUG_COLORS:
 		return
 	draw_circle(GATE_POS, 8.0, Color(1.0, 0.85, 0.2, 0.8))
@@ -2199,9 +2200,9 @@ func _update_cards_ui() -> void:
 			var l := Label.new()
 			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 			l.mouse_filter = Control.MOUSE_FILTER_STOP   # подсказка при наведении
-			l.add_theme_font_size_override("font_size", 18)
+			l.add_theme_font_size_override("font_size", FONTS.px(18))
 			l.add_theme_color_override("font_outline_color", Color.BLACK)
-			l.add_theme_constant_override("outline_size", 5)
+			l.add_theme_constant_override("outline_size", FONTS.outline(5))
 			row.add_child(l)
 			cards_box.add_child(row)
 			cards_rows.append(l)
@@ -4684,9 +4685,9 @@ func _setup_fps_label() -> void:
 		l.custom_minimum_size.x = BANNER_WIDTH - banner_pad
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l.add_theme_font_size_override("font_size", 44 if k == 0 else 36)
+		l.add_theme_font_size_override("font_size", FONTS.px(44 if k == 0 else 36))
 		l.add_theme_color_override("font_outline_color", Color.BLACK)
-		l.add_theme_constant_override("outline_size", 8)
+		l.add_theme_constant_override("outline_size", FONTS.outline(8))
 		if k == 2:
 			l.add_theme_color_override("font_color", STORY_COLOR)
 		l.visible = false
@@ -4694,16 +4695,16 @@ func _setup_fps_label() -> void:
 		banner_labels.append(l)
 	radiance_label = Label.new()   # «+N Сияния»: только на экране итога, перед подсказкой
 	radiance_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	radiance_label.add_theme_font_size_override("font_size", 36)
+	radiance_label.add_theme_font_size_override("font_size", FONTS.px(36))
 	radiance_label.add_theme_color_override("font_color", RADIANCE_COLOR)
 	radiance_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	radiance_label.add_theme_constant_override("outline_size", 8)
+	radiance_label.add_theme_constant_override("outline_size", FONTS.outline(8))
 	radiance_label.visible = false
 	banner_box.add_child(radiance_label)
 	banner_box.move_child(radiance_label, 3)
 	hub_button = Button.new()   # только на экране конца забега; баннер клики пропускает, кнопка — нет
 	hub_button.text = "HUD_TO_HUB"
-	hub_button.add_theme_font_size_override("font_size", 36)
+	hub_button.add_theme_font_size_override("font_size", FONTS.px(36))
 	UI.frame_button(hub_button)
 	hub_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	hub_button.visible = false
@@ -4726,9 +4727,9 @@ func _setup_fps_label() -> void:
 	cards_label = Label.new()
 	cards_label.text = "HUD_CARDS"
 	cards_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	cards_label.add_theme_font_size_override("font_size", 18)
+	cards_label.add_theme_font_size_override("font_size", FONTS.px(18))
 	cards_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	cards_label.add_theme_constant_override("outline_size", 5)
+	cards_label.add_theme_constant_override("outline_size", FONTS.outline(5))
 	cards_label.visible = false
 	cards_box.add_child(cards_label)
 	layer.add_child(cards_box)
@@ -4743,9 +4744,9 @@ func _setup_fps_label() -> void:
 	info_label.custom_minimum_size.x = INFO_WIDTH
 	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # уже переведённые строки
-	info_label.add_theme_font_size_override("font_size", 22)
+	info_label.add_theme_font_size_override("font_size", FONTS.px(22))
 	info_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	info_label.add_theme_constant_override("outline_size", 6)
+	info_label.add_theme_constant_override("outline_size", FONTS.outline(6))
 	info_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(info_label)
 	radiance_slot = TOP_HUD.corner_slot()   # «Сияние» на экране итога: баланс после забега и «+N» под окошком
@@ -4754,10 +4755,10 @@ func _setup_fps_label() -> void:
 	radiance_earned_label = Label.new()
 	radiance_earned_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	radiance_earned_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	radiance_earned_label.add_theme_font_size_override("font_size", 22)
+	radiance_earned_label.add_theme_font_size_override("font_size", FONTS.px(22))
 	radiance_earned_label.add_theme_color_override("font_color", RADIANCE_COLOR)
 	radiance_earned_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	radiance_earned_label.add_theme_constant_override("outline_size", 6)
+	radiance_earned_label.add_theme_constant_override("outline_size", FONTS.outline(6))
 	radiance_earned_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	radiance_earned_label.visible = false
 	layer.add_child(radiance_earned_label)
@@ -4767,10 +4768,10 @@ func _setup_fps_label() -> void:
 	burst_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	burst_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	burst_label.position.y = top_hud.bottom() + 4.0   # сразу под панелью
-	burst_label.add_theme_font_size_override("font_size", 30)
+	burst_label.add_theme_font_size_override("font_size", FONTS.px(30))
 	burst_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.2))
 	burst_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	burst_label.add_theme_constant_override("outline_size", 8)
+	burst_label.add_theme_constant_override("outline_size", FONTS.outline(8))
 	burst_label.visible = false
 	layer.add_child(burst_label)
 	pause_label = Label.new()
@@ -4779,9 +4780,9 @@ func _setup_fps_label() -> void:
 	pause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pause_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	pause_label.position.y = burst_label.position.y + 40.0   # под панелью и строкой сигнала всплеска
-	pause_label.add_theme_font_size_override("font_size", 30)
+	pause_label.add_theme_font_size_override("font_size", FONTS.px(30))
 	pause_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	pause_label.add_theme_constant_override("outline_size", 8)
+	pause_label.add_theme_constant_override("outline_size", FONTS.outline(8))
 	pause_label.visible = false
 	layer.add_child(pause_label)
 	hero_fallen_panel = PanelContainer.new()   # «Командир пал» (задача 10) на универсальной панели: пока приказы заблокированы
@@ -4794,10 +4795,10 @@ func _setup_fps_label() -> void:
 	hero_fallen_label = Label.new()
 	hero_fallen_label.text = "HUD_HERO_FALLEN"
 	hero_fallen_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hero_fallen_label.add_theme_font_size_override("font_size", 30)
+	hero_fallen_label.add_theme_font_size_override("font_size", FONTS.px(30))
 	hero_fallen_label.add_theme_color_override("font_color", Color("#e43b44"))   # Endesga 32
 	hero_fallen_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	hero_fallen_label.add_theme_constant_override("outline_size", 8)
+	hero_fallen_label.add_theme_constant_override("outline_size", FONTS.outline(8))
 	hero_fallen_label.visible = false
 	hero_fallen_panel.add_child(hero_fallen_label)
 	hero_fallen_panel.visible = false
@@ -4879,7 +4880,7 @@ func _setup_fps_label() -> void:
 	hint_label = Label.new()
 	_setup_war_cry_ui(layer)
 	hint_label.text = "HUD_MOUSE_HINT"
-	hint_label.add_theme_font_size_override("font_size", 13)
+	hint_label.add_theme_font_size_override("font_size", FONTS.px(13))
 	hint_label.modulate = Color(1.0, 1.0, 1.0, 0.7)
 	squad_panel.add_child(hint_label)
 	layer.add_child(squad_panel)
@@ -5215,7 +5216,7 @@ func _fit_text(b: Button) -> void:
 	var room := b.custom_minimum_size - b.get_theme_stylebox("normal").get_minimum_size()
 	var fs := -1
 	for wrap in [false, true]:
-		for f in range(base, FIT_MIN_FONT - 1, -1):
+		for f in FONTS.fit_sizes(base, FIT_MIN_FONT):
 			var sz := font.get_multiline_string_size(b.text, HORIZONTAL_ALIGNMENT_LEFT, room.x if wrap else -1.0, f, -1,
 				(TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE) if wrap else TextServer.BREAK_MANDATORY)
 			if sz.x <= room.x + 0.5 and sz.y <= room.y + 0.5:
@@ -5223,7 +5224,7 @@ func _fit_text(b: Button) -> void:
 				break
 		if fs > 0:
 			break
-	fs = FIT_MIN_FONT if fs < 0 else fs
+	fs = FONTS.px(FIT_MIN_FONT) if fs < 0 else fs
 	if fs != base:
 		b.add_theme_font_size_override("font_size", fs)
 

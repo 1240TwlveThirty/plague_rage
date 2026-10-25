@@ -10,6 +10,7 @@ const WINDOW_SIZE := Vector2i(1920, 1080)       # окно по умолчани
 const WINDOW_SIZE_SMALL := Vector2i(1280, 720)  # если экран меньше WINDOW_SIZE
 const LANGUAGES := ["ru", "en"]
 const AUDIO := preload("res://scripts/audio.gd")   # шины Music и SFX
+const FONTS := preload("res://scripts/fonts.gd")   # вариант шрифта (data/ui_theme.json, --font=...), задача 20
 const VOLUME_DEFAULT := 0.8
 
 var path := PATH
@@ -22,6 +23,7 @@ var sfx_volume := VOLUME_DEFAULT     # audio/sfx: шины SFX
 
 
 func _ready() -> void:
+	FONTS.apply_project()   # пиксельный шрифт — до первых экранов
 	process_mode = Node.PROCESS_MODE_ALWAYS   # F11 и на паузе
 	ensure_code_actions()
 	persist = get_tree().get_script() == null   # обычный запуск игры, не тестовый SceneTree

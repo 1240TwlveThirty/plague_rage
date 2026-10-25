@@ -2,6 +2,7 @@ extends CanvasLayer
 # Экран «Настройки» поверх того, откуда открыт (главное меню, меню паузы): вкладки, «Назад». Esc тоже закрывает
 # и дальше не идёт — меню под ним остаётся открытым. Значения читает и пишет автозагрузка Settings.
 # Тексты — ключи перевода: метки и кнопки переводятся сами, собранные строки обновляются при смене языка.
+const FONTS := preload("res://scripts/fonts.gd")   # кегли и контуры текста под вариант шрифта (задача 20)
 const UI := preload("res://scripts/ui.gd")
 const BG := Color(0.0, 0.0, 0.0, 1.0)   # непрозрачный: меню под экраном не просвечивает
 const FONT := 30
@@ -41,12 +42,12 @@ func _ready() -> void:
 	var title := Label.new()
 	title.text = "UI_SETTINGS_TITLE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 64)
+	title.add_theme_font_size_override("font_size", FONTS.px(64))
 	box.add_child(title)
 	tabs = TabContainer.new()
 	tabs.tab_alignment = TabBar.ALIGNMENT_CENTER
 	tabs.custom_minimum_size = Vector2(960, 600)
-	tabs.add_theme_font_size_override("font_size", FONT)
+	tabs.add_theme_font_size_override("font_size", FONTS.px(FONT))
 	box.add_child(tabs)
 	_setup_video()
 	_setup_audio()
@@ -54,7 +55,7 @@ func _ready() -> void:
 	_setup_language()
 	back_button = Button.new()
 	back_button.text = "UI_SETTINGS_BACK"
-	back_button.add_theme_font_size_override("font_size", 36)
+	back_button.add_theme_font_size_override("font_size", FONTS.px(36))
 	back_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	UI.frame_button(back_button)
 	back_button.pressed.connect(close)
@@ -85,13 +86,13 @@ func _setup_video() -> void:
 	var col := _tab("UI_SETTINGS_TAB_VIDEO")
 	fullscreen_check = CheckButton.new()
 	fullscreen_check.text = "UI_SETTINGS_FULLSCREEN"
-	fullscreen_check.add_theme_font_size_override("font_size", FONT)
+	fullscreen_check.add_theme_font_size_override("font_size", FONTS.px(FONT))
 	fullscreen_check.button_pressed = settings.fullscreen
 	fullscreen_check.toggled.connect(settings.set_fullscreen)
 	col.add_child(fullscreen_check)
 	shake_check = CheckButton.new()
 	shake_check.text = "UI_SETTINGS_SCREEN_SHAKE"
-	shake_check.add_theme_font_size_override("font_size", FONT)
+	shake_check.add_theme_font_size_override("font_size", FONTS.px(FONT))
 	shake_check.button_pressed = settings.screen_shake
 	shake_check.toggled.connect(settings.set_screen_shake)
 	col.add_child(shake_check)
@@ -111,7 +112,7 @@ func _volume_row(col: Container, title: String, value: float, on_change: Callabl
 	var l := Label.new()
 	l.text = title
 	l.custom_minimum_size.x = 300.0
-	l.add_theme_font_size_override("font_size", FONT)
+	l.add_theme_font_size_override("font_size", FONTS.px(FONT))
 	row.add_child(l)
 	var sl := HSlider.new()
 	sl.min_value = 0.0
@@ -145,25 +146,25 @@ func _setup_controls() -> void:
 			continue
 		var l := Label.new()
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		l.add_theme_font_size_override("font_size", 26)
+		l.add_theme_font_size_override("font_size", FONTS.px(26))
 		grid.add_child(l)
 		key_titles[a] = l
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(320, 0)
-		b.add_theme_font_size_override("font_size", 26)
+		b.add_theme_font_size_override("font_size", FONTS.px(26))
 		b.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # названия клавиш не переводятся
 		UI.frame_button(b, false)   # строка таблицы: ширина 320 своя, высота по тексту
 		b.pressed.connect(_wait_key.bind(a))
 		grid.add_child(b)
 		key_buttons[a] = b
 	key_msg = Label.new()
-	key_msg.add_theme_font_size_override("font_size", 24)
+	key_msg.add_theme_font_size_override("font_size", FONTS.px(24))
 	key_msg.add_theme_color_override("font_color", Color(1.0, 0.75, 0.35))
 	key_msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(key_msg)
 	reset_keys_button = Button.new()
 	reset_keys_button.text = "UI_SETTINGS_KEYS_RESET"
-	reset_keys_button.add_theme_font_size_override("font_size", 26)
+	reset_keys_button.add_theme_font_size_override("font_size", FONTS.px(26))
 	reset_keys_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	UI.frame_button(reset_keys_button)
 	reset_keys_button.pressed.connect(_reset_keys)
@@ -179,7 +180,7 @@ func _setup_language() -> void:
 		var b := CheckBox.new()
 		b.text = "UI_SETTINGS_LANG_" + l.to_upper()
 		b.button_group = group
-		b.add_theme_font_size_override("font_size", FONT)
+		b.add_theme_font_size_override("font_size", FONTS.px(FONT))
 		b.button_pressed = settings.language == l
 		b.pressed.connect(settings.set_language.bind(l))
 		col.add_child(b)

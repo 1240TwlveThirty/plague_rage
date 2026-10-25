@@ -268,9 +268,10 @@ func t_battle() -> void:
 		m._physics_process(DT)
 	m._update_ui()
 	var v: Dictionary = th.get_values()
-	check("значения в бою = состоянию: %s (войска — сумма squad_n %d, герой не считается)" % [str(v), troops(m)], v.wave == m.wave_number and v.wave_max == m.waves_per_run
-		and v.zombies == m.zombie_alive and v.troops == troops(m) and v.gate == ceili(maxf(m.gate_hp, 0.0)) and v.gate_max == roundi(m.gate_hp_max)
-		and v.gold == floori(m.gold) and v.zombies > 0)
+	check("значения в бою = состоянию: %s (зомби: zombies — живые, zombies_left — живые и ещё не вышедшие; войска — сумма squad_n %d, герой не считается)" % [str(v), troops(m)], v.wave == m.wave_number and v.wave_max == m.waves_per_run
+		and v.get("zombies", m.zombie_alive) == m.zombie_alive and v.get("zombies_left", m.zombie_alive + m.wave_remaining) == m.zombie_alive + m.wave_remaining
+		and (v.has("zombies") or v.has("zombies_left")) and v.troops == troops(m) and v.gate == ceili(maxf(m.gate_hp, 0.0)) and v.gate_max == roundi(m.gate_hp_max)
+		and v.gold == floori(m.gold) and m.zombie_alive > 0)
 	var labels := {}
 	for id in th.slots:
 		labels[id] = th.slots[id].label

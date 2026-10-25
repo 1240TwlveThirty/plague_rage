@@ -2,6 +2,7 @@ extends Control
 # Хаб-заглушка между забегами, две вкладки. «Осада»: осада, итог последнего забега, рекорды, «Начать забег», «Дневник» и «В меню».
 # «Дары»: магазин даров за Сияние (правила покупки — в Game). Интерфейс строится кодом. Выбор осады виден, только когда открыто больше одной.
 # Тексты — ключи перевода: постоянные метки и кнопки переводятся сами, собранные строки пересобираются при смене языка.
+const FONTS := preload("res://scripts/fonts.gd")   # кегли и контуры текста под вариант шрифта (задача 20)
 const UI := preload("res://scripts/ui.gd")
 const ESC_MENU := preload("res://scripts/esc_menu.gd")
 const WARN_COLOR := Color(1.0, 0.75, 0.35)
@@ -18,6 +19,7 @@ const GIFT_ICON := "res://art/card_meta_perk.png"   # общая заглушк�
 const GIFT_ICON_SIZE := Vector2(32.0, 48.0)   # 12 строк даров помещаются на экран 1080
 const GIFT_FONT := 26
 const GIFT_MAX := "—"
+const REASON_MARGIN := 16.0   # вкладка «Дары» с причинами отказа — не ближе к краю экрана
 
 var game: Node
 var chosen := 1                # осада, с которой начнётся забег
@@ -60,7 +62,7 @@ func _ready() -> void:
 	warning_label.visible = game.save_warning != ""
 	tabs = TabContainer.new()
 	tabs.tab_alignment = TabBar.ALIGNMENT_CENTER
-	tabs.add_theme_font_size_override("font_size", 30)
+	tabs.add_theme_font_size_override("font_size", FONTS.px(30))
 	box.add_child(tabs)
 	var top := box
 	box = VBoxContainer.new()
@@ -75,7 +77,7 @@ func _ready() -> void:
 	var open: int = maxi(game.unlocked_siege, 1)
 	chosen = clampi(game.last_siege, 1, open)
 	siege_option = OptionButton.new()
-	siege_option.add_theme_font_size_override("font_size", 30)
+	siege_option.add_theme_font_size_override("font_size", FONTS.px(30))
 	for s in range(1, open + 1):
 		siege_option.add_item(game.siege_name(s), s)
 	siege_option.select(siege_option.get_item_index(chosen))
@@ -107,7 +109,7 @@ func _label(box: Container, text: String, size: int) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_font_size_override("font_size", FONTS.px(size))
 	box.add_child(l)
 	return l
 
@@ -115,7 +117,7 @@ func _label(box: Container, text: String, size: int) -> Label:
 func _button(box: Container, text: String) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.add_theme_font_size_override("font_size", 36)
+	b.add_theme_font_size_override("font_size", FONTS.px(36))
 	UI.frame_button(b)
 	box.add_child(b)
 	return b
@@ -160,13 +162,15 @@ func _setup_gifts() -> void:
 		var row := {"level": _cell(grid), "effect": _cell(grid), "price": _cell(grid, "", RADIANCE_COLOR)}
 		var b := Button.new()
 		b.text = "HUB_GIFT_BUY"
-		b.add_theme_font_size_override("font_size", GIFT_FONT)
+		b.add_theme_font_size_override("font_size", FONTS.px(GIFT_FONT))
 		UI.frame_button(b, false)   # строка таблицы: высота по тексту, как у строки дара
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		b.pressed.connect(_on_buy.bind(id))
 		grid.add_child(b)
 		row["button"] = b
 		row["reason"] = _cell(grid, "", WARN_COLOR)
+		row.reason.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS   # ширину задаёт _fit_reasons: таблица не шире экрана
+		row.reason.mouse_filter = Control.MOUSE_FILTER_PASS   # полный текст — во всплывающей подсказке
 		gift_rows[id] = row
 	if game.gift_defs.is_empty():
 		UI.frame_label(_label(col, "HUB_GIFTS_LOAD_FAILED", 28))   # gifts.json с ошибкой: она уже выведена
@@ -188,7 +192,7 @@ func _icon(path: String, size: Vector2) -> TextureRect:
 func _cell(grid: GridContainer, text := "", color := Color.WHITE) -> Label:
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_size_override("font_size", GIFT_FONT)
+	l.add_theme_font_size_override("font_size", FONTS.px(GIFT_FONT))
 	l.add_theme_color_override("font_color", color)
 	UI.frame_label(l)
 	grid.add_child(l)
@@ -227,6 +231,25 @@ func _refresh_gifts() -> void:
 		row.price.text = GIFT_MAX if top or price < 0 else str(price)
 		row.button.disabled = block != ""
 		row.reason.text = block
+		row.reason.tooltip_text = block
+	_fit_reasons()
+
+
+# Столбец причины («Откроется после осады II», «Не хватает Сияния») — по самой длинной причине, но не больше, чем осталось
+# до краёв экрана (по REASON_MARGIN с каждой стороны); длиннее — с многоточием: вкладка «Дары» не выходит за экран
+# при любом шрифте и языке.
+func _fit_reasons() -> void:
+	for id in gift_rows:
+		gift_rows[id].reason.custom_minimum_size.x = 0.0
+	var room := get_viewport_rect().size.x - REASON_MARGIN * 2.0 - tabs.get_combined_minimum_size().x
+	var need := 0.0   # самая длинная причина целиком
+	for id in gift_rows:
+		var l: Label = gift_rows[id].reason
+		if l.text != "":
+			need = maxf(need, l.get_theme_font("font").get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, l.get_theme_font_size("font_size")).x
+				+ l.get_theme_constant("outline_size"))
+	for id in gift_rows:
+		gift_rows[id].reason.custom_minimum_size.x = clampf(need, 0.0, maxf(room, 0.0))
 
 
 func _on_buy(id: String) -> void:
@@ -302,7 +325,7 @@ func _diary_text(text: String, size: int, color: Color) -> void:
 	l.text = text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_font_size_override("font_size", FONTS.px(size))
 	l.add_theme_color_override("font_color", color)
 	UI.frame_label(l)
 	diary_box.add_child(l)

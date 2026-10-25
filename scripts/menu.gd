@@ -1,6 +1,7 @@
 extends Control
 # Главное меню: заголовок, «Играть» (в хаб), «Настройки» и «Выход». Интерфейс строится кодом, по центру экрана;
 # тексты — ключи перевода (Label и Button переводятся сами).
+const FONTS := preload("res://scripts/fonts.gd")   # кегли и контуры текста под вариант шрифта (задача 20)
 const UI := preload("res://scripts/ui.gd")
 const SETTINGS_MENU := preload("res://scripts/settings_menu.gd")
 
@@ -26,7 +27,7 @@ func _ready() -> void:
 	var title := Label.new()
 	title.text = "UI_MENU_TITLE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 72)
+	title.add_theme_font_size_override("font_size", FONTS.px(72))
 	box.add_child(title)
 	play_button = _button(box, "UI_MENU_PLAY")
 	play_button.pressed.connect(_on_play)
@@ -46,7 +47,7 @@ func _ready() -> void:
 func _button(box: Container, text: String) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.add_theme_font_size_override("font_size", 36)
+	b.add_theme_font_size_override("font_size", FONTS.px(36))
 	UI.frame_button(b)
 	box.add_child(b)
 	return b

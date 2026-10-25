@@ -2,6 +2,14 @@
 	"scale": 2,
 	"out_dir": "res://art/ui/x2",
 	"theme_path": "res://art/ui/theme.tres",
+	"font_variant": "default",
+	"fonts": {
+		"variants": {
+			"default": {},
+			"fusion12": {"file": "res://fonts/fusion_pixel/fusion-pixel-12px-proportional-zh_hans.ttf", "native": 12, "outline_max": 2},
+			"fusion10": {"file": "res://fonts/fusion_pixel/fusion-pixel-10px-proportional-zh_hans.ttf", "native": 10, "outline_max": 2}
+		}
+	},
 	"button": {
 		"file": "res://art/ui/ui_button_c6.png",
 		"corner": 6,

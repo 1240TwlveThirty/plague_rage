@@ -4,6 +4,7 @@ extends CanvasLayer
 # Пока открыто, дерево сцен на паузе: стоят симуляция боя, окно сигнала всплеска (оно идёт по времени волны) и Game.play_time.
 # Открывает сцена-хозяин вызовом open(note); закрывается само. Перед уходом в меню вызывается before_menu хозяина:
 # бой засчитывает брошенный забег поражением (с начислением Сияния).
+const FONTS := preload("res://scripts/fonts.gd")   # кегли и контуры текста под вариант шрифта (задача 20)
 const UI := preload("res://scripts/ui.gd")
 const SETTINGS_MENU := preload("res://scripts/settings_menu.gd")
 const DIM := Color(0.0, 0.0, 0.0, 0.7)
@@ -38,13 +39,13 @@ func _ready() -> void:
 	var title := Label.new()
 	title.text = "UI_PAUSE_TITLE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 64)
+	title.add_theme_font_size_override("font_size", FONTS.px(64))
 	UI.frame_label(title)
 	box.add_child(title)
 	note_label = Label.new()
 	UI.frame_label(note_label)
 	note_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	note_label.add_theme_font_size_override("font_size", 26)
+	note_label.add_theme_font_size_override("font_size", FONTS.px(26))
 	note_label.visible = false
 	box.add_child(note_label)
 	continue_button = _button(box, "UI_PAUSE_RESUME")
@@ -66,7 +67,7 @@ func _ready() -> void:
 func _button(box: Container, text: String) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.add_theme_font_size_override("font_size", 36)
+	b.add_theme_font_size_override("font_size", FONTS.px(36))
 	UI.frame_button(b)
 	b.focus_mode = Control.FOCUS_NONE   # пока меню закрыто, кнопки фокус не берут: Space и Enter в бою их не нажимают
 	box.add_child(b)

@@ -4,6 +4,7 @@ extends PanelContainer
 # Подпись и полоса меняются, только когда значение изменилось (set_value): строка не собирается каждый кадр.
 # Числа от 1000 — с пробелом между тысячами; не помещается при font_size — кегль меньше, но не ниже font_min, дальше
 # сокращение «12.3к» (HUD_THOUSANDS).
+const FONTS := preload("res://scripts/fonts.gd")   # кегли и контуры текста под вариант шрифта (задача 20)
 const UI := preload("res://scripts/ui.gd")
 const ICONS := preload("res://scripts/icons.gd")
 
@@ -45,7 +46,7 @@ func setup(slot_id: String, icon: String, width: float, height: float, icon_scal
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_font_size_override("font_size", FONTS.px(font_size))
 	var inner := width - UI.slot_margins().x
 	if with_bar:
 		var t := ThemeDB.get_project_theme()
@@ -107,9 +108,12 @@ func _fit(full: String) -> void:
 	var font := label.get_theme_font("font")
 	var outline := label.get_theme_constant("outline_size")
 	var text := full
-	var px := font_size
-	while px > font_min and font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x + outline > text_width:
-		px -= 1
+	var sizes := FONTS.fit_sizes(font_size, font_min)   # пиксельный шрифт — только кратные родному
+	var px: int = sizes[0]
+	for f in sizes:
+		px = f
+		if font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x + outline <= text_width:
+			break
 	if font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x + outline > text_width:
 		text = short(value) if value_max < 0 else short(value) + "/" + short(value_max)
 	if label.get_theme_font_size("font_size") != px:

@@ -13,7 +13,7 @@
 		"font_min": 16,
 		"slots": [
 			{"id": "wave", "icon": "hourglass", "width": 200},
-			{"id": "zombies", "icon": "skull", "width": 200},
+			{"id": "zombies_left", "icon": "skull", "width": 200},
 			{"id": "troops", "icon": "soldiers", "width": 200},
 			{"id": "gate", "icon": "gate", "width": 600, "bar": true},
 			{"id": "gold", "icon": "coin", "width": 200}

@@ -3,3 +3,4 @@ build/
 *.exe
 *.pck
 *.bak*
+bench/report_*/*.png.import
