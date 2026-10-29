@@ -196,14 +196,15 @@ func _run() -> void:
 	await key(KEY_1)
 	await click(MOUSE_BUTTON_RIGHT, scr(Vector2(560, 480)))
 	var one_move: bool = m.squad_target[0].distance_to(Vector2(560, 480)) < 0.01 and m.squad_target[2] == t0[2]
-	# протяжка 550 -> 850: при зуме камеры camera_min_zoom точка x 450 на экране уже под левой панелью отрядов
-	await button(MOUSE_BUTTON_RIGHT, scr(Vector2(550, 520)), true)
-	await move(scr(Vector2(700, 520)))
-	await move(scr(Vector2(850, 520)))
-	var preview: bool = m.drag_active and m.drag_cur.distance_to(Vector2(850, 520)) < 0.01
+	# протяжка 750 -> 1050: при зуме камеры camera_min_zoom точка x 450 на экране уже под левой панелью отрядов, а с задачи 24
+	# панель шире (кнопки действий 184 x 3) — начало правее
+	await button(MOUSE_BUTTON_RIGHT, scr(Vector2(750, 520)), true)
+	await move(scr(Vector2(900, 520)))
+	await move(scr(Vector2(1050, 520)))
+	var preview: bool = m.drag_active and m.drag_cur.distance_to(Vector2(1050, 520)) < 0.01
 	await step(3)
-	await button(MOUSE_BUTTON_RIGHT, scr(Vector2(850, 520)), false)
-	check("(л) один отряд: ПКМ-клик задаёт цель, ПКМ-протяжка ставит строй (предпросмотр рисуется)", one_move and preview and absf(m._front_centre(0).x - 700.0) < 7.0 and absf(m._front_centre(0).y - 520.0) < 0.01
+	await button(MOUSE_BUTTON_RIGHT, scr(Vector2(1050, 520)), false)
+	check("(л) один отряд: ПКМ-клик задаёт цель, ПКМ-протяжка ставит строй (предпросмотр рисуется)", one_move and preview and absf(m._front_centre(0).x - 900.0) < 7.0 and absf(m._front_centre(0).y - 520.0) < 0.01
 		and m.squad_user_width[0] == 26, "середина переднего ряда %s, ширина %d" % [m._front_centre(0).round(), m.squad_width[0]])
 	teleport()
 	# ПКМ: набор
