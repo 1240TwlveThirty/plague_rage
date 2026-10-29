@@ -116,12 +116,22 @@ func t_screen() -> void:
 		ok = (ok and frame != null and frame.texture != null and frame.texture.resource_path.ends_with("card_perk_timer.png") and icon != null
 			and frame.get_global_rect().encloses(icon.get_global_rect()) and b.size == Vector2(320, 480 + CARD_PICK.LIFT))
 	check("три карточки: рамка временной карточки 320 x 480, иконка внутри рамки", ok)
+	# задача 25: наведение плавное (data/card_pick_fx.json hover) — подъём, увеличение, подсветка и блик в шейдере группы карточки
 	var b0: Button = scr.buttons[0]
-	var face: Control = b0.find_child("Face", true, false)
-	var shine: Control = b0.find_child("Shine", true, false)
+	var hv: Dictionary = scr.fx.hover
+	var grp: CanvasGroup = b0.get_node("Group")
+	var mat := grp.material as ShaderMaterial
+	var r0: Rect2 = scr.card_rect(0, false)
 	b0.mouse_entered.emit()
-	var up: bool = face.position.y == 0.0 and shine.visible
+	for i in 120:
+		scr.fx_step(1.0 / 60.0)
+	var r1: Rect2 = scr.card_rect(0, false)
+	var up: bool = r1.position.y < r0.position.y - float(hv.lift_px) * 0.9 and absf(r1.size.x / r0.size.x - float(hv.scale)) < 0.01 		and float(mat.get_shader_parameter("hover")) > 0.99 and float(mat.get_shader_parameter("shine_alpha")) > 0.0
 	b0.mouse_exited.emit()
-	check("наведение: карточка приподнимается на %d px и появляется блик; уход мыши — обратно" % int(CARD_PICK.LIFT), up and face.position.y == CARD_PICK.LIFT and not shine.visible)
+	for i in 120:
+		scr.fx_step(1.0 / 60.0)
+	var r2: Rect2 = scr.card_rect(0, false)
+	check("наведение: карточка поднимается на %d px, растёт до x%.2f, подсветка и блик; уход мыши — обратно" % [int(hv.lift_px), float(hv.scale)], up
+		and r2.position.distance_to(r0.position) < 0.5 and float(mat.get_shader_parameter("hover")) < 0.01)
 	scr.queue_free()
 	await step(2)

@@ -3,6 +3,9 @@ extends CanvasLayer
 # У карточки — клавиша, название, цветная метка основного билда, описание одной строкой (издержка — часть после «;» — красным).
 # Выбор мышью или клавишами 1, 2, 3 (действия card_pick_1..3 InputMap; нет в проекте — добавляются при первом открытии); пропуска нет.
 # Внизу — уже выбранные карточки. Пока экран открыт, клавиши игры (кроме Esc и F11) до боя не доходят.
+# Анимация (задача 25, параметры — data/card_pick_fx.json): каждая карточка — CanvasGroup с шейдером scripts/card_pick.gdshader
+# (наклон с поддельной перспективой, подсветка, блик, растворение). Время анимации — реальное (Time, не скорость игры и не пауза),
+# случайности — свой ГСЧ fx_rng; симуляцию не трогает.
 signal picked(id: String)
 
 const DIM := Color(0.0, 0.0, 0.0, 0.85)
@@ -11,13 +14,11 @@ const ICONS := preload("res://scripts/icons.gd")
 const CARDS := preload("res://scripts/cards.gd")   # fill_desc: {hero_near_radius} в описании
 const FRAME_TIMER := "res://art/card_perk_timer.png"   # рамка временной карточки
 const FRAME_META := "res://art/card_meta_perk.png"     # запасная рамка (дар), окрашивается в цвет билда
-const SHINE := "res://art/shine.png"
 const FRAME_PX := Vector2(32, 48)    # размер рамки в пикселях арта
 const SCALE := 10                    # целый масштаб рамки и иконки: 320 x 480 на экране
 const ICON_AT := Vector2(8, 5)       # иконка 16 x 16 в окне рамки (окно — x 3..28, y 2..45; ленточки по краям сверху)
 const TEXT_RECT := Rect2(7, 22, 21, 23)   # окно под текст в пикселях рамки: правее ленточки-закладки (она слева, x 2..6, до y 30)
 const LIFT := 12.0                   # насколько карточка приподнимается при наведении, px
-const SHINE_SCALE := 5
 const INK := Color(0.22, 0.13, 0.07)      # текст на светлой карточке
 const COST_ON_CARD := Color(0.72, 0.1, 0.08)   # издержка на карточке
 const COST_COLOR := Color(1.0, 0.35, 0.3)
@@ -27,6 +28,9 @@ const BUILD_COLORS := {"shield": Color(0.35, 0.55, 1.0), "archers": Color(0.35, 
 	"common": Color(0.75, 0.75, 0.75), "hero": Color(0.95, 0.45, 0.2)}
 const KEYS := [KEY_1, KEY_2, KEY_3]
 const SETTINGS := preload("res://scripts/settings.gd")
+const FX_PATH := "res://data/card_pick_fx.json"
+const CARD_SHADER := preload("res://scripts/card_pick.gdshader")
+const GROUP_MARGIN := 48.0   # поле CanvasGroup вокруг карточки: наклон и подсветка выходят за её край
 
 var row: HBoxContainer
 var owned_label: Label
@@ -34,11 +38,23 @@ var buttons: Array[Button] = []
 var offer: Array = []
 var shown_defs := {}   # для пересборки при смене языка
 var shown_owned: Array = []
+var fx := {}                         # data/card_pick_fx.json
+var groups: Array[CanvasGroup] = []  # карточка k: группа с шейдером (содержимое — Face)
+var hover_k := -1                    # карточка под курсором; -1 — нет
+var hover_t := PackedFloat32Array()  # сглаженное наведение 0..1
+var tilt := PackedVector2Array()     # сглаженный наклон, рад
+var shine := PackedVector2Array()    # сглаженное положение блика, доли карточки
+var fx_rng := RandomNumberGenerator.new()   # свой ГСЧ анимации (не симуляции)
+var last_us := 0                     # реальное время прошлого кадра анимации, мкс
+var test_mouse: Variant = null       # тесты и снимки: курсор (Vector2, px холста) вместо настоящего
 
 
 func _ready() -> void:
 	layer = 90
 	visible = false
+	process_mode = Node.PROCESS_MODE_ALWAYS   # анимация идёт в реальном времени и на паузе
+	fx = load_fx()
+	fx_rng.randomize()
 	var dim := ColorRect.new()
 	dim.color = DIM
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)   # клики по полю под экраном не проходят
@@ -91,19 +107,30 @@ func open(ids: Array, defs: Dictionary, owned: Array) -> void:
 	for c in row.get_children():
 		c.queue_free()
 	buttons.clear()
+	groups.clear()
+	hover_k = -1
 	for k in ids.size():
 		var d: Dictionary = defs[ids[k]]
 		var b := _card(k, d)
 		row.add_child(b)
 		buttons.append(b)
+		groups.append(b.get_node("Group"))
+	hover_t = PackedFloat32Array()
+	hover_t.resize(ids.size())
+	tilt = PackedVector2Array()
+	tilt.resize(ids.size())
+	shine = PackedVector2Array()
+	shine.resize(ids.size())
+	shine.fill(Vector2(0.5, 0.5))
+	last_us = Time.get_ticks_usec()
 	owned_label.text = tr("UI_CARDS_OWNED") % (", ".join(owned.map(func(key): return tr(key))) if not owned.is_empty() else tr("UI_CARDS_NONE"))
 	visible = true
 
 
 # Карточка: рамка временной карточки (art/card_perk_timer.png) в масштабе SCALE (32 x 48 -> 320 x 480), иконка карточки в окне рамки
 # (16 x 16 в точке ICON_AT рамки — над ленточкой-закладкой), под ней клавиша, название, метка билда и описание (издержка красным) —
-# в пределах окна рамки. Нет текстуры рамки — рамка card_meta_perk.png, окрашенная в цвет билда. При наведении «лицо» карточки
-# приподнимается на LIFT и в углу появляется блик art/shine.png. Без шейдеров.
+# в пределах окна рамки. Нет текстуры рамки — рамка card_meta_perk.png, окрашенная в цвет билда. Всё — в CanvasGroup «Group»
+# с шейдером карточки: наведение, наклон, блик, сгорание (задача 25).
 func _card(k: int, d: Dictionary) -> Button:
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(FRAME_PX.x * SCALE, FRAME_PX.y * SCALE + LIFT)
@@ -111,12 +138,21 @@ func _card(k: int, d: Dictionary) -> Button:
 	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
 		b.add_theme_stylebox_override(st, StyleBoxEmpty.new())
 	b.pressed.connect(_pick.bind(k))
-	var face := Control.new()   # всё, что приподнимается при наведении
+	var group := CanvasGroup.new()   # рисует карточку в буфер, шейдер наклоняет и подсвечивает её (задача 25)
+	group.name = "Group"
+	group.fit_margin = GROUP_MARGIN
+	group.clear_margin = GROUP_MARGIN
+	group.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var mat := ShaderMaterial.new()
+	mat.shader = CARD_SHADER
+	group.material = mat
+	b.add_child(group)
+	var face := Control.new()   # содержимое карточки
 	face.name = "Face"
 	face.position = Vector2(0, LIFT)
 	face.size = FRAME_PX * SCALE
 	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	b.add_child(face)
+	group.add_child(face)
 	var frame := TextureRect.new()
 	frame.name = "Frame"
 	var timer_frame := ResourceLoader.exists(FRAME_TIMER)
@@ -162,26 +198,104 @@ func _card(k: int, d: Dictionary) -> Button:
 	desc.custom_minimum_size.x = col.size.x
 	desc.text = desc_bbcode(CARDS.fill_desc(tr(d.desc_key)), COST_ON_CARD)
 	col.add_child(desc)
-	var shine := TextureRect.new()
-	shine.name = "Shine"
-	if ResourceLoader.exists(SHINE):
-		shine.texture = load(SHINE)
-	shine.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	shine.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	shine.stretch_mode = TextureRect.STRETCH_SCALE
-	shine.size = Vector2(16, 16) * SHINE_SCALE
-	shine.position = Vector2(FRAME_PX.x * SCALE - shine.size.x * 0.6, -shine.size.y * 0.4)
-	shine.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	shine.visible = false
-	face.add_child(shine)
-	b.mouse_entered.connect(_hover.bind(face, shine, true))
-	b.mouse_exited.connect(_hover.bind(face, shine, false))
+	b.mouse_entered.connect(_hover.bind(k, true))
+	b.mouse_exited.connect(_hover.bind(k, false))
 	return b
 
 
-func _hover(face: Control, shine: Control, on: bool) -> void:
-	face.position.y = 0.0 if on else LIFT
-	shine.visible = on
+func _hover(k: int, on: bool) -> void:
+	if on:
+		hover_k = k
+	elif hover_k == k:
+		hover_k = -1
+
+
+# data/card_pick_fx.json; нет файла или он битый — пусто (анимации нет, выбор как раньше), с предупреждением.
+static func load_fx() -> Dictionary:
+	var d = JSON.parse_string(FileAccess.get_file_as_string(FX_PATH)) if FileAccess.file_exists(FX_PATH) else null
+	if not d is Dictionary:
+		push_warning("%s не читается: выбор карточки без анимации" % FX_PATH)
+		return {}
+	return d
+
+
+# Кадр анимации в реальном времени: шаг — от прошлого кадра по Time, не delta (скорость игры и пауза на анимацию не влияют).
+func _process(_delta: float) -> void:
+	if not visible:
+		return
+	var now := Time.get_ticks_usec()
+	var dt := minf((now - last_us) / 1e6, 0.1)
+	last_us = now
+	fx_step(dt)
+
+
+# Шаг анимации на dt с (тесты и снимки зовут напрямую с ровным шагом).
+func fx_step(dt: float) -> void:
+	if fx.is_empty() or groups.is_empty():
+		return
+	_hover_step(dt)
+
+
+# Наведение: подъём, увеличение, наклон к курсору и блик за ним — экспоненциальное сглаживание (hover.smooth); остальные темнее.
+func _hover_step(dt: float) -> void:
+	var h: Dictionary = fx.hover
+	var a := 1.0 - exp(-float(h.smooth) * dt)   # доля пути к цели за dt
+	var mouse: Vector2 = test_mouse if test_mouse is Vector2 else get_viewport().get_mouse_position() - Vector2(offset)
+	var top := 0.0   # наведение карточки под курсором (для затемнения остальных)
+	if hover_k >= 0 and hover_k < hover_t.size():
+		top = hover_t[hover_k]
+	for k in groups.size():
+		var on := k == hover_k
+		hover_t[k] = lerpf(hover_t[k], 1.0 if on else 0.0, a)
+		var target := Vector2.ZERO
+		var sh := Vector2(0.5, 0.5)
+		if on:
+			var r := card_rect(k, false)
+			var rel := ((mouse - r.get_center()) / (r.size * 0.5)).clamp(Vector2(-1, -1), Vector2(1, 1))
+			var mx := deg_to_rad(float(h.tilt_max_deg))
+			target = Vector2(-rel.y * mx, rel.x * mx)   # край карточки под курсором уходит «вглубь»
+			sh = (mouse - r.position) / r.size
+		tilt[k] = tilt[k].lerp(target, a)
+		shine[k] = shine[k].lerp(sh, a)
+		var e := hover_t[k]
+		place_card(k, lerpf(1.0, float(h.scale), e), Vector2(0, -float(h.lift_px) * e))
+		_set_card(k, {"hover": e, "tilt": tilt[k], "shine_pos": shine[k], "shine_alpha": float(h.shine_alpha) * e,
+			"dim": 1.0 if on else lerpf(1.0, float(h.others_dim), top)})
+
+
+# Группа карточки k: масштаб sc вокруг центра карточки и сдвиг shift (px) от её места в ряду.
+func place_card(k: int, sc: float, shift: Vector2) -> void:
+	var size := FRAME_PX * SCALE
+	var g := groups[k]
+	g.scale = Vector2(sc, sc)
+	g.position = Vector2(size.x, size.y + 2.0 * LIFT) * 0.5 * (1.0 - sc) + shift   # центр Face (0, LIFT)..size остаётся на месте
+
+
+# Прямоугольник карточки (Face) на экране: px холста; screen_uv — в долях экрана (для шейдера).
+func card_rect(k: int, screen_uv := true) -> Rect2:
+	var xf := groups[k].get_global_transform_with_canvas()
+	var r := Rect2(xf * Vector2(0, LIFT), FRAME_PX * SCALE * xf.get_scale())
+	if screen_uv:
+		var vs := get_viewport().get_visible_rect().size
+		r = Rect2(r.position / vs, r.size / vs)
+	return r
+
+
+# Параметры шейдера карточки k (+ её место на экране).
+func _set_card(k: int, p: Dictionary) -> void:
+	var m := groups[k].material as ShaderMaterial
+	var h: Dictionary = fx.hover
+	var r := card_rect(k, false)
+	var uv := card_rect(k)
+	m.set_shader_parameter("card_uv_rect", Vector4(uv.position.x, uv.position.y, uv.size.x, uv.size.y))
+	m.set_shader_parameter("card_px", r.size)
+	m.set_shader_parameter("perspective_px", float(h.perspective_px))
+	m.set_shader_parameter("glow_color", Color(h.glow_color))
+	m.set_shader_parameter("glow_px", float(h.glow_px))
+	m.set_shader_parameter("shine_radius", float(h.shine_radius))
+	m.set_shader_parameter("burn_cells", FRAME_PX * SCALE / maxf(float(fx.burn.burn_cell_px), 1.0))
+	for key in p:
+		m.set_shader_parameter(key, p[key])
 
 
 # Описание: часть после «;» (издержка) — красным.
