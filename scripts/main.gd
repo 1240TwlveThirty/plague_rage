@@ -554,7 +554,7 @@ var leash_ticks := 0    # статистика: юнито-тики, где пр
 var type_id := {}   # имя -> номер
 var portraits = PORTRAITS.new()   # иллюстрации в кнопках (только интерфейс)
 # data/ui_layout.json: фиксированные размеры кнопок (минимум и он же ширина — текст ужимается, кнопка не растягивается).
-var ui_layout := {"shop_button_size": Vector2(464, 64), "squad_button_size": Vector2(352, 48), "action_button_height": 48.0, "war_cry_size": Vector2(352, 48)}
+var ui_layout := {"shop_button_size": Vector2(464, 64), "squad_button_size": Vector2(352, 48), "action_button_size": Vector2(184, 48), "war_cry_size": Vector2(352, 48)}
 var type_label := PackedStringArray()   # название типа для интерфейса
 
 # --- Ворота и поражение (data/castle.json) ---
@@ -5124,8 +5124,11 @@ func _setup_fps_label() -> void:
 	for k in action_calls.size():
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
-		b.custom_minimum_size = Vector2(0, ui_layout.action_button_height)
-		UI.frame_button(b, false)   # универсальная рамка, высота из ui_layout
+		_fixed_button(b, ui_layout.action_button_size)   # задача 24: одна ширина на все три (рамка одного размера)
+		b.autowrap_mode = TextServer.AUTOWRAP_OFF   # одна строка; переназначенная длинная клавиша — многоточием, целиком в подсказке
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		b.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		UI.frame_button(b, false)   # универсальная рамка, размер из ui_layout
 		b.pressed.connect(action_calls[k])
 		squad_actions.add_child(b)
 		action_buttons.append(b)
@@ -5147,7 +5150,7 @@ func _setup_fps_label() -> void:
 	split_row.add_child(split_slider)
 	split_box.add_child(split_row)
 	split_mode_button = Button.new()
-	split_mode_button.custom_minimum_size = Vector2(0, ui_layout.action_button_height)
+	split_mode_button.custom_minimum_size = Vector2(0, ui_layout.action_button_size.y)
 	split_mode_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	split_mode_button.pressed.connect(_next_split_mode)
 	split_box.add_child(split_mode_button)
@@ -5442,6 +5445,8 @@ func _update_squad_panel() -> void:
 		var t: String = tr(ACTION_TEXTS[k]) % SETTINGS.key_label(ACTION_KEYS[k])
 		if action_buttons[k].text != t:
 			action_buttons[k].text = t
+			action_buttons[k].tooltip_text = t
+			_fit_text(action_buttons[k])
 	split_box.visible = acts
 	action_buttons[0].disabled = wave_state != WS_RESPITE   # новый отряд и слияние — только в передышке
 	action_buttons[2].disabled = wave_state != WS_RESPITE

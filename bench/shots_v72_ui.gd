@@ -97,7 +97,7 @@ func fixed(screen: String, m: Node) -> void:
 	for b in m.squad_buttons:
 		list.append([b, Vector2(lay.squad_button_size[0], lay.squad_button_size[1])])
 	for b in m.action_buttons:
-		list.append([b, Vector2(b.size.x, lay.action_button_height)])
+		list.append([b, Vector2(lay.action_button_size[0], lay.action_button_size[1])])
 	if m.war_cry_button != null:
 		list.append([m.war_cry_button, Vector2(lay.war_cry_size[0], lay.war_cry_size[1])])
 	for e in list:

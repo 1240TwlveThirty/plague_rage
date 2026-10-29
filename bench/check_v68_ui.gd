@@ -184,12 +184,12 @@ func t_screens() -> void:
 	m._update_squad_panel()
 	m._update_ui()
 	await step(2)
-	var ah := float(lay.action_button_height)
+	var ah := float(lay.action_button_size[1])
 	var wc := Vector2(lay.war_cry_size[0], lay.war_cry_size[1])
 	var act_ok := all_framed(m.action_buttons)
 	for b in m.action_buttons:
-		act_ok = act_ok and is_equal_approx(b.size.y, ah) and fits(b)
-	check("кнопки действий отряда с рамкой, высота %s из ui_layout; углы не налезают, строка текста помещается" % ah, act_ok,
+		act_ok = act_ok and b.size == Vector2(lay.action_button_size[0], ah) and fits(b)
+	check("кнопки действий отряда с рамкой, размер %s из ui_layout; углы не налезают, строка текста помещается" % str(lay.action_button_size), act_ok,
 		str(m.action_buttons.map(func(b): return b.size)))
 	check("Клич с рамкой, %s из ui_layout; углы не налезают, текст помещается" % str(wc), framed(m.war_cry_button) and m.war_cry_button.size == wc and fits(m.war_cry_button),
 		str(m.war_cry_button.size))

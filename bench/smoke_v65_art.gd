@@ -211,7 +211,7 @@ func t_squads(m: Node2D) -> void:
 	m._update_war_cry_ui()
 	img = await shot(m, "art_squads_8.png")
 	var rows_ok := range(m.SQUAD_MAX).all(func(q): return m.squad_buttons[q].visible and m.squad_buttons[q].size == m.ui_layout.squad_button_size and text_fits(m.squad_buttons[q]))
-	var acts_ok: bool = m.action_buttons.all(func(b): return b.size.y == m.ui_layout.action_button_height)
+	var acts_ok: bool = m.action_buttons.all(func(b): return b.size == m.ui_layout.action_button_size)
 	check("8 отрядов + действия + деление + Клич: панель %s на экране; кнопки %s, текст помещается (со «Стеной щитов» — кегль %d); Клич %s" % [str(m.squad_panel.get_global_rect()),
 		str(m.ui_layout.squad_button_size), m.squad_buttons[0].get_theme_font_size("font_size"), str(m.war_cry_button.size)], on_screen(m.squad_panel)
 		and rows_ok and m.war_cry_button.size == m.ui_layout.war_cry_size and text_fits(m.war_cry_button) and acts_ok

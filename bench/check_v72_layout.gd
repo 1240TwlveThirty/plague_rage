@@ -179,7 +179,7 @@ func t_squads(m: Node2D, l: String) -> void:
 	m.squad_skill_on[0] = 0
 	m.squad_text_sig.fill(-1)
 	m._update_squad_panel()
-	var ah := float(lay.action_button_height)
+	var ah := float(lay.action_button_size[1])
 	var ok := true
 	var need := 0.0
 	for c: Button in m.action_buttons:

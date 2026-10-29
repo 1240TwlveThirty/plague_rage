@@ -199,18 +199,18 @@ func t_layout() -> void:
 	print("размеры кнопок (data/ui_layout.json)")
 	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/ui_layout.json"))
 	var size_ok := func(v): return v is Array and v.size() == 2 and v.all(func(x): return (x is float or x is int) and x > 0)
-	check("ui_layout.json: shop %s, squad %s, действия %s, Клич %s — размеры [w, h] больше 0" % [d.shop_button_size, d.squad_button_size, d.action_button_height,
-		d.war_cry_size], size_ok.call(d.shop_button_size) and size_ok.call(d.squad_button_size) and size_ok.call(d.war_cry_size) and d.action_button_height > 0)
+	check("ui_layout.json: shop %s, squad %s, действия %s, Клич %s — размеры [w, h] больше 0" % [d.shop_button_size, d.squad_button_size, d.action_button_size,
+		d.war_cry_size], size_ok.call(d.shop_button_size) and size_ok.call(d.squad_button_size) and size_ok.call(d.war_cry_size) and size_ok.call(d.action_button_size))
 	var m: Node2D = load(MAIN).new()
 	m._load_ui_layout()
 	check("main читает размеры из файла", m.ui_layout.shop_button_size == Vector2(d.shop_button_size[0], d.shop_button_size[1])
-		and m.ui_layout.squad_button_size == Vector2(d.squad_button_size[0], d.squad_button_size[1]) and m.ui_layout.action_button_height == float(d.action_button_height)
+		and m.ui_layout.squad_button_size == Vector2(d.squad_button_size[0], d.squad_button_size[1]) and m.ui_layout.action_button_size == Vector2(d.action_button_size[0], d.action_button_size[1])
 		and m.ui_layout.war_cry_size == Vector2(d.war_cry_size[0], d.war_cry_size[1]))
 	var m2: Node2D = load(MAIN).new()
 	var defaults: Dictionary = m2.ui_layout.duplicate()
 	m2.free()
 	check("значения по умолчанию в main — те же, что в файле (без файла кнопки того же размера)", defaults.shop_button_size == m.ui_layout.shop_button_size
-		and defaults.squad_button_size == m.ui_layout.squad_button_size and defaults.action_button_height == m.ui_layout.action_button_height
+		and defaults.squad_button_size == m.ui_layout.squad_button_size and defaults.action_button_size == m.ui_layout.action_button_size
 		and defaults.war_cry_size == m.ui_layout.war_cry_size)
 	# подгонка текста: длинный текст — кегль меньше, кнопка того же размера
 	var shop: Vector2 = m.ui_layout.shop_button_size
