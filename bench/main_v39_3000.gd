@@ -5103,6 +5103,7 @@ func _setup_fps_label() -> void:
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE   # иначе Space «нажимает» последнюю кнопку
 		_fixed_button(b, ui_layout.shop_button_size)
+		UI.frame_kind(b, "shop")   # задача 24: рамка ui_btn_shop_c*.png, нет файла — универсальная кнопка
 		b.pressed.connect(_buy.bind(k))
 		shop_panel.add_child(b)
 		shop_buttons.append(b)
@@ -5124,6 +5125,7 @@ func _setup_fps_label() -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		b.toggle_mode = true   # нажатая = выбранная
 		_fixed_button(b, ui_layout.squad_button_size)
+		UI.frame_kind(b, "squad")   # задача 24: рамка ui_btn_squad_c*.png, нет файла — универсальная кнопка
 		b.autowrap_mode = TextServer.AUTOWRAP_OFF   # одна строка фиксированной высоты (задача 22): длинное — многоточием,
 		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS   # целиком — во всплывающей подсказке; панель не растёт
 		b.pressed.connect(_on_row_pressed.bind(s))

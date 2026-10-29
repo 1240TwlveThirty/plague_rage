@@ -193,9 +193,12 @@ func t_screens() -> void:
 		str(m.action_buttons.map(func(b): return b.size)))
 	check("Клич с рамкой, %s из ui_layout; углы не налезают, текст помещается" % str(wc), framed(m.war_cry_button) and m.war_cry_button.size == wc and fits(m.war_cry_button),
 		str(m.war_cry_button.size))
-	var shop_ok: bool = m.shop_buttons.all(untouched)
-	var squad_ok: bool = m.squad_buttons.all(untouched)
-	check("магазин (%d) и отряды (%d) без рамки темы (свои StyleBox, цвет текста свой или встроенной темы); деление — стандартная кнопка" % [m.shop_buttons.size(),
+	# задача 24: магазин и отряды — в рамке своего вида (UI.frame_kind; без файла — универсальная кнопка), не рамка темы
+	var kind_ok := func(b: Button, kind: String) -> bool:
+		return b.get_meta("frame_kind", "") == kind and b.has_theme_stylebox_override("normal") and b.get_theme_stylebox("normal") is StyleBoxTexture
+	var shop_ok: bool = m.shop_buttons.all(func(b): return kind_ok.call(b, "shop"))
+	var squad_ok: bool = m.squad_buttons.all(func(b): return kind_ok.call(b, "squad"))
+	check("магазин (%d) и отряды (%d) в рамках своего вида (shop, squad); деление — стандартная кнопка" % [m.shop_buttons.size(),
 		m.squad_buttons.size()], shop_ok and squad_ok and m.split_mode_button.theme_type_variation == &"", "магазин %s, отряды %s" % [shop_ok, squad_ok])
 	check("баннер на панели темы, ширина %d как была (BANNER_WIDTH), рамка полупрозрачная (%.2f) — строй под баннером виден" % [int(m.banner.size.x),
 		m.banner.self_modulate.a], panel_framed(m.banner) and m.banner.visible and is_equal_approx(m.banner.size.x, m.BANNER_WIDTH)

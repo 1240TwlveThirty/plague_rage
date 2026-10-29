@@ -14,6 +14,7 @@ const PALETTE := ["be4a2f", "d77643", "ead4aa", "e4a672", "b86f50", "733e39", "3
 	"fee761", "63c74d", "3e8948", "265c42", "193c3e", "124e89", "0099db", "2ce8f5", "ffffff", "c0cbdc", "8b9bb4", "5a6988", "3a4466",
 	"262b44", "181425", "ff0044", "68386c", "b55088", "f6757a", "e8b796", "c28569"]
 const STATES := ["normal", "hover", "pressed", "disabled"]
+const UI_SCRIPT := preload("res://scripts/ui.gd")
 const BUTTON := "FrameButton"
 const PANEL := "FramePanel"
 const LABEL := "FrameLabel"
@@ -43,6 +44,14 @@ func _initialize() -> void:
 	var bl_img := check_art(bar.fill, 0, 1, 0)
 	if bf_img != null and bl_img != null:
 		check_bar(bar, bf_img, bl_img)
+	# рамки кнопок магазина и строк отрядов (задача 24) необязательны: нет файла — в игре универсальная кнопка (scripts/ui.gd)
+	for kind in cfg.get("frames", {}):
+		var fd: Dictionary = cfg.frames[kind]
+		var found: Dictionary = UI_SCRIPT.find_frame(fd.dir, fd.prefix)
+		if found.is_empty():
+			print("  рамка «%s»: нет %s/%s<угол>.png — в игре универсальная кнопка" % [kind, fd.dir, fd.prefix])
+		else:
+			check_art(found.path, found.corner, int(fd.states), found.corner)
 	for st in STATES:
 		if int(b.state_rows[st]) < 0 or int(b.state_rows[st]) >= int(b.states):
 			fail("button.state_rows.%s = %d вне 0..%d" % [st, int(b.state_rows[st]), int(b.states) - 1])

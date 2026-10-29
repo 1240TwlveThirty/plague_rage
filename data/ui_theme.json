@@ -42,6 +42,14 @@
 		"content_pad": 2,
 		"content_pad_v": 0
 	},
+	"frames": {
+		"shop": {"dir": "res://art/ui", "prefix": "ui_btn_shop_c", "art_size": [232, 32], "states": 4,
+			"state_rows": {"normal": 0, "hover": 1, "pressed": 2, "disabled": 3}, "content_margin": [14, 4, 12, 4],
+			"fallback_modulate": {"normal": "#ffffff", "hover": "#ffffff", "pressed": "#feae34", "disabled": "#8b9bb4"}},
+		"squad": {"dir": "res://art/ui", "prefix": "ui_btn_squad_c", "art_size": [176, 24], "states": 4,
+			"state_rows": {"normal": 0, "hover": 1, "pressed": 2, "disabled": 3}, "content_margin": [14, 4, 12, 4],
+			"fallback_modulate": {"normal": "#ffffff", "hover": "#ffffff", "pressed": "#feae34", "disabled": "#8b9bb4"}}
+	},
 	"bar": {
 		"frame": "res://art/ui/ui_bar_frame.png",
 		"fill": "res://art/ui/ui_bar_fill.png",

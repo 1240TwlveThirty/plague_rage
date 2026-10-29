@@ -8,6 +8,7 @@ extends RefCounted
 # градиент (задача 16) — в том же файле: gradient_left_alpha у левого края, gradient_right_alpha на доле gradient_width ширины
 # кнопки и дальше вправо; общего затемнения картинки нет. Наведение — картинка ярче и тонкая светлая рамка; нажатая или выбранная —
 # рамка #feae34 3 px; недоступная — серая и темнее.
+const UI := preload("res://scripts/ui.gd")   # рамка вида кнопки (задача 24)
 const FONTS := preload("res://scripts/fonts.gd")   # кегли и контуры текста под вариант шрифта (задача 20)
 const PATH := "res://data/unit_portraits.json"
 const UI_DIR := "res://art/ui/"
@@ -177,18 +178,24 @@ func _styles() -> Dictionary:
 
 
 # Иллюстрация типа на кнопке b (type_name "" или без картинки — обычная кнопка). Повторный вызов с тем же типом ничего не делает.
+# Кнопка с рамкой вида (UI.frame_kind, мета frame_kind) остаётся в своей рамке: с иллюстрацией — без середины рамки (картинка
+# видна, рамка поверх), без иллюстрации — с серединой; свои StyleBox иллюстрации тогда не ставятся.
 func apply(b: Button, type_name: String) -> void:
 	if b.has_meta("portrait") and b.get_meta("portrait") == type_name:
 		return
 	b.set_meta("portrait", type_name)
 	var tex := texture(type_name, Vector2i(b.custom_minimum_size)) if type_name != "" else null
 	var pic := b.get_node_or_null("Portrait") as TextureRect
+	var kind: String = b.get_meta("frame_kind", "")
 	if tex == null:   # обычная кнопка: картинка и градиент скрыты, оформление по умолчанию
 		if pic != null:
 			pic.visible = false
 			b.get_node("Shade").visible = false
-			for st in _styles():
-				b.remove_theme_stylebox_override(st)
+			if kind != "":
+				UI.frame_kind(b, kind, true)
+			else:
+				for st in _styles():
+					b.remove_theme_stylebox_override(st)
 			b.remove_theme_color_override("font_outline_color")
 			b.remove_theme_constant_override("outline_size")
 		return
@@ -216,8 +223,11 @@ func apply(b: Button, type_name: String) -> void:
 			c.set_anchors_preset(Control.PRESET_FULL_RECT)
 			b.add_child(c, false, Node.INTERNAL_MODE_FRONT)
 		b.draw.connect(_on_draw.bind(b))
-	for st in _styles():
-		b.add_theme_stylebox_override(st, styles[st])
+	if kind != "":
+		UI.frame_kind(b, kind, false)
+	else:
+		for st in _styles():
+			b.add_theme_stylebox_override(st, styles[st])
 	b.add_theme_color_override("font_outline_color", Color.BLACK)
 	b.add_theme_constant_override("outline_size", FONTS.outline(OUTLINE_PX))
 	pic.texture = tex

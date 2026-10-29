@@ -4,6 +4,8 @@ extends SceneTree
 #   и без уменьшения кегля); переназначенная длинная клавиша — многоточие, целиком в подсказке, кнопка не растёт.
 #   Строка FPS: флаг debug_fps выключен по умолчанию — строки нет; в релизной сборке нет и с флагом; с флагом — внизу слева,
 #   не пересекает окошки верхней панели и панель отрядов.
+#   Запасные рамки: файл рамки <prefix><угол>.png (временный, user://) подключается с углом из имени и состояниями столбиком;
+#   после переименования — универсальная кнопка, одно предупреждение за запуск, сцена боя строится, кнопки того же размера.
 # Временное сохранение user://bench_v74 (user://save.json не трогается).
 const FONTS := preload("res://scripts/fonts.gd")
 const DIR := "user://bench_v74"
@@ -39,6 +41,7 @@ func _run() -> void:
 	g.save_path = DIR + "/save.json"
 	root.add_child(g)
 	node_added.connect(_on_node_added)
+	await t_frames(g)
 	for l in ["ru", "en"]:
 		TranslationServer.set_locale(l)
 		g.start_run(1)
@@ -116,3 +119,61 @@ func t_fps(m: Node2D, g: Node) -> void:
 		check("с флагом строка FPS создана", false)
 	m2.queue_free()
 	await step(1)
+
+const UI := preload("res://scripts/ui.gd")
+
+func t_frames(g: Node) -> void:
+	print("запасные рамки")
+	var dir := DIR + "/frames"
+	DirAccess.make_dir_recursive_absolute(dir)
+	var tc := theme_cfg
+	var s := int(tc.scale)
+	for kind in ["shop", "squad"]:
+		var fd: Dictionary = tc.frames[kind]
+		var aw := int(fd.art_size[0])
+		var ah := int(fd.art_size[1])
+		var states := int(fd.states)
+		var corner := 5   # не как у универсальной кнопки: видно, что угол взят из имени
+		var img := Image.create(aw, ah * states, false, Image.FORMAT_RGBA8)
+		for k in states:   # каждое состояние своим цветом: видно, какая строка взята
+			img.fill_rect(Rect2i(0, k * ah, aw, ah), Color.from_hsv(k / float(states), 0.6, 0.8))
+		var path := dir.path_join("%s%d.png" % [fd.prefix, corner])
+		img.save_png(ProjectSettings.globalize_path(path))
+		UI.reset_frames(dir)
+		var f: Dictionary = UI.frame_styles(kind)
+		var sb: StyleBoxTexture = f.styles.normal
+		var pr: StyleBoxTexture = f.styles.pressed
+		var rows: Dictionary = fd.state_rows
+		check("%s: файл %s — свой арт, угол %d из имени (9-slice %d на экране), текстура x%d, состояние pressed — строка %d" % [kind, path.get_file(),
+			f.corner, int(sb.texture_margin_left), s, int(rows.pressed)], not f.fallback and f.corner == corner and int(sb.texture_margin_left) == corner * s
+			and sb.texture.get_size() == Vector2(aw * s, ah * states * s) and pr.region_rect.position.y == int(rows.pressed) * ah * s
+			and int(UI.warnings.get(kind, 0)) == 0)
+		DirAccess.rename_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(dir.path_join("%sold.png" % fd.prefix)))
+		UI.reset_frames(dir)
+		for i in 5:
+			f = UI.frame_styles(kind)
+		var b := Button.new()
+		UI.frame_kind(b, kind)
+		UI.frame_kind(b, kind, false)
+		var fb: StyleBoxTexture = f.styles.normal
+		check("%s: файл переименован — универсальная кнопка (%s, угол %d), предупреждений %d (одно на запуск)" % [kind, tc.button.file.get_file(),
+			f.corner, int(UI.warnings.get(kind, 0))], f.fallback and f.corner == int(tc.button.corner) and int(UI.warnings.get(kind, 0)) == 1
+			and fb.texture != null and b.get_theme_stylebox("normal") is StyleBoxTexture)
+		b.free()
+	# сцена боя с переименованными файлами строится, кнопки фиксированного размера
+	g.start_run(1)
+	await step(3)
+	var m := current_scene as Node2D
+	m._update_ui()
+	m._update_squad_panel()
+	await step(2)
+	var shop_ok: bool = m.shop_buttons.all(func(b): return not b.visible or b.size == Vector2(lay.shop_button_size[0], lay.shop_button_size[1]))
+	var sq_ok: bool = m.squad_buttons.all(func(b): return not b.is_visible_in_tree() or b.size == Vector2(lay.squad_button_size[0], lay.squad_button_size[1]))
+	check("без файлов рамок бой строится: магазин %s и строки отрядов %s того же размера, предупреждений по виду не больше одного (%s)" % [
+		str(lay.shop_button_size), str(lay.squad_button_size), str(UI.warnings)], shop_ok and sq_ok and UI.warnings.values().all(func(n): return n == 1))
+	m.queue_free()
+	await step(2)
+	for f in DirAccess.get_files_at(dir):
+		DirAccess.remove_absolute(dir.path_join(f))
+	DirAccess.remove_absolute(dir)
+	UI.reset_frames()

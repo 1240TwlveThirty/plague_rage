@@ -1,4 +1,5 @@
 extends SceneTree
+const UI := preload("res://scripts/ui.gd")
 const FONTS := preload("res://scripts/fonts.gd")   # контур и кегли — под шрифт по умолчанию (задача 22)
 # Смоук задачи 15 с окном: новые арты. Забег через Game (герой включён по данным). Скриншоты в папку из аргумента:
 # art_shop_ru.png, art_shop_en.png — магазин в передышке (пехота и лучники с иллюстрацией, «Оружие» и «Ворота» обычные);
@@ -180,12 +181,18 @@ func t_squads(m: Node2D) -> void:
 	var pics_ok := shown.all(func(s): return has_pic(m.squad_buttons[s]) == (m.type_id.find_key(m.squad_type[s]) in ["infantry", "archer"]))
 	check("панель отрядов (%s): у пехоты и лучников иллюстрация, цветной квадрат 18x18 на месте" % ", ".join(types), pics_ok
 		and shown.all(func(s): return m.squad_swatches[s].visible and m.squad_swatches[s].custom_minimum_size == Vector2(18, 18)) and spread(img, b0) > 0.15)
-	check("выбранный: нажатая кнопка, рамка #feae34 3 px", b0.button_pressed and b0.get_draw_mode() in [BaseButton.DRAW_PRESSED, BaseButton.DRAW_HOVER_PRESSED]
-		and (b0.get_theme_stylebox("pressed") as StyleBoxFlat).border_color == Color("#feae34"))
+	# задача 24: строка в рамке вида squad — выбранная рисуется состоянием pressed рамки (без файла — универсальная кнопка с оттенком
+	# frames.squad.fallback_modulate.pressed), середина рамки не рисуется — под ней иллюстрация
+	var fm: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/ui_theme.json")).frames.squad
+	var psb := b0.get_theme_stylebox("pressed") as StyleBoxTexture
+	var fb: bool = UI.frame_styles("squad").fallback
+	check("выбранный: нажатая кнопка, рамка состояния pressed без середины (%s)" % ("оттенок " + fm.fallback_modulate.pressed if fb else "свой арт"),
+		b0.button_pressed and b0.get_draw_mode() in [BaseButton.DRAW_PRESSED, BaseButton.DRAW_HOVER_PRESSED] and psb != null and not psb.draw_center
+		and (not fb or psb.modulate_color == Color(fm.fallback_modulate.pressed)))
 	if other >= 0:
 		var bo: Button = m.squad_buttons[other]
-		check("под мышью: режим hover, картинка ярче (%.2f), тонкая светлая рамка" % shader(bo, "bright"), bo.get_draw_mode() == BaseButton.DRAW_HOVER
-			and shader(bo, "bright") > 1.0 and (bo.get_theme_stylebox("hover") as StyleBoxFlat).border_width_top == 1)
+		check("под мышью: режим hover, картинка ярче (%.2f), рамка состояния hover" % shader(bo, "bright"), bo.get_draw_mode() == BaseButton.DRAW_HOVER
+			and shader(bo, "bright") > 1.0 and bo.get_theme_stylebox("hover") is StyleBoxTexture)
 	else:
 		check("второй отряд с иллюстрацией для наведения есть", false, str(types))
 	var sq_ok := shown.all(func(s): return text_fits(m.squad_buttons[s]) and m.squad_buttons[s].size == m.ui_layout.squad_button_size)
