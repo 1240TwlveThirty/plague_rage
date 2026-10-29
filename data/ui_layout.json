@@ -3,6 +3,7 @@
 	"squad_button_size": [352, 48],
 	"action_button_size": [184, 48],
 	"war_cry_size": [352, 48],
+	"debug_fps": false,
 	"top_hud": {
 		"top": 16,
 		"gap": 12,

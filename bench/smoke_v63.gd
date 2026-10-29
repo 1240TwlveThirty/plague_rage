@@ -182,7 +182,7 @@ func _run() -> void:
 	var b0: int = m.hit_bursts
 	var sh0: int = m.shake_hit_count
 	var ct0: Transform2D = m.get_viewport().get_canvas_transform()
-	var hud0: Vector2 = m.fps_label.get_global_transform_with_canvas().origin
+	var hud0: Vector2 = m.top_hud.get_global_transform_with_canvas().origin
 	var max_off := 0.0
 	var whole := true
 	var nonzero := 0
@@ -214,7 +214,7 @@ func _run() -> void:
 	var shot_img := await shot(m, "shake_ui.png", 1.0 / 120.0)
 	var off: Vector2 = m.camera.offset * m.camera.zoom
 	var ct1: Transform2D = m.get_viewport().get_canvas_transform()
-	var hud1: Vector2 = m.fps_label.get_global_transform_with_canvas().origin
+	var hud1: Vector2 = m.top_hud.get_global_transform_with_canvas().origin
 	var d := ct1.origin - ct0.origin
 	var cap: float = float(c.shake_max_px) * float(c.shake_levels[st.screen_shake_level])
 	check("удар по 3: тряска %.2f px экрана (не больше %.1f), мир сдвинут на (%.2f, %.2f), сдвиг целый, интерфейс на месте" % [off.length(), cap, d.x, d.y],

@@ -2,6 +2,8 @@ extends SceneTree
 # Тесты задачи 24 (без окна): интерфейс. Все размеры, клавиши и длительности — из data/ui_layout.json и data/ui_theme.json.
 #   Кнопки действий отряда: размер action_button_size, тексты ru и en с клавишами по умолчанию входят целиком (без многоточия
 #   и без уменьшения кегля); переназначенная длинная клавиша — многоточие, целиком в подсказке, кнопка не растёт.
+#   Строка FPS: флаг debug_fps выключен по умолчанию — строки нет; в релизной сборке нет и с флагом; с флагом — внизу слева,
+#   не пересекает окошки верхней панели и панель отрядов.
 # Временное сохранение user://bench_v74 (user://save.json не трогается).
 const FONTS := preload("res://scripts/fonts.gd")
 const DIR := "user://bench_v74"
@@ -43,6 +45,8 @@ func _run() -> void:
 		await step(3)
 		var m := current_scene as Node2D
 		await t_actions(m, l)
+		if l == "ru":
+			await t_fps(m, g)
 		m.queue_free()
 		await step(2)
 	TranslationServer.set_locale("ru")
@@ -84,3 +88,31 @@ func t_actions(m: Node2D, l: String) -> void:
 	for ev in saved:
 		InputMap.action_add_event("squad_split", ev)
 	m._update_squad_panel()
+
+func t_fps(m: Node2D, g: Node) -> void:
+	print("строка FPS")
+	var script: GDScript = load("res://scripts/main.gd")
+	check("debug_fps в ui_layout.json выключен (%s), строки FPS нет" % str(lay.get("debug_fps")), lay.get("debug_fps") == false and m.fps_label == null
+		and not m.debug_fps_on())
+	check("релизная сборка: строки нет и с флагом, и с --debug-fps", not script.fps_wanted(false, true, PackedStringArray(["--debug-fps"])))
+	check("отладочная сборка: флаг или --debug-fps включают строку", script.fps_wanted(true, true, PackedStringArray())
+		and script.fps_wanted(true, false, PackedStringArray(["--debug-fps"])) and not script.fps_wanted(true, false, PackedStringArray()))
+	# с флагом: новая сцена, строка внизу слева вне окошек и панели отрядов
+	var m2: Node2D = load("res://scenes/main.tscn").instantiate()
+	m2.debug_fps_force = true
+	m2.process_mode = Node.PROCESS_MODE_DISABLED
+	root.add_child(m2)
+	await step(2)
+	var ok: bool = m2.fps_label != null
+	if ok:
+		m2.fps_label.text = tr("DEBUG_FPS_LINE") % [999, 700, 1.0, 2.0, 0.5, 1, 1000.0, 99, 99]
+		await step(2)
+		var r: Rect2 = m2.fps_label.get_global_rect()
+		var vp := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
+		var clear: bool = not r.intersects(m2.top_hud.get_global_rect()) and not r.intersects(m2.squad_panel.get_global_rect())
+		check("с флагом: строка %s внизу слева, на экране, не на окошках %s и не на панели отрядов %s" % [str(r), str(m2.top_hud.get_global_rect()),
+			str(m2.squad_panel.get_global_rect())], clear and r.position.x < vp.x * 0.5 and r.end.y <= vp.y and r.position.y > vp.y * 0.5)
+	else:
+		check("с флагом строка FPS создана", false)
+	m2.queue_free()
+	await step(1)

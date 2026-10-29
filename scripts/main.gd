@@ -554,7 +554,8 @@ var leash_ticks := 0    # статистика: юнито-тики, где пр
 var type_id := {}   # имя -> номер
 var portraits = PORTRAITS.new()   # иллюстрации в кнопках (только интерфейс)
 # data/ui_layout.json: фиксированные размеры кнопок (минимум и он же ширина — текст ужимается, кнопка не растягивается).
-var ui_layout := {"shop_button_size": Vector2(464, 64), "squad_button_size": Vector2(352, 48), "action_button_size": Vector2(184, 48), "war_cry_size": Vector2(352, 48)}
+var ui_layout := {"shop_button_size": Vector2(464, 64), "squad_button_size": Vector2(352, 48), "action_button_size": Vector2(184, 48), "war_cry_size": Vector2(352, 48),
+	"debug_fps": false}
 var type_label := PackedStringArray()   # название типа для интерфейса
 
 # --- Ворота и поражение (data/castle.json) ---
@@ -943,7 +944,8 @@ var panel_t := 0.0                            # таймер обновлени�
 
 # --- Отрисовка ---
 var multimesh: MultiMesh
-var fps_label: Label
+var fps_label: Label                      # отладочная строка FPS; null, если выключена (debug_fps_on)
+var debug_fps_force := false              # тесты: как debug_fps в ui_layout.json (до _ready)
 var grid_ms := 0.0
 var sim_avg := 0.0
 var sim_peak := 0.0
@@ -4942,8 +4944,21 @@ func _setup_fps_label() -> void:
 	pause_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pause_dim.visible = false
 	layer.add_child(pause_dim)
-	fps_label = Label.new()
-	layer.add_child(fps_label)
+	_load_ui_layout()
+	if debug_fps_on():
+		# Отладочная строка FPS (задача 24): внизу слева, вне окошек верхней панели и панели отрядов; растёт вверх
+		fps_label = Label.new()
+		fps_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+		fps_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		fps_label.offset_left = 16.0
+		fps_label.offset_top = -16.0
+		fps_label.offset_bottom = -16.0   # нижний край на 16 px от низа экрана, высота — вверх
+		fps_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		fps_label.add_theme_font_size_override("font_size", FONTS.px(13))
+		fps_label.add_theme_color_override("font_outline_color", Color.BLACK)
+		fps_label.add_theme_constant_override("outline_size", FONTS.outline(4))
+		fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layer.add_child(fps_label)
 	# Баннер по центру сверху (верх на BANNER_TOP): заголовок, текст, дневник, подсказка на универсальной панели;
 	# ширина BANNER_WIDTH вместе с полями панели, перенос по словам
 	banner = PanelContainer.new()
@@ -5083,7 +5098,6 @@ func _setup_fps_label() -> void:
 	shop_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	shop_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	shop_panel.position.x -= 16.0
-	_load_ui_layout()
 	portraits.load_defs()
 	for k in SHOP_ITEMS.size():
 		var b := Button.new()
@@ -5456,7 +5470,7 @@ func _update_squad_panel() -> void:
 		squad_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 16)
 
 
-# data/ui_layout.json поверх значений по умолчанию: размеры — [w, h] больше 0, высота кнопок действий — число больше 0.
+# data/ui_layout.json поверх значений по умолчанию: размеры — [w, h] больше 0, числа — больше 0, флаги — true или false.
 # Нет файла или поле неверно — предупреждение, остаётся значение по умолчанию (только интерфейс).
 func _load_ui_layout() -> void:
 	if not FileAccess.file_exists(UI_LAYOUT_PATH):
@@ -5472,8 +5486,21 @@ func _load_ui_layout() -> void:
 			ui_layout[key] = Vector2(v[0], v[1])
 		elif ui_layout[key] is float and (v is float or v is int) and v > 0:
 			ui_layout[key] = float(v)
+		elif ui_layout[key] is bool and v is bool:
+			ui_layout[key] = v
 		else:
-			push_warning("%s: %s — %s; остаётся %s" % [UI_LAYOUT_PATH, key, "[w, h] больше 0" if ui_layout[key] is Vector2 else "число больше 0", str(ui_layout[key])])
+			push_warning("%s: %s — %s; остаётся %s" % [UI_LAYOUT_PATH, key, "[w, h] больше 0" if ui_layout[key] is Vector2
+				else ("true или false" if ui_layout[key] is bool else "число больше 0"), str(ui_layout[key])])
+
+
+# Отладочная строка FPS (задача 24): только в отладочной сборке и только при флаге — debug_fps в data/ui_layout.json
+# (по умолчанию false) или параметр запуска --debug-fps. В релизной сборке строки нет вовсе.
+func debug_fps_on() -> bool:
+	return fps_wanted(OS.is_debug_build(), ui_layout.debug_fps or debug_fps_force, OS.get_cmdline_args() + OS.get_cmdline_user_args())
+
+
+static func fps_wanted(debug_build: bool, flag: bool, args: PackedStringArray) -> bool:
+	return debug_build and (flag or "--debug-fps" in args)
 
 
 # Кнопка фиксированного размера: size — и минимум, и ширина (текст не растягивает кнопку: обрезка и перенос по словам, кегль — _fit_text).
@@ -5925,13 +5952,14 @@ func _process(delta: float) -> void:
 	if hero_view != null:
 		_update_hero_view(frac, have_prev, 0.0 if paused else delta)
 	draw_ms = (Time.get_ticks_usec() - t) / 1000.0
-	fps_label.text = tr("DEBUG_FPS_LINE") % [
-		Engine.get_frames_per_second(), count, sim_avg, sim_peak, grid_ms, color_mode + 1, gate_hp, arrows_fired, arrows_hit]
-	if profile:
-		var parts := []
-		for q in 6:
-			parts.append("%s %.2f" % [PROF_NAMES[q], prof_avg[q]])
-		fps_label.text += "\n" + tr("DEBUG_FPS_PHASES") % [", ".join(parts), arrivals_10s_max]
+	if fps_label != null:   # отладочная строка есть только при флаге debug_fps в отладочной сборке (задача 24)
+		fps_label.text = tr("DEBUG_FPS_LINE") % [
+			Engine.get_frames_per_second(), count, sim_avg, sim_peak, grid_ms, color_mode + 1, gate_hp, arrows_fired, arrows_hit]
+		if profile:
+			var parts := []
+			for q in 6:
+				parts.append("%s %.2f" % [PROF_NAMES[q], prof_avg[q]])
+			fps_label.text += "\n" + tr("DEBUG_FPS_PHASES") % [", ".join(parts), arrivals_10s_max]
 	if gate_hp != drawn_gate_hp:
 		queue_redraw()   # полоса HP ворот
 
