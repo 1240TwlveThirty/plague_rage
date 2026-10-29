@@ -162,7 +162,9 @@ func t_screens() -> void:
 	var h := current_scene
 	check("хаб: «Начать забег», «Дневник», «В меню», «Закрыть» с рамкой; вкладки стандартные", all_framed([h.start_button, h.diary_button, h.menu_button],
 		min_size) and framed(h.diary_close) and h.tabs.theme_type_variation == &"")
-	check("хаб: дневник и дары на универсальной панели, «Купить» с рамкой", panel_framed(h.diary_panel) and panel_framed(h.gifts_panel)
+	# задача 24: дневник — на универсальной панели (не меняется); дары — на тёмной панели вкладок, своей рамки нет
+	check("хаб: дневник на универсальной панели, дары на тёмной панели вкладок, «Купить» с рамкой", panel_framed(h.diary_panel)
+		and h.tabs.get_theme_stylebox("panel") == UI.dark_panel_style() and h.gifts_panel.get_theme_stylebox("panel") is StyleBoxEmpty
 		and all_framed(h.gift_rows.values().map(func(r): return r.button)))
 	h.tabs.current_tab = 1
 	await step(2)

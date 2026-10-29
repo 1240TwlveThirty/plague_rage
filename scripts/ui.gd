@@ -185,3 +185,58 @@ static func frame_kind(b: Button, kind: String, center := true) -> void:
 	var st: Dictionary = frame_styles(kind, center).styles
 	for k in st:
 		b.add_theme_stylebox_override(k, st[k])
+
+
+# --- Тёмная панель хаба и настроек (задача 24) -----------------------------------------------------------------------------
+# data/ui_theme.json panel_dark: file — art/ui/ui_panel_dark_c<угол>.png (угол из имени), content_pad — поле внутри сверх угла.
+# Нет файла — универсальная панель (panel) с затемнением fallback_modulate; одно предупреждение за запуск.
+static func dark_panel_style() -> StyleBoxTexture:
+	if _frames.has("panel_dark"):
+		return _frames.panel_dark.style
+	var c := theme_cfg()
+	var s := int(c.get("scale", 2))
+	var pd: Dictionary = c.get("panel_dark", {})
+	var p: Dictionary = c.get("panel", {})
+	var file := str(pd.get("file", "res://art/ui/ui_panel_dark_c8.png"))
+	# ищется <имя>_c<угол>.png с любым углом (угол — из имени найденного файла), как у рамок кнопок
+	var found := find_frame(frames_dir if frames_dir != "" else file.get_base_dir(), RegEx.create_from_string("\\d+\\.png$").sub(file.get_file(), ""))
+	var path: String = found.get("path", file)
+	var img: Image = null if found.is_empty() else _image(path)
+	var corner := int(found.get("corner", 0))
+	var slice := corner
+	var mod := Color.WHITE
+	var fallback := img == null or img.get_width() < corner * 2 + 1 or img.get_height() < corner * 2 + 1
+	if fallback:
+		_warn("panel_dark", "Тёмная панель: нет %s — универсальная панель с затемнением %s" % [path, str(pd.get("fallback_modulate", ""))])   # tr-skip: лог
+		img = _image(str(p.get("file", "")))
+		corner = int(p.get("corner", 0))
+		slice = int(p.get("slice", corner))
+		mod = Color(str(pd.get("fallback_modulate", "#ffffff")))
+	var sb := StyleBoxTexture.new()
+	if img != null:
+		img.resize(img.get_width() * s, img.get_height() * s, Image.INTERPOLATE_NEAREST)
+		sb.texture = ImageTexture.create_from_image(img)
+	sb.set_texture_margin_all(slice * s)
+	sb.set_content_margin_all(float(corner * s + int(pd.get("content_pad", p.get("content_pad", 8)))))
+	sb.modulate_color = mod
+	_frames["panel_dark"] = {"style": sb, "path": "" if fallback else path, "corner": corner, "fallback": fallback}
+	return sb
+
+
+# Тёмная панель на PanelContainer или на подложке вкладок TabContainer (stylebox «panel»).
+static func frame_panel_dark(c: Control) -> void:
+	c.add_theme_stylebox_override("panel", dark_panel_style())
+	c.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+
+
+# Окошко-рамка ui_slot за строкой (строки даров): PanelContainer без содержимого, размер задаёт вызывающий.
+static func slot_frame() -> PanelContainer:
+	var p := PanelContainer.new()
+	frame_slot(p)
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return p
+
+
+# Цвет текста на светлой рамке слота (строки даров): ui_theme.json slot_text_color; контраст проверяет check_v74_ui.
+static func slot_text_color() -> Color:
+	return Color(str(theme_cfg().get("slot_text_color", "#181425")))

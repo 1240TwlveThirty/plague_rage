@@ -11,6 +11,8 @@ extends SceneTree
 #   («Войска» — наборы отрядов, «Улучшения» — остальное); клик по панели не доходит до поля боя, клик мимо — доходит.
 #   Панель отрядов: развёрнутая (строки, действия, Клич) и свёрнутая (квадратики и числа живых); клавиша и кнопка; состояние —
 #   в Settings и в новой сцене то же.
+#   Тёмные экраны: хаб и настройки — вкладки на тёмной панели (без файла — универсальная с затемнением, с файлом — свой арт),
+#   строки даров на рамке ui_slot; контраст текста к фону (WCAG, середина арта рамки) не меньше contrast_min (ui_theme.json).
 # Временное сохранение user://bench_v74 (user://save.json не трогается).
 const FONTS := preload("res://scripts/fonts.gd")
 const DIR := "user://bench_v74"
@@ -60,6 +62,7 @@ func _run() -> void:
 		m.queue_free()
 		await step(2)
 	TranslationServer.set_locale("ru")
+	await t_dark(g)
 	DirAccess.remove_absolute(g.save_path)
 	DirAccess.remove_absolute(DIR)
 	print("CHECK: провалов %d" % fails)
@@ -322,3 +325,112 @@ func t_squads(m: Node2D, l: String) -> void:
 	m.squad_toggle.pressed.emit()
 	await step(2)
 	check("%s: кнопка разворачивает, в настройках снова развёрнута" % l, m.squad_expanded and st.squad_panel_expanded and m.squad_actions.is_visible_in_tree())
+
+# --- Тёмные экраны и контраст (этап 5) ---
+
+# Относительная яркость и контраст по WCAG 2.x.
+static func lum(c: Color) -> float:
+	var f := func(v: float) -> float: return v / 12.92 if v <= 0.03928 else pow((v + 0.055) / 1.055, 2.4)
+	return 0.2126 * f.call(c.r) + 0.7152 * f.call(c.g) + 0.0722 * f.call(c.b)
+
+static func contrast(a: Color, b: Color) -> float:
+	var la := lum(a)
+	var lb := lum(b)
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
+
+# Цвет середины рамки: пиксель в центре исходного арта, с оттенком modulate.
+func center_of(path: String, modulate := Color.WHITE) -> Color:
+	var img: Image = UI._image(path)
+	var c := img.get_pixel(img.get_width() / 2, img.get_height() / 2)
+	return Color(c.r * modulate.r, c.g * modulate.g, c.b * modulate.b)
+
+# Цвет текста поверх фона (полупрозрачный текст смешивается с фоном).
+static func over(text: Color, bg: Color) -> Color:
+	return Color(lerpf(bg.r, text.r, text.a), lerpf(bg.g, text.g, text.a), lerpf(bg.b, text.b, text.a))
+
+func t_dark(g: Node) -> void:
+	print("тёмные экраны, контраст")
+	var minc: float = theme_cfg.contrast_min
+	var pd: Dictionary = theme_cfg.panel_dark
+	# без файла тёмной панели — универсальная с затемнением; с файлом (временный, user://) — свой арт, угол из имени
+	UI.reset_frames()
+	var sb := UI.dark_panel_style()
+	var fb: bool = UI._frames.panel_dark.fallback
+	var has_file := ResourceLoader.exists(pd.file) or FileAccess.file_exists(pd.file)
+	check("тёмная панель: файла %s %s — %s" % [pd.file.get_file(), "есть" if has_file else "нет", "свой арт" if not fb else "универсальная с затемнением " + pd.fallback_modulate],
+		fb != has_file and (not fb or sb.modulate_color == Color(pd.fallback_modulate)) and sb.texture != null)
+	var dir := DIR + "/dark"
+	DirAccess.make_dir_recursive_absolute(dir)
+	var img := Image.create(48, 48, false, Image.FORMAT_RGBA8)
+	img.fill(Color("#262b44"))
+	var tmp := dir.path_join(pd.file.get_file().replace("_c8", "_c7"))
+	img.save_png(ProjectSettings.globalize_path(tmp))
+	UI.reset_frames(dir)
+	var sb2 := UI.dark_panel_style()
+	check("тёмная панель из файла: угол из имени (7), без затемнения", not UI._frames.panel_dark.fallback and UI._frames.panel_dark.corner == 7
+		and int(sb2.texture_margin_left) == 7 * int(theme_cfg.scale) and sb2.modulate_color == Color.WHITE)
+	DirAccess.remove_absolute(tmp)
+	DirAccess.remove_absolute(dir)
+	UI.reset_frames()
+	sb = UI.dark_panel_style()
+	var dark := center_of(theme_cfg.panel.file, sb.modulate_color) if UI._frames.panel_dark.fallback else center_of(UI._frames.panel_dark.path)
+	var slot := center_of(theme_cfg.slot.file)
+	var light := center_of(theme_cfg.panel.file)
+	print("CONTRAST|фон|тёмная панель %s|слот %s|светлая панель %s|порог %.1f" % [dark.to_html(false), slot.to_html(false), light.to_html(false), minc])
+	# хаб: вкладки на тёмной панели, строки даров на рамке слота, текст строк — тёмный
+	g.go_hub()
+	await step(3)
+	var h := current_scene
+	h.tabs.current_tab = 1
+	await step(3)
+	check("хаб: подложка вкладок — тёмная панель, у «Даров» своей рамки нет", h.tabs.get_theme_stylebox("panel") == sb
+		and h.gifts_panel.get_theme_stylebox("panel") is StyleBoxEmpty)
+	var frames: Array = h.row_frames_box.get_children()
+	var rows_ok: bool = frames.size() == h.gift_rows.size()
+	for id in h.gift_rows:
+		var b: Control = h.gift_rows[id].button
+		var r := b.get_global_rect()
+		rows_ok = rows_ok and frames.any(func(f): return f.theme_type_variation == UI.SLOT and f.get_global_rect().encloses(r.grow(-1.0)))
+	check("хаб: строк даров %d, у каждой рамка ui_slot (%d), «Купить» внутри неё" % [h.gift_rows.size(), frames.size()], rows_ok)
+	var worst := 99.0
+	var seen := {}
+	for id in h.gift_rows:
+		for k in ["level", "effect", "price", "reason"]:
+			var l: Label = h.gift_rows[id][k]
+			var c := contrast(l.get_theme_color("font_color"), slot)
+			worst = minf(worst, c)
+			seen[k] = c
+	print("CONTRAST|строки даров на слоте|%s|%.2f" % [UI.slot_text_color().to_html(false), worst])
+	check("хаб: текст строк даров (уровень, эффект, цена, причина) на слоте — контраст %.2f >= %.1f" % [worst, minc], worst >= minc)
+	var head: Label = null
+	for c in h.gift_grid.get_children():
+		if c is Label:
+			head = c
+			break
+	var hc := contrast(over(head.get_theme_color("font_color"), dark), dark)
+	var rc := contrast(h.radiance_label.get_theme_color("font_color"), dark)
+	print("CONTRAST|заголовки таблицы на тёмной панели|%.2f|Сияние|%.2f" % [hc, rc])
+	check("хаб: заголовки таблицы (%.2f) и «Сияние» (%.2f) на тёмной панели — не меньше %.1f" % [hc, rc, minc], hc >= minc and rc >= minc)
+	h.tabs.current_tab = 0
+	await step(2)
+	var lc := contrast(h.siege_label.get_theme_color("font_color"), dark)
+	check("хаб, «Осада»: текст на тёмной панели — %.2f" % lc, lc >= minc and h.tabs.get_theme_stylebox("panel") == sb)
+	g.go_menu()
+	await step(3)
+	var st = current_scene.settings_menu
+	st.open()
+	await step(3)
+	var sl: Label = null
+	for c in st.tabs.get_child(0).get_child(0).get_children():
+		if c is HBoxContainer:
+			sl = c.get_child(0)
+			break
+	var scn := contrast(sl.get_theme_color("font_color"), dark)
+	print("CONTRAST|настройки на тёмной панели|%.2f" % scn)
+	check("настройки: вкладки на тёмной панели, подписи — контраст %.2f" % scn, st.tabs.get_theme_stylebox("panel") == sb and scn >= minc)
+	st.close()
+	await step(2)
+	# магазин: заголовки блоков на светлой панели
+	var m_head := contrast(load("res://scripts/main.gd").SHOP_HEAD_COLOR, light)
+	print("CONTRAST|заголовки магазина на светлой панели|%.2f" % m_head)
+	check("магазин: заголовки блоков на светлой панели — %.2f" % m_head, m_head >= minc)

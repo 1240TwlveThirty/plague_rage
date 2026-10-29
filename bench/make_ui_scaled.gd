@@ -52,6 +52,13 @@ func _initialize() -> void:
 			print("  рамка «%s»: нет %s/%s<угол>.png — в игре универсальная кнопка" % [kind, fd.dir, fd.prefix])
 		else:
 			check_art(found.path, found.corner, int(fd.states), found.corner)
+	if cfg.has("panel_dark"):   # тёмная панель хаба и настроек (задача 24) необязательна: нет — универсальная с затемнением
+		var pf: String = cfg.panel_dark.file
+		var pfound: Dictionary = UI_SCRIPT.find_frame(pf.get_base_dir(), RegEx.create_from_string("\\d+\\.png$").sub(pf.get_file(), ""))
+		if pfound.is_empty():
+			print("  тёмная панель: нет %s — в игре универсальная панель с затемнением %s" % [pf, cfg.panel_dark.fallback_modulate])
+		else:
+			check_art(pfound.path, pfound.corner, 1, pfound.corner)
 	for st in STATES:
 		if int(b.state_rows[st]) < 0 or int(b.state_rows[st]) >= int(b.states):
 			fail("button.state_rows.%s = %d вне 0..%d" % [st, int(b.state_rows[st]), int(b.states) - 1])

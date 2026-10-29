@@ -42,6 +42,9 @@
 		"content_pad": 2,
 		"content_pad_v": 0
 	},
+	"panel_dark": {"file": "res://art/ui/ui_panel_dark_c8.png", "content_pad": 8, "fallback_modulate": "#303040"},
+	"slot_text_color": "#181425",
+	"contrast_min": 4.5,
 	"frames": {
 		"shop": {"dir": "res://art/ui", "prefix": "ui_btn_shop_c", "art_size": [232, 32], "states": 4,
 			"state_rows": {"normal": 0, "hover": 1, "pressed": 2, "disabled": 3}, "content_margin": [14, 4, 12, 4],

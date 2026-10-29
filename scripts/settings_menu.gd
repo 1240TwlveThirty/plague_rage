@@ -49,6 +49,7 @@ func _ready() -> void:
 	tabs.tab_alignment = TabBar.ALIGNMENT_CENTER
 	tabs.custom_minimum_size = Vector2(960, 600)
 	tabs.add_theme_font_size_override("font_size", FONTS.px(FONT))
+	UI.frame_panel_dark(tabs)   # задача 24: тёмный экран — вкладки на тёмной панели
 	box.add_child(tabs)
 	_setup_video()
 	_setup_audio()

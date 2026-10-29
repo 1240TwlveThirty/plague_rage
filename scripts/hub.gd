@@ -19,6 +19,7 @@ const GIFT_ICON := "res://art/card_meta_perk.png"   # общая заглушк�
 const GIFT_ICON_SIZE := Vector2(32.0, 48.0)   # 12 строк даров помещаются на экран 1080
 const GIFT_FONT := 24   # задача 22: 26 в fusion10 давало 30 — таблица даров не помещалась по высоте
 const GIFT_MAX := "—"
+const ROW_FRAME_PAD := 8.0   # рамка строки дара шире таблицы на столько с каждой стороны (задача 24)
 const REASON_MARGIN := 16.0   # вкладка «Дары» с причинами отказа — не ближе к краю экрана
 
 var game: Node
@@ -39,6 +40,8 @@ var tabs: TabContainer         # «Осада» и «Дары»
 var gifts_panel: PanelContainer   # вкладка «Дары»: универсальная панель
 var radiance_label: Label      # баланс Сияния на вкладке «Дары»
 var radiance_slot: HUD_SLOT        # окошко «Сияние» в правом верхнем углу (на обеих вкладках)
+var gift_grid: GridContainer    # таблица даров
+var row_frames_box: Control     # рамки ui_slot за строками таблицы (_place_row_frames)
 var gift_rows := {}            # id дара -> {level, effect, price, button, reason}: подписи и кнопка строки магазина
 
 
@@ -63,6 +66,7 @@ func _ready() -> void:
 	tabs = TabContainer.new()
 	tabs.tab_alignment = TabBar.ALIGNMENT_CENTER
 	tabs.add_theme_font_size_override("font_size", FONTS.px(30))
+	UI.frame_panel_dark(tabs)   # задача 24: тёмный экран — подложка вкладок на тёмной панели (обе вкладки)
 	box.add_child(tabs)
 	var top := box
 	box = VBoxContainer.new()
@@ -126,8 +130,8 @@ func _button(box: Container, text: String) -> Button:
 # Вкладка «Дары» на универсальной панели: баланс Сияния и таблица — иконка, название, уровень, эффект следующего уровня, цена,
 # «Купить», причина отказа.
 func _setup_gifts() -> void:
-	gifts_panel = PanelContainer.new()
-	UI.frame_panel(gifts_panel)
+	gifts_panel = PanelContainer.new()   # подложка — тёмная панель вкладок (задача 24); своей рамки нет, чтобы не было двух рамок
+	gifts_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	tabs.add_child(gifts_panel)
 	tabs.set_tab_title(1, "HUB_TAB_GIFTS")
 	var col := VBoxContainer.new()
@@ -145,7 +149,15 @@ func _setup_gifts() -> void:
 	grid.columns = 7
 	grid.add_theme_constant_override("h_separation", 24)
 	grid.add_theme_constant_override("v_separation", 2)   # 15 строк даров на экран 1080
-	col.add_child(grid)
+	# строки даров на рамке ui_slot (задача 24): рамки — за таблицей, по строкам, после каждой раскладки таблицы
+	var stack := MarginContainer.new()
+	col.add_child(stack)
+	row_frames_box = Control.new()
+	row_frames_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stack.add_child(row_frames_box)
+	stack.add_child(grid)
+	gift_grid = grid
+	grid.sort_children.connect(_place_row_frames)
 	for head in ["", "HUB_GIFTS_HEAD_GIFT", "HUB_GIFTS_HEAD_LEVEL", "HUB_GIFTS_HEAD_NEXT", "HUB_GIFTS_HEAD_PRICE", "", ""]:
 		_cell(grid, head, Color(1.0, 1.0, 1.0, 0.6))
 	for id in game.gift_defs:
@@ -158,8 +170,9 @@ func _setup_gifts() -> void:
 			ic.position = GIFT_ICON_AT
 			cell_icon.add_child(ic)
 		grid.add_child(cell_icon)
-		_cell(grid, game.gift_defs[id].name_key)
-		var row := {"level": _cell(grid), "effect": _cell(grid), "price": _cell(grid, "", RADIANCE_COLOR)}
+		var ink := UI.slot_text_color()   # текст на светлой рамке слота — тёмный (контраст — check_v74_ui)
+		_cell(grid, game.gift_defs[id].name_key, ink)
+		var row := {"level": _cell(grid, "", ink), "effect": _cell(grid, "", ink), "price": _cell(grid, "", ink)}
 		var b := Button.new()
 		b.text = "HUB_GIFT_BUY"
 		b.add_theme_font_size_override("font_size", FONTS.px(GIFT_FONT))
@@ -168,13 +181,31 @@ func _setup_gifts() -> void:
 		b.pressed.connect(_on_buy.bind(id))
 		grid.add_child(b)
 		row["button"] = b
-		row["reason"] = _cell(grid, "", WARN_COLOR)
+		row["reason"] = _cell(grid, "", ink)
 		row.reason.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS   # ширину задаёт _fit_reasons: таблица не шире экрана
 		row.reason.mouse_filter = Control.MOUSE_FILTER_PASS   # полный текст — во всплывающей подсказке
 		gift_rows[id] = row
 	if game.gift_defs.is_empty():
 		UI.frame_label(_label(col, "HUB_GIFTS_LOAD_FAILED", 28))   # gifts.json с ошибкой: она уже выведена
 	_refresh_gifts()
+
+
+# Рамка ui_slot за каждой строкой даров (кроме заголовка): по высоте строки, на всю ширину таблицы и ROW_FRAME_PAD за край.
+func _place_row_frames() -> void:
+	var cols := gift_grid.columns
+	var n := gift_grid.get_child_count() / cols
+	while row_frames_box.get_child_count() < n - 1:
+		row_frames_box.add_child(UI.slot_frame())
+	for r in range(1, n):
+		var top := INF
+		var bottom := -INF
+		for k in cols:
+			var c := gift_grid.get_child(r * cols + k) as Control
+			top = minf(top, c.position.y)
+			bottom = maxf(bottom, c.position.y + c.size.y)
+		var f := row_frames_box.get_child(r - 1) as Control
+		f.position = Vector2(-ROW_FRAME_PAD, top)
+		f.size = Vector2(gift_grid.size.x + ROW_FRAME_PAD * 2.0, bottom - top)
 
 
 func _icon(path: String, size: Vector2) -> TextureRect:
