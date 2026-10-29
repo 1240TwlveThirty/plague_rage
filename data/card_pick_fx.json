@@ -1,0 +1,62 @@
+{
+	"_comment": "Анимация экрана выбора карточки (задача 25). Только отрисовка: реальное время (не скорость игры), свой ГСЧ. Время — с, размеры — px экрана 1920x1080, углы — градусы, цвета — Endesga 32.",
+	"_hover": "наведение: подъём lift_px и увеличение scale; наклон до tilt_max_deg от положения мыши относительно центра карточки (поддельная перспектива, расстояние до глаза perspective_px); сглаживание — экспонента со скоростью smooth (1/с, больше — резче); рамка-подсветка glow_color толщиной glow_px; блик за курсором shine_alpha, радиус shine_radius (доля ширины); остальные карточки темнее — others_dim",
+	"hover": {
+		"lift_px": 16,
+		"scale": 1.04,
+		"tilt_max_deg": 10.0,
+		"perspective_px": 1400.0,
+		"smooth": 14.0,
+		"glow_color": "#feae34",
+		"glow_px": 6,
+		"shine_alpha": 0.32,
+		"shine_radius": 0.45,
+		"others_dim": 0.75
+	},
+	"_burn": "сгорание двух других карточек: растворение за burn_time по шуму с клеткой burn_cell_px, кромка ширины burn_edge (доля) от edge_colors[0] к edge_colors[1]; искры: sparks_per_card за время сгорания, жизнь spark_life, скорость spark_speed (px/с, вверх и в стороны), падение spark_gravity, квадрат spark_px",
+	"burn": {
+		"burn_time": 0.5,
+		"burn_cell_px": 10,
+		"burn_edge": 0.12,
+		"edge_colors": ["#fee761", "#f77622"],
+		"sparks_per_card": 14,
+		"spark_life": [0.25, 0.55],
+		"spark_speed": [80.0, 220.0],
+		"spark_gravity": 260.0,
+		"spark_px": 6,
+		"spark_colors": ["#fee761", "#feae34", "#f77622"]
+	},
+	"_move": "выбранная выезжает в центр экрана по дуге (подъём середины arc_px) за move_time с замедлением (ease out, степень move_ease_power) и растёт до center_scale; затем удар: за punch_time (ускорение, степень punch_ease_power) — до punch_scale",
+	"move": {
+		"move_time": 0.42,
+		"arc_px": 90,
+		"move_ease_power": 3.0,
+		"center_scale": 1.2,
+		"punch_time": 0.09,
+		"punch_scale": 1.42,
+		"punch_ease_power": 2.0
+	},
+	"_impact": "удар (конец punch_time): вспышка — радиальное пятно радиуса flash_radius_px (не на весь экран), яркость не выше flash_alpha, гаснет без мерцания за flash_time; тряска shake_px на shake_time (x уровень настройки «Тряска экрана», выкл — нет); ring_count золотых колец через ring_delay, каждое расходится до ring_radius_px за ring_time, толщина ring_px, гаснет к концу; через hold_time после удара экран гаснет за fade_time",
+	"impact": {
+		"flash_color": "#fff2c0",
+		"flash_alpha": 0.55,
+		"flash_time": 0.14,
+		"flash_radius_px": 460,
+		"shake_px": 6,
+		"shake_time": 0.18,
+		"ring_count": 3,
+		"ring_delay": 0.07,
+		"ring_time": 0.42,
+		"ring_radius_px": 640,
+		"ring_px": 8,
+		"ring_color": "#feae34",
+		"hold_time": 0.3,
+		"fade_time": 0.22
+	},
+	"_short": "«короткая»: без сгорания, вспышки и колец — экран гаснет за fade_time",
+	"short": {
+		"fade_time": 0.4
+	},
+	"_limit": "полная последовательность не длиннее max_total_time (проверяет check_v75_pick)",
+	"max_total_time": 1.5
+}
