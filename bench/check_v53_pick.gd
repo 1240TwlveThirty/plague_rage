@@ -138,8 +138,11 @@ func t_run() -> void:
 	check("пока не выбрано, волна 3 не начинается (Space)", m.wave_state == m.WS_RESPITE and m.wave_number == 2)
 	m.card_screen._input(key(KEY_2))
 	await step(1)
-	check("клавиша 2: выбрана вторая карточка, экран закрыт, тройка снята", g.run_cards.size() == 1 and g.run_cards[0].id == offer[1] and not m.card_screen.visible
-		and m.pending_offer.is_empty())
+	# задача 25: карточка применяется сразу, экран доигрывает анимацию; любая клавиша — пропуск и закрытие
+	var applied: bool = g.run_cards.size() == 1 and g.run_cards[0].id == offer[1] and m.pending_offer.is_empty()
+	m.card_screen._input(key(KEY_SPACE))
+	check("клавиша 2: выбрана вторая карточка, тройка снята; пропуск анимации закрывает экран", applied and not m.card_screen.visible
+		and g.run_cards.size() == 1)
 	m._update_ui()
 	check("HUD: «Карточки:» и строка с названием выбранной", m.cards_label.visible and tr(m.cards_label.text) == tr("HUD_CARDS") and m.cards_rows.size() == 1
 		and m.cards_rows[0].text.contains(tr(g.card_defs[offer[1]].name_key)), "" if m.cards_rows.is_empty() else m.cards_rows[0].text)
@@ -152,12 +155,14 @@ func t_run() -> void:
 		and m.card_screen.owned_label.text.contains(tr(g.card_defs[g.run_cards[0].id].name_key)))
 	m.card_screen.buttons[0].pressed.emit()
 	await step(1)
+	m.card_screen.finish_now()
 	check("мышь (нажатие первой карточки): выбрана, всего 2", g.run_cards.size() == 2 and g.run_cards[1].id == offer[0] and not m.card_screen.visible)
 	for w in [6, 7, 8]:
 		wave(m)
 	check("после волны 8 — третья тройка", m.wave_number == 8 and m.pending_offer.size() == 3)
 	m.card_screen._input(key(KEY_3))
 	check("клавиша 3: третья карточка, всего 3", g.run_cards.size() == 3)
+	m.card_screen.finish_now()
 	var cards_before: Array = g.run_cards.duplicate()
 	g.start_run(1)
 	await step(3)

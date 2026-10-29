@@ -2162,14 +2162,22 @@ func choose_card(id: String) -> bool:
 		active_cards.append(r)
 	pending_offer = []
 	if card_screen != null:
-		card_screen.visible = false
-		banner.visible = banner_any and not banner_hidden
+		if not card_screen.anim_on:   # задача 25: с анимацией экран закроется сам (closed -> _on_cards_closed)
+			card_screen.visible = false
+		banner.visible = banner_any and not banner_hidden and not _picking()
 	if not r.is_empty():
 		apply_on_pick(r)
 		if r.has("result"):   # «Жертва ради победы»: что выпало — сразу строкой в HUD
 			_say(tr("MSG_CARD_SPLIT") % [tr(card_defs[r.id].name_key), card_split_text(r)], 8.0)
 	ui_t = 0.0
 	return true
+
+
+# Экран выбора закрылся (анимация закончилась или пропущена): баннер итога волны снова виден, HUD обновляется.
+func _on_cards_closed() -> void:
+	if banner != null:
+		banner.visible = banner_any and not banner_hidden and not _picking()
+	ui_t = 0.0
 
 
 # Число для подписей карточек: 25, а не 25.0; 1.5 и 0.85 как есть.
@@ -5018,6 +5026,7 @@ func _setup_fps_label() -> void:
 	add_child(esc_menu)
 	card_screen = CARD_PICK.new()
 	card_screen.picked.connect(choose_card)
+	card_screen.closed.connect(_on_cards_closed)
 	add_child(card_screen)
 	# Выбранные карточки: справа сверху, компактным списком названий
 	cards_box = VBoxContainer.new()

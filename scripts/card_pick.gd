@@ -7,6 +7,7 @@ extends CanvasLayer
 # (наклон с поддельной перспективой, подсветка, блик, растворение). Время анимации — реальное (Time, не скорость игры и не пауза),
 # случайности — свой ГСЧ fx_rng; симуляцию не трогает.
 signal picked(id: String)
+signal closed   # экран закрылся (после анимации выбора или сразу): следующая фаза
 
 const DIM := Color(0.0, 0.0, 0.0, 0.85)
 const FONTS := preload("res://scripts/fonts.gd")   # кегли и контуры текста под вариант шрифта (задача 20)
@@ -30,6 +31,9 @@ const KEYS := [KEY_1, KEY_2, KEY_3]
 const SETTINGS := preload("res://scripts/settings.gd")
 const FX_PATH := "res://data/card_pick_fx.json"
 const CARD_SHADER := preload("res://scripts/card_pick.gdshader")
+const ANIM_OFF := 0      # настройка «Анимация выбора карточки» (Settings.card_pick_anim): выкл
+const ANIM_SHORT := 1    # короткая: экран гаснет за short.fade_time, без сгорания, вспышки и колец
+const ANIM_FULL := 2     # полная
 const GROUP_MARGIN := 48.0   # поле CanvasGroup вокруг карточки: наклон и подсветка выходят за её край
 
 var row: HBoxContainer
@@ -46,6 +50,19 @@ var tilt := PackedVector2Array()     # сглаженный наклон, рад
 var shine := PackedVector2Array()    # сглаженное положение блика, доли карточки
 var fx_rng := RandomNumberGenerator.new()   # свой ГСЧ анимации (не симуляции)
 var last_us := 0                     # реальное время прошлого кадра анимации, мкс
+var chosen := -1                     # выбранная карточка (эффект уже применён); -1 — выбора ещё не было
+var anim_on := false                 # идёт анимация выбора: ввод заблокирован, клик или клавиша — пропуск
+var anim_mode := ANIM_FULL           # режим текущей анимации
+var anim_t := 0.0                    # время с момента выбора, с (реальное)
+var impact_done := false
+var shake_dir := Vector2.ZERO
+var sel_from := Rect2()              # выбранная карточка на экране в момент выбора (px холста)
+var sparks: Array = []               # искры сгорания: {p, v, age, life, color}
+var spark_debt := PackedFloat32Array()   # сколько искр карточке k ещё «должно» появиться (дробная часть)
+var gore_on := true
+var fx_layer: Control                # вспышка, кольца, искры (поверх карточек)
+var flash_tex: GradientTexture2D
+var fade_nodes: Array[CanvasItem] = []   # гаснут в конце анимации
 var test_mouse: Variant = null       # тесты и снимки: курсор (Vector2, px холста) вместо настоящего
 
 
@@ -86,6 +103,22 @@ func _ready() -> void:
 	owned_label.custom_minimum_size = Vector2(1400, 0)
 	owned_label.add_theme_font_size_override("font_size", FONTS.px(22))
 	box.add_child(owned_label)
+	fx_layer = Control.new()   # вспышка, кольца и искры выбора — поверх всего экрана
+	fx_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	fx_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fx_layer.draw.connect(_draw_fx)
+	add_child(fx_layer)
+	fade_nodes = [dim, center, fx_layer]
+	flash_tex = GradientTexture2D.new()   # круглое пятно: белое в центре, прозрачное к краю
+	flash_tex.width = 128
+	flash_tex.height = 128
+	flash_tex.fill = GradientTexture2D.FILL_RADIAL
+	flash_tex.fill_from = Vector2(0.5, 0.5)
+	flash_tex.fill_to = Vector2(1.0, 0.5)
+	var gr := Gradient.new()
+	gr.set_color(0, Color(1, 1, 1, 1))
+	gr.set_color(1, Color(1, 1, 1, 0))
+	flash_tex.gradient = gr
 
 
 static func ensure_actions() -> void:
@@ -109,6 +142,7 @@ func open(ids: Array, defs: Dictionary, owned: Array) -> void:
 	buttons.clear()
 	groups.clear()
 	hover_k = -1
+	_reset_anim()
 	for k in ids.size():
 		var d: Dictionary = defs[ids[k]]
 		var b := _card(k, d)
@@ -233,7 +267,211 @@ func _process(_delta: float) -> void:
 func fx_step(dt: float) -> void:
 	if fx.is_empty() or groups.is_empty():
 		return
-	_hover_step(dt)
+	if anim_on:
+		_anim_step(dt)
+	else:
+		_hover_step(dt)
+
+
+# --- Анимация выбора (этап 3) ---------------------------------------------------------------------------------------------------
+
+# Полная длительность анимации режима mode по данным fx (с): полная — до конца колец или затухания, что позже.
+static func total_time(f: Dictionary, mode: int) -> float:
+	if mode == ANIM_OFF or f.is_empty():
+		return 0.0
+	if mode == ANIM_SHORT:
+		return float(f.short.fade_time)
+	var i: Dictionary = f.impact
+	var t_hit := float(f.move.move_time) + float(f.move.punch_time)
+	var rings := float(i.ring_time) + float(i.ring_delay) * maxf(float(i.ring_count) - 1.0, 0.0) if int(i.ring_count) > 0 else 0.0
+	return t_hit + maxf(maxf(float(i.hold_time) + float(i.fade_time), rings), maxf(float(i.flash_time), float(i.shake_time)))
+
+
+# Момент удара (с от выбора).
+func impact_time() -> float:
+	return float(fx.move.move_time) + float(fx.move.punch_time)
+
+
+func _reset_anim() -> void:
+	chosen = -1
+	anim_on = false
+	anim_t = 0.0
+	impact_done = false
+	sparks.clear()
+	offset = Vector2.ZERO
+	for n in fade_nodes:
+		n.modulate.a = 1.0
+	if fx_layer != null:
+		fx_layer.queue_redraw()
+
+
+func _start_anim() -> void:
+	anim_t = 0.0
+	impact_done = false
+	sparks.clear()
+	spark_debt = PackedFloat32Array()
+	spark_debt.resize(groups.size())
+	var st := get_node_or_null("/root/Settings")
+	gore_on = st == null or int(st.gore) > 0
+	sel_from = card_rect(chosen, false)
+	var g := groups[chosen]
+	g.top_level = true   # выезжает из ряда: положение — в координатах холста
+	g.z_index = 10
+	for k in groups.size():
+		(groups[k].material as ShaderMaterial).set_shader_parameter("burn_seed", fx_rng.randf() * 100.0)
+		if k != chosen:
+			var e: Array = fx.burn.edge_colors if gore_on else fx_dust_colors()
+			_set_card(k, {"edge_a": Color(e[0]), "edge_b": Color(e[mini(1, e.size() - 1)]), "burn_edge": float(fx.burn.burn_edge)})
+	_anim_step(0.0)
+
+
+# Цвета пыли («Жестокость: выкл»): data/fx.json dust_colors — кромка и искры без огня.
+static func fx_dust_colors() -> Array:
+	var d = JSON.parse_string(FileAccess.get_file_as_string("res://data/fx.json"))
+	var c = d.get("dust_colors") if d is Dictionary else null
+	return c if c is Array and not c.is_empty() else ["#8b9bb4", "#5a6988"]
+
+
+func _anim_step(dt: float) -> void:
+	anim_t += dt
+	var t := anim_t
+	var total := total_time(fx, anim_mode)
+	var alpha := 1.0
+	if anim_mode == ANIM_SHORT:
+		alpha = 1.0 - clampf(t / maxf(total, 0.001), 0.0, 1.0)
+		for k in groups.size():
+			_set_card(k, {"hover": 0.0, "shine_alpha": 0.0})
+	else:
+		var mv: Dictionary = fx.move
+		var im: Dictionary = fx.impact
+		var t_move := float(mv.move_time)
+		var t_hit := impact_time()
+		# выбранная: дуга к центру экрана с замедлением, рост; удар — быстрый рост
+		var vs := get_viewport().get_visible_rect().size
+		var c0 := sel_from.get_center()
+		var c1 := vs * 0.5
+		var sc0 := sel_from.size.x / (FRAME_PX.x * SCALE)
+		var sc := sc0
+		var c := c1
+		if t < t_move:
+			var e := 1.0 - pow(1.0 - t / t_move, float(mv.move_ease_power))
+			var ctrl := (c0 + c1) * 0.5 - Vector2(0, float(mv.arc_px))
+			c = c0.lerp(ctrl, e).lerp(ctrl.lerp(c1, e), e)   # квадратичная кривая Безье
+			sc = lerpf(sc0, float(mv.center_scale), e)
+		elif t < t_hit:
+			sc = lerpf(float(mv.center_scale), float(mv.punch_scale), pow((t - t_move) / float(mv.punch_time), float(mv.punch_ease_power)))
+		else:
+			sc = float(mv.punch_scale)
+		var g := groups[chosen]
+		var size := FRAME_PX * SCALE * sc
+		g.scale = Vector2(sc, sc)
+		g.global_position = Vector2(roundf(c.x - size.x * 0.5), roundf(c.y - size.y * 0.5)) - Vector2(0, LIFT) * sc
+		var calm := clampf(1.0 - t / maxf(t_move, 0.001), 0.0, 1.0)   # наклон и блик уходят к центру
+		tilt[chosen] = tilt[chosen] * calm
+		_set_card(chosen, {"hover": calm, "tilt": tilt[chosen], "shine_alpha": float(fx.hover.shine_alpha) * calm, "dim": 1.0})
+		# остальные сгорают
+		var bt := float(fx.burn.burn_time)
+		var burn := clampf(t / maxf(bt, 0.001), 0.0, 1.0)
+		for k in groups.size():
+			if k == chosen:
+				continue
+			_set_card(k, {"burn": burn, "hover": 0.0, "shine_alpha": 0.0, "dim": 1.0, "alpha": 0.0 if burn >= 1.0 else 1.0})
+			if t <= bt and dt > 0.0:
+				spark_debt[k] += float(fx.burn.sparks_per_card) * dt / maxf(bt, 0.001)
+				while spark_debt[k] >= 1.0:
+					spark_debt[k] -= 1.0
+					_spark(card_rect(k, false))
+		# удар: тряска (настройка «Тряска экрана»), вспышка и кольца рисует fx_layer
+		if t >= t_hit and not impact_done:
+			impact_done = true
+			shake_dir = Vector2.from_angle(fx_rng.randf() * TAU)
+		var st_t := t - t_hit
+		var amp := float(im.shake_px) * shake_mult() * (1.0 - st_t / maxf(float(im.shake_time), 0.001)) if impact_done else 0.0
+		if amp > 0.0 and st_t < float(im.shake_time):
+			shake_dir = shake_dir.rotated(PI * 0.5 + fx_rng.randf_range(-0.6, 0.6))   # каждый кадр в другую сторону
+			var o := shake_dir * maxf(roundf(amp), 1.0)
+			offset = Vector2(roundf(o.x), roundf(o.y))
+		else:
+			offset = Vector2.ZERO
+		alpha = 1.0 - clampf((t - t_hit - float(im.hold_time)) / maxf(float(im.fade_time), 0.001), 0.0, 1.0)
+	for i in range(sparks.size() - 1, -1, -1):
+		var sp: Dictionary = sparks[i]
+		sp.age += dt
+		if sp.age >= sp.life:
+			sparks.remove_at(i)
+			continue
+		sp.v += Vector2(0, float(fx.burn.spark_gravity)) * dt
+		sp.p += sp.v * dt
+	for n in fade_nodes:
+		n.modulate.a = alpha
+	_set_card(chosen, {"alpha": alpha})   # выбранная — top_level: прозрачность экрана ей не передаётся, гаснет шейдером
+	fx_layer.queue_redraw()
+	if t >= total:
+		_finish()
+
+
+# Множитель тряски выбора: уровень настройки «Тряска экрана» (data/fx.json shake_levels; выкл — 0, тряски нет).
+func shake_mult() -> float:
+	var d = JSON.parse_string(FileAccess.get_file_as_string("res://data/fx.json"))
+	if not d is Dictionary or not d.get("screen_shake_enabled", true):
+		return 0.0
+	var levels: Array = d.get("shake_levels", [0.0, 0.5, 1.0, 1.5])
+	var st := get_node_or_null("/root/Settings")
+	var lvl: int = st.screen_shake_level if st != null else 2
+	return float(levels[clampi(lvl, 0, levels.size() - 1)])
+
+
+# Искра у случайной точки сгорающей карточки r: вверх и в стороны.
+func _spark(r: Rect2) -> void:
+	var b: Dictionary = fx.burn
+	var cols: Array = b.spark_colors if gore_on else fx_dust_colors()
+	var dir := Vector2.from_angle(-PI * 0.5 + fx_rng.randf_range(-1.1, 1.1))
+	sparks.append({"p": r.position + Vector2(fx_rng.randf(), fx_rng.randf()) * r.size,
+		"v": dir * fx_rng.randf_range(b.spark_speed[0], b.spark_speed[1]), "age": 0.0,
+		"life": fx_rng.randf_range(b.spark_life[0], b.spark_life[1]), "color": Color(cols[fx_rng.randi() % cols.size()])})
+
+
+# Вспышка (пятно, не на весь экран, гаснет линейно — без мерцания), кольца-волны из центра, искры — квадраты целых px.
+func _draw_fx() -> void:
+	if not anim_on or anim_mode != ANIM_FULL:
+		return
+	var px := float(fx.burn.spark_px)
+	for sp in sparks:
+		var col: Color = sp.color
+		col.a = 1.0 - sp.age / sp.life
+		fx_layer.draw_rect(Rect2(sp.p.round() - Vector2(px, px) * 0.5, Vector2(px, px)), col)
+	if not impact_done:
+		return
+	var im: Dictionary = fx.impact
+	var t := anim_t - impact_time()
+	var c := fx_layer.get_viewport_rect().size * 0.5
+	if t < float(im.flash_time):
+		var fc := Color(im.flash_color)
+		fc.a = float(im.flash_alpha) * (1.0 - t / float(im.flash_time))
+		var r := float(im.flash_radius_px)
+		fx_layer.draw_texture_rect(flash_tex, Rect2(c - Vector2(r, r), Vector2(r, r) * 2.0), false, fc)
+	for n in int(im.ring_count):
+		var rt := (t - float(im.ring_delay) * n) / float(im.ring_time)
+		if rt <= 0.0 or rt >= 1.0:
+			continue
+		var rc := Color(im.ring_color)
+		rc.a = 1.0 - rt
+		var e := 1.0 - pow(1.0 - rt, 2.0)   # быстро в начале, медленнее к краю
+		fx_layer.draw_arc(c, maxf(float(im.ring_radius_px) * e, 1.0), 0.0, TAU, 96, rc, float(im.ring_px))
+
+
+# Конец: экран закрыт, всё на местах для следующего открытия; closed — следующая фаза.
+func _finish() -> void:
+	var was := chosen
+	anim_on = false
+	visible = false
+	offset = Vector2.ZERO
+	sparks.clear()
+	for n in fade_nodes:
+		n.modulate.a = 1.0
+	if was >= 0 and was < groups.size():
+		groups[was].top_level = false
+	closed.emit()
 
 
 # Наведение: подъём, увеличение, наклон к курсору и блик за ним — экспоненциальное сглаживание (hover.smooth); остальные темнее.
@@ -325,19 +563,50 @@ func _text(parent: Control, text: String, size: int, color: Color) -> Label:
 
 # Смена языка при открытом экране: описания и список выбранных собраны через tr() — собрать заново.
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_TRANSLATION_CHANGED and visible and not offer.is_empty():
+	if what == NOTIFICATION_TRANSLATION_CHANGED and visible and not offer.is_empty() and chosen < 0:
 		open(offer, shown_defs, shown_owned)
 
 
+# Выбор k: эффект карточки применяется сразу и ровно один раз (picked; повторный выбор, двойной клик — не действуют), дальше —
+# только вид: анимация по настройке (выкл — экран закрывается сразу), в конце — closed.
 func _pick(k: int) -> void:
-	if not visible or k >= offer.size():
+	if not visible or k >= offer.size() or chosen >= 0:
 		return
-	visible = false
+	chosen = k
+	anim_mode = setting_mode() if not fx.is_empty() else ANIM_OFF
+	anim_on = anim_mode != ANIM_OFF
+	if anim_on:
+		_start_anim()
 	picked.emit(offer[k])
+	if not anim_on:
+		_finish()
+
+
+# Настройка «Анимация выбора карточки» (Settings.card_pick_anim); без автозагрузки — полная.
+func setting_mode() -> int:
+	var st := get_node_or_null("/root/Settings")
+	var v = st.get("card_pick_anim") if st != null else null
+	return int(v) if v != null else ANIM_FULL
+
+
+# Пропуск: сразу конечное состояние и следующая фаза (эффект уже применён при выборе).
+func finish_now() -> void:
+	if anim_on:
+		_finish()
 
 
 func _input(event: InputEvent) -> void:
-	if not visible or not event is InputEventKey or not event.pressed or event.echo:
+	if not visible:
+		return
+	if anim_on:   # анимация: ввод заблокирован; клик или любая клавиша (кроме Esc и F11) — пропуск
+		var key := event as InputEventKey
+		if key != null and (key.keycode == KEY_ESCAPE or key.keycode == KEY_F11):
+			return
+		if (key != null and key.pressed and not key.echo) or (event is InputEventMouseButton and event.pressed):
+			finish_now()
+		get_viewport().set_input_as_handled()
+		return
+	if not event is InputEventKey or not event.pressed or event.echo:
 		return
 	if event.keycode == KEY_ESCAPE or event.keycode == KEY_F11:
 		return   # меню паузы и полный экран работают и здесь
