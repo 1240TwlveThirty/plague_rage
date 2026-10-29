@@ -18,6 +18,9 @@ const WAR_CRY_GLOW_PX := 10.0
 const SPLIT_NAMES := {"infantry": "UI_SPLIT_INFANTRY", "archer": "UI_SPLIT_ARCHER"}   # «Жертва ради победы»: кому выпало
 const COND_KEYS := {"hold": "COND_HOLD", "retreat": "COND_RETREAT", "gate_low": "COND_GATE_LOW", "squad_low": "COND_SQUAD_LOW",
 	"wave_time": "COND_WAVE_TIME", "gold_high": "COND_GOLD_HIGH", "lost_steps": "COND_LOST_STEPS", "hero_low": "COND_HERO_LOW", "hero_near": "COND_HERO_NEAR"}
+const SHOP_EDGE := 16.0      # отступ магазина и его кнопки от правого края экрана
+const SHOP_TAB_GAP := 8.0    # зазор между магазином и кнопкой сворачивания
+const SHOP_HEAD_COLOR := Color("#181425")   # заголовки блоков магазина на светлой панели (Endesga 32, контраст — check_v74_ui)
 const CARD_ON := Color(1.0, 0.82, 0.3)          # строка карточки: условие выполнено
 const CARD_IDLE := Color(1.0, 1.0, 1.0, 0.55)   # условная карточка, условие не выполнено
 const BLOCK_CAP := 0.95   # общий шанс блока не выше
@@ -31,7 +34,8 @@ const ACTION_KEYS := ["squad_new", "squad_split", "squad_merge"]
 const KEY_ACTIONS := ["select_all", "debug_restart", "squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4",
 	"squad_select_5", "squad_select_6", "squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side",
 	"wave_start", "buy_1", "buy_2", "buy_3", "buy_4", "order_attack", "order_hold", "order_retreat", "about_face", "banner_toggle",
-	"auto_width", "pause", "post_left", "post_top", "post_right", "post_back", "war_cry", "buy_spear", "hero_attack"]
+	"auto_width", "pause", "post_left", "post_top", "post_right", "post_back", "war_cry", "buy_spear", "hero_attack", "shop_toggle",
+	"squad_panel_toggle"]
 const ROWS_MAX := 20       # строй не глубже: при большом отряде растёт ширина
 const WIDTH_MAX := 100     # и не шире
 const WAVE_DMG_TO_UNITS := true   # урон зомби по юнитам растёт с волной (team_dmg_mult[1])
@@ -555,7 +559,7 @@ var type_id := {}   # имя -> номер
 var portraits = PORTRAITS.new()   # иллюстрации в кнопках (только интерфейс)
 # data/ui_layout.json: фиксированные размеры кнопок (минимум и он же ширина — текст ужимается, кнопка не растягивается).
 var ui_layout := {"shop_button_size": Vector2(464, 64), "squad_button_size": Vector2(352, 48), "action_button_size": Vector2(184, 48), "war_cry_size": Vector2(352, 48),
-	"debug_fps": false}
+	"debug_fps": false, "shop_slide_time": 0.2, "panel_toggle_size": Vector2(232, 48), "squad_compact_size": Vector2(112, 48)}
 var type_label := PackedStringArray()   # название типа для интерфейса
 
 # --- Ворота и поражение (data/castle.json) ---
@@ -881,7 +885,15 @@ var info_msg := ""
 var radiance_slot: HUD_SLOT                    # окошко «Сияние» на экране итога (баланс), под ним — заработанное за забег
 var radiance_earned_label: Label
 var war_cry_sig := -1                         # состояние и число в подписи Клича: подпись пересобирается, только когда они сменились
-var shop_panel: VBoxContainer
+var shop_panel: PanelContainer           # выдвижной магазин справа (задача 24): блоки «Войска» и «Улучшения»
+var shop_tab: Button                      # кнопка «свернуть / развернуть» под магазином (и клавиша shop_toggle)
+var shop_open := true                     # магазин развёрнут (цель анимации); в начале волны — false, в передышке — true
+var shop_slide := 1.0                     # доля выезда 0..1 (анимация shop_slide_time из ui_layout.json)
+var shop_state_seen := -1                 # wave_state, при котором последний раз выставлен shop_open
+var shop_blocks: Array[Label] = []        # заголовки блоков магазина
+var squad_toggle: Button                  # «свернуть / развернуть» панель отрядов (и клавиша squad_panel_toggle)
+var squad_compact: Array[Button] = []     # свёрнутая панель: строка отряда — квадратик и число живых
+var squad_expanded := true                # панель отрядов развёрнута (Settings.squad_panel_expanded)
 var shop_buttons: Array[Button] = []
 var ui_t := 0.0                               # таймер обновления HUD (10 Гц)
 
@@ -5092,28 +5104,64 @@ func _setup_fps_label() -> void:
 	hero_fallen_panel.add_child(hero_fallen_label)
 	hero_fallen_panel.visible = false
 	layer.add_child(hero_fallen_panel)
-	# Магазин справа (виден только в передышке)
-	shop_panel = VBoxContainer.new()
-	shop_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
-	shop_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	shop_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	shop_panel.position.x -= 16.0
+	# Магазин справа — выдвижная панель (задача 24): в передышке развёрнута, в начале волны уезжает за край экрана; кнопка под ней
+	# и клавиша shop_toggle сворачивают и разворачивают. Внутри два блока: «Войска» (наборы отрядов) и «Улучшения». Панель
+	# (MOUSE_FILTER_STOP) забирает клики — на поле боя они не проходят.
+	shop_panel = PanelContainer.new()
+	UI.frame_panel(shop_panel)
+	shop_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	var shop_box := VBoxContainer.new()
+	shop_panel.add_child(shop_box)
 	portraits.load_defs()
-	for k in SHOP_ITEMS.size():
-		var b := Button.new()
-		b.focus_mode = Control.FOCUS_NONE   # иначе Space «нажимает» последнюю кнопку
-		_fixed_button(b, ui_layout.shop_button_size)
-		UI.frame_kind(b, "shop")   # задача 24: рамка ui_btn_shop_c*.png, нет файла — универсальная кнопка
-		b.pressed.connect(_buy.bind(k))
-		shop_panel.add_child(b)
-		shop_buttons.append(b)
-		portraits.apply(b, SHOP_PORTRAIT.get(SHOP_ITEMS[k], ""))   # «Оружие» и «Ворота» — без иллюстрации
+	for block in 2:   # 0 — войска (товары с типом юнита), 1 — улучшения
+		var head := Label.new()
+		head.text = "HUD_SHOP_TROOPS" if block == 0 else "HUD_SHOP_UPGRADES"
+		head.add_theme_font_size_override("font_size", FONTS.px(FONTS.DEFAULT_SIZE))
+		head.add_theme_color_override("font_color", SHOP_HEAD_COLOR)
+		head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		shop_box.add_child(head)
+		shop_blocks.append(head)
+		for k in SHOP_ITEMS.size():
+			if SHOP_PORTRAIT.has(SHOP_ITEMS[k]) != (block == 0):
+				continue
+			var b := Button.new()
+			b.focus_mode = Control.FOCUS_NONE   # иначе Space «нажимает» последнюю кнопку
+			_fixed_button(b, ui_layout.shop_button_size)
+			UI.frame_kind(b, "shop")   # задача 24: рамка ui_btn_shop_c*.png, нет файла — универсальная кнопка
+			b.pressed.connect(_buy.bind(k))
+			b.set_meta("shop_k", k)
+			shop_box.add_child(b)
+			portraits.apply(b, SHOP_PORTRAIT.get(SHOP_ITEMS[k], ""))   # «Оружие» и «Ворота» — без иллюстрации
+	shop_buttons.resize(SHOP_ITEMS.size())   # порядок SHOP_ITEMS (покупка k, клавиша k), а не порядок на панели
+	for c in shop_box.get_children():
+		if c is Button:
+			shop_buttons[c.get_meta("shop_k")] = c
 	layer.add_child(shop_panel)
+	shop_tab = Button.new()
+	shop_tab.focus_mode = Control.FOCUS_NONE
+	_fixed_button(shop_tab, ui_layout.panel_toggle_size)
+	shop_tab.autowrap_mode = TextServer.AUTOWRAP_OFF
+	shop_tab.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	shop_tab.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UI.frame_button(shop_tab, false)
+	shop_tab.pressed.connect(toggle_shop)
+	layer.add_child(shop_tab)
 	# Отряды слева: цветной квадрат, клавиша, название, живые, приказ; строки кликабельны
 	squad_panel = VBoxContainer.new()
 	squad_panel.set_anchors_preset(Control.PRESET_CENTER_LEFT)
 	squad_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	squad_panel.position.x = 16.0
+	var st := get_node_or_null("/root/Settings")
+	squad_expanded = st == null or st.squad_panel_expanded
+	squad_toggle = Button.new()   # сверху панели: свернуть (квадратики и числа) / развернуть (строки, действия, Клич)
+	squad_toggle.focus_mode = Control.FOCUS_NONE
+	_fixed_button(squad_toggle, ui_layout.panel_toggle_size)
+	squad_toggle.autowrap_mode = TextServer.AUTOWRAP_OFF
+	squad_toggle.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	squad_toggle.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UI.frame_button(squad_toggle, false)
+	squad_toggle.pressed.connect(toggle_squad_panel)
+	squad_panel.add_child(squad_toggle)
 	for s in SQUAD_MAX:   # строка на каждый индекс; свободные скрыты (_update_squad_panel)
 		var row := HBoxContainer.new()
 		var sw := ColorRect.new()
@@ -5130,6 +5178,17 @@ func _setup_fps_label() -> void:
 		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS   # целиком — во всплывающей подсказке; панель не растёт
 		b.pressed.connect(_on_row_pressed.bind(s))
 		row.add_child(b)
+		var c := Button.new()   # свёрнутая панель: число живых рядом с цветным квадратиком; клик выбирает, как строка
+		c.focus_mode = Control.FOCUS_NONE
+		c.toggle_mode = true
+		_fixed_button(c, ui_layout.squad_compact_size)
+		UI.frame_kind(c, "squad")
+		c.autowrap_mode = TextServer.AUTOWRAP_OFF
+		c.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		c.pressed.connect(_on_row_pressed.bind(s))
+		c.visible = false
+		row.add_child(c)
+		squad_compact.append(c)
 		squad_panel.add_child(row)
 		squad_buttons.append(b)
 		squad_rows_ui.append(row)
@@ -5428,19 +5487,80 @@ func _squad_label(s: int) -> String:
 	return tr(type_label[squad_type[s]]) if same < 2 else "%s %d" % [tr(type_label[squad_type[s]]), rank]
 
 
+# --- Выдвижной магазин (задача 24) ---------------------------------------------------------------------------------------
+
+# Кнопка и клавиша shop_toggle: свернуть или развернуть магазин. Только в передышке — в бою он закрыт (покупки только в передышке).
+func toggle_shop() -> void:
+	if wave_state != WS_RESPITE or shop_panel == null:
+		return
+	shop_open = not shop_open
+	_update_shop_tab()
+
+
+# Подпись кнопки под магазином (с актуальной клавишей); в бою кнопки нет.
+func _update_shop_tab() -> void:
+	if shop_tab == null:
+		return
+	shop_tab.visible = wave_state == WS_RESPITE
+	var t: String = tr("HUD_SHOP_HIDE" if shop_open else "HUD_SHOP_SHOW") % SETTINGS.key_label("shop_toggle")
+	if shop_tab.text != t:
+		shop_tab.text = t
+		shop_tab.tooltip_text = t
+	_place_shop()
+
+
+# Анимация выезда: shop_slide идёт к 1 (открыт) или 0 (закрыт) за shop_slide_time; каждый кадр из _process.
+func shop_slide_step(delta: float) -> void:
+	if shop_panel == null:
+		return
+	var target := 1.0 if shop_open else 0.0
+	if shop_slide == target:
+		return
+	var dur: float = ui_layout.shop_slide_time
+	shop_slide = move_toward(shop_slide, target, delta / dur if dur > 0.0 else 1.0)
+	_place_shop()
+
+
+# Положение магазина по доле выезда: открыт — правый край в 16 px от края экрана, закрыт — целиком за правым краем (и скрыт);
+# по вертикали — по центру. Кнопка сворачивания стоит на месте: под магазином, у правого края.
+func _place_shop() -> void:
+	var vp := shop_panel.get_viewport_rect().size
+	shop_panel.size = shop_panel.get_combined_minimum_size()
+	var sz := shop_panel.size
+	var e := smoothstep(0.0, 1.0, shop_slide)
+	shop_panel.position = Vector2(roundf(lerpf(vp.x, vp.x - SHOP_EDGE - sz.x, e)), roundf((vp.y - sz.y) * 0.5))
+	shop_panel.visible = shop_slide > 0.0
+	shop_tab.position = Vector2(vp.x - SHOP_EDGE - shop_tab.size.x, shop_panel.position.y + sz.y + SHOP_TAB_GAP)
+
+
+# --- Панель отрядов: развёрнутая и свёрнутая (задача 24) --------------------------------------------------------------------
+
+# Кнопка и клавиша squad_panel_toggle; состояние хранится в настройках (Settings.squad_panel_expanded).
+func toggle_squad_panel() -> void:
+	squad_expanded = not squad_expanded
+	var st := get_node_or_null("/root/Settings")
+	if st != null:
+		st.set_squad_panel_expanded(squad_expanded)
+	_update_squad_panel()
+
+
 # Левая панель отрядов: раз в 0.25 с и сразу при выборе / смене приказа. Строки свободных индексов скрыты,
 # кнопки создания, разделения и слияния видны в передышке и на паузе в бою (на паузе работает только деление).
 func _update_squad_panel() -> void:
 	if squad_panel == null:
 		return
 	var acts := wave_state == WS_RESPITE or paused
-	var sig := 1 if acts else 0
+	var ex := squad_expanded
+	var sig := (1 if acts else 0) | (1 << 12 if ex else 0)
 	for s in SQUAD_MAX:
 		squad_rows_ui[s].visible = squad_used[s] == 1
 		if squad_used[s] == 0:
 			continue
 		sig |= 2 << s
+		squad_buttons[s].visible = ex
+		squad_compact[s].visible = not ex
 		squad_buttons[s].set_pressed_no_signal(_is_sel(s))
+		squad_compact[s].set_pressed_no_signal(_is_sel(s))
 		var tsig := (((squad_n[s] * 16 + squad_order[s]) * 2 + squad_skill_on[s]) * 64 + squad_type[s]) * 64 + _squad_rank(s)
 		if squad_text_sig.size() == SQUAD_MAX and tsig == squad_text_sig[s]:
 			continue   # подпись та же: строки не собираются
@@ -5454,16 +5574,25 @@ func _update_squad_panel() -> void:
 		if squad_skill_on[s] == 1:   # навык «Стена щитов» действует — отметка и золотой цвет, как у горящих карточек
 			squad_buttons[s].text += "  ● " + tr("UI_SKILL_SHIELD_WALL")
 		squad_buttons[s].tooltip_text = squad_buttons[s].text   # строка может быть сокращена многоточием
+		squad_compact[s].text = "%s  %d" % [SETTINGS.key_label("squad_select_%d" % (s + 1)), squad_n[s]]
+		squad_compact[s].tooltip_text = squad_buttons[s].text
 		_fit_text(squad_buttons[s])
 		squad_buttons[s].add_theme_color_override("font_color", CARD_ON if squad_skill_on[s] == 1 else Color.WHITE)
-	squad_actions.visible = acts
+	squad_actions.visible = acts and ex
+	hint_label.visible = ex
+	if war_cry_box != null:
+		war_cry_box.visible = ex   # Клич — в развёрнутой панели; клавиша действует и в свёрнутой
+	var tt: String = tr("HUD_SQUADS_COLLAPSE" if ex else "HUD_SQUADS_EXPAND") % SETTINGS.key_label("squad_panel_toggle")
+	if squad_toggle.text != tt:
+		squad_toggle.text = tt
+		squad_toggle.tooltip_text = tt
 	for k in action_buttons.size():   # подписи с актуальной клавишей (её могли переназначить)
 		var t: String = tr(ACTION_TEXTS[k]) % SETTINGS.key_label(ACTION_KEYS[k])
 		if action_buttons[k].text != t:
 			action_buttons[k].text = t
 			action_buttons[k].tooltip_text = t
 			_fit_text(action_buttons[k])
-	split_box.visible = acts
+	split_box.visible = acts and ex
 	action_buttons[0].disabled = wave_state != WS_RESPITE   # новый отряд и слияние — только в передышке
 	action_buttons[2].disabled = wave_state != WS_RESPITE
 	if sig != squad_panel_sig:
@@ -5674,8 +5803,11 @@ func _update_ui() -> void:
 		_update_cards_ui()
 	burst_label.text = burst_msg
 	burst_label.visible = wave_state == WS_BATTLE and burst_msg != "" and wave_t < burst_msg_until
-	shop_panel.visible = wave_state == WS_RESPITE
-	if not shop_panel.visible:
+	if wave_state != shop_state_seen:   # начало волны — магазин уезжает, передышка — выезжает
+		shop_state_seen = wave_state
+		shop_open = wave_state == WS_RESPITE
+	_update_shop_tab()
+	if wave_state != WS_RESPITE:
 		return
 	for k in shop_buttons.size():
 		shop_buttons[k].visible = shop_enabled[k] == 1   # выключенный товар скрыт
@@ -5817,6 +5949,7 @@ func _physics_process(delta: float) -> void:
 func _process(delta: float) -> void:
 	var t := Time.get_ticks_usec()
 	_update_fx(delta)
+	shop_slide_step(delta)
 	ui_t -= delta
 	if ui_t <= 0.0:
 		ui_t = 0.1
@@ -7320,6 +7453,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_set_order(ORDER_RETREAT)
 			"war_cry":
 				request_war_cry()
+			"shop_toggle":
+				toggle_shop()
+			"squad_panel_toggle":
+				toggle_squad_panel()
 			"hero_attack":
 				if hero_idx >= 0 and not paused:
 					hero_attack_latch = true   # удар — во вводе ближайшего тика (_hero_input)

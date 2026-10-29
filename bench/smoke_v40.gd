@@ -233,11 +233,12 @@ func _run() -> void:
 	m.set_physics_process(false)
 	var p_before: PackedVector2Array = m.squad_pos.duplicate()
 	var t_before: PackedVector2Array = m.squad_target.duplicate()
-	await button(MOUSE_BUTTON_RIGHT, scr(Vector2(700, 600)), true)
-	await move(scr(Vector2(1000, 600)))
+	# начало правее панели отрядов (задача 24: она шире и выше — кнопки действий 184, кнопка сворачивания сверху)
+	await button(MOUSE_BUTTON_RIGHT, scr(Vector2(900, 600)), true)
+	await move(scr(Vector2(1200, 600)))
 	var dragging: bool = m.drag_active
 	await key(KEY_ESCAPE)
-	await button(MOUSE_BUTTON_RIGHT, scr(Vector2(1000, 600)), false)
+	await button(MOUSE_BUTTON_RIGHT, scr(Vector2(1200, 600)), false)
 	check("(л) Esc во время ПКМ-протяжки отменяет её", dragging and m.squad_pos == p_before and m.squad_target == t_before and not m.drag_active,
 		"протяжка шла: %s" % dragging)
 	m.set_physics_process(true)

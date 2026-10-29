@@ -31,6 +31,7 @@ var screen_shake: bool:
 		if on != (screen_shake_level > SHAKE_OFF):
 			screen_shake_level = SHAKE_NORMAL if on else SHAKE_OFF
 var gore := 1
+var squad_panel_expanded := true   # ui/squad_panel_expanded: панель отрядов развёрнута (задача 24)
 var language := "ru"           # general/language: "ru" или "en"
 var music_volume := VOLUME_DEFAULT   # audio/music: линейная громкость шины Music, 0..1
 var sfx_volume := VOLUME_DEFAULT     # audio/sfx: шины SFX
@@ -61,6 +62,7 @@ func load_settings() -> void:
 	var old_shake := bool(cfg.get_value("display", "screen_shake", true))
 	screen_shake_level = clampi(int(cfg.get_value("display", "screen_shake_level", SHAKE_NORMAL if old_shake else SHAKE_OFF)), 0, SHAKE_LEVELS.size() - 1)
 	gore = clampi(int(cfg.get_value("gameplay", "gore", 1)), 0, GORE_LEVELS.size() - 1)
+	squad_panel_expanded = bool(cfg.get_value("ui", "squad_panel_expanded", true))
 	language = str(cfg.get_value("general", "language", default_language()))
 	if not language in LANGUAGES:
 		language = default_language()
@@ -79,6 +81,7 @@ func save_settings() -> void:
 	cfg.set_value("display", "screen_shake", screen_shake)   # прежний ключ — для старых сборок
 	cfg.set_value("display", "screen_shake_level", screen_shake_level)
 	cfg.set_value("gameplay", "gore", gore)
+	cfg.set_value("ui", "squad_panel_expanded", squad_panel_expanded)
 	cfg.set_value("general", "language", language)
 	cfg.set_value("audio", "music", music_volume)
 	cfg.set_value("audio", "sfx", sfx_volume)
@@ -111,6 +114,15 @@ func set_screen_shake_level(level: int) -> void:
 	screen_shake_level = level
 	save_settings()
 	changed.emit("display/screen_shake")
+
+
+# Панель отрядов в бою: развёрнутая (строки, действия, Клич) или свёрнутая (квадратики и числа живых); сохраняется.
+func set_squad_panel_expanded(on: bool) -> void:
+	if on == squad_panel_expanded:
+		return
+	squad_panel_expanded = on
+	save_settings()
+	changed.emit("ui/squad_panel_expanded")
 
 
 func set_gore(level: int) -> void:
@@ -194,7 +206,8 @@ func _input(event: InputEvent) -> void:
 # Переназначаемые действия в порядке списка на вкладке «Управление» (подпись — action_title).
 const REBINDABLE := ["squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4", "squad_select_5", "squad_select_6",
 	"squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side", "wave_start", "buy_1", "buy_2",
-	"buy_3", "buy_4", "buy_spear", "war_cry", "move_up", "move_down", "move_left", "move_right", "hero_attack"]
+	"buy_3", "buy_4", "buy_spear", "war_cry", "move_up", "move_down", "move_left", "move_right", "hero_attack", "shop_toggle",
+	"squad_panel_toggle"]
 # Действия, которых нет в [input] project.godot: клавиша по умолчанию задаётся здесь, действие добавляется после каждой загрузки InputMap
 # (war_cry — «Клич Благодати»: с задачи 10 U, D занята движением героя; move_* — движение героя WASD, задача 10; hero_attack — удар
 # героя J, задача 11).
@@ -395,9 +408,34 @@ static func ensure_code_actions() -> void:
 		if not InputMap.has_action(a):
 			InputMap.add_action(a)
 			_set_key(a, CODE_DEFAULTS[a])
+	var dk := data_keys()
+	for a in dk:
+		if not InputMap.has_action(a):
+			InputMap.add_action(a)
+			_set_key(a, dk[a])
 	for a in CODE_REMAP:
 		if InputMap.has_action(a) and action_key(a) != CODE_REMAP[a]:
 			_set_key(a, CODE_REMAP[a])
+
+
+# Клавиши по умолчанию из data/ui_layout.json keys (задача 24: свернуть магазин и панель отрядов): действие -> Key.
+# Нет файла, поля или клавиша не распознана — DATA_KEYS_DEFAULT (с предупреждением).
+const UI_LAYOUT := "res://data/ui_layout.json"
+const DATA_KEYS_DEFAULT := {"shop_toggle": KEY_TAB, "squad_panel_toggle": KEY_L}
+static func data_keys() -> Dictionary:
+	var out := DATA_KEYS_DEFAULT.duplicate()
+	var d = JSON.parse_string(FileAccess.get_file_as_string(UI_LAYOUT)) if FileAccess.file_exists(UI_LAYOUT) else null
+	var keys = d.get("keys") if d is Dictionary else null
+	if not keys is Dictionary:
+		push_warning("%s: нет keys — клавиши сворачивания панелей по умолчанию" % UI_LAYOUT)
+		return out
+	for a in out:
+		var code := OS.find_keycode_from_string(str(keys.get(a, "")))
+		if code == KEY_NONE:
+			push_warning("%s: keys.%s «%s» — не клавиша; остаётся %s" % [UI_LAYOUT, a, str(keys.get(a, "")), OS.get_keycode_string(out[a])])
+		else:
+			out[a] = code
+	return out
 
 
 # Клавиша — её имя («N», «Space»), кнопка мыши — «Mouse8».

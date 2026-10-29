@@ -202,7 +202,7 @@ func t_win() -> void:
 	check("баннер: «Осада пережита. Волн: 10 из 10.» и «Enter — в хаб», кнопка «В хаб» видна", m.banner.visible and m.banner_parts[1] == "Осада пережита. Волн: 10 из 10."
 		and m.banner_parts[3] == "Enter — в хаб" and m.hub_button.visible and tr(m.hub_button.text) == "В хаб", str(m.banner_parts))
 	hv = m.top_hud.get_values()
-	check("панель «Волна 10/10», магазин скрыт", hv.wave == 10 and hv.wave_max == 10 and not m.shop_panel.visible, str(hv))
+	check("панель «Волна 10/10», магазин закрыт (задача 24: уезжает, кнопки сворачивания нет)", hv.wave == 10 and hv.wave_max == 10 and not m.shop_open and not m.shop_tab.visible, str(hv))
 	m._start_wave()
 	key(m, KEY_P)
 	check("волна 11 не стартует, пауза при wave_state 3 недоступна", m.wave_number == 10 and m.wave_state == m.WS_WIN and not m.paused)

@@ -6,6 +6,11 @@ extends SceneTree
 #   не пересекает окошки верхней панели и панель отрядов.
 #   Запасные рамки: файл рамки <prefix><угол>.png (временный, user://) подключается с углом из имени и состояниями столбиком;
 #   после переименования — универсальная кнопка, одно предупреждение за запуск, сцена боя строится, кнопки того же размера.
+#   Магазин: в передышке открыт (на экране, у правого края), в бою закрыт (за краем, скрыт, кнопки сворачивания нет); клавиша
+#   shop_toggle (по умолчанию из ui_layout.json keys) и кнопка сворачивают и разворачивают; выезд за shop_slide_time; два блока
+#   («Войска» — наборы отрядов, «Улучшения» — остальное); клик по панели не доходит до поля боя, клик мимо — доходит.
+#   Панель отрядов: развёрнутая (строки, действия, Клич) и свёрнутая (квадратики и числа живых); клавиша и кнопка; состояние —
+#   в Settings и в новой сцене то же.
 # Временное сохранение user://bench_v74 (user://save.json не трогается).
 const FONTS := preload("res://scripts/fonts.gd")
 const DIR := "user://bench_v74"
@@ -48,6 +53,8 @@ func _run() -> void:
 		await step(3)
 		var m := current_scene as Node2D
 		await t_actions(m, l)
+		await t_shop(m, l)
+		await t_squads(m, l)
 		if l == "ru":
 			await t_fps(m, g)
 		m.queue_free()
@@ -177,3 +184,141 @@ func t_frames(g: Node) -> void:
 		DirAccess.remove_absolute(dir.path_join(f))
 	DirAccess.remove_absolute(dir)
 	UI.reset_frames()
+
+const SETTINGS_SCRIPT := preload("res://scripts/settings.gd")
+
+func key_ev(action: String) -> InputEventKey:
+	var e := InputEventKey.new()
+	e.keycode = (InputMap.action_get_events(action)[0] as InputEventKey).keycode
+	e.pressed = true
+	return e
+
+func key_name(action: String) -> String:
+	return OS.get_keycode_string((InputMap.action_get_events(action)[0] as InputEventKey).keycode)
+
+func slide_done(m: Node2D) -> void:
+	for i in 100:
+		m.shop_slide_step(1.0 / 60.0)
+
+func on_screen(c: Control) -> bool:
+	return c.is_visible_in_tree() and c.get_viewport_rect().encloses(c.get_global_rect())
+
+# ЛКМ в точке холста 1920x1080 через окно: true — дошёл до поля боя (main начал рамку выбора).
+func click(m: Node2D, at: Vector2) -> bool:
+	m.box_active = false
+	var e := InputEventMouseButton.new()
+	e.button_index = MOUSE_BUTTON_LEFT
+	e.position = root.get_final_transform() * at   # окно (без окна — 64 x 64) -> координаты окна
+	e.global_position = e.position
+	e.pressed = true
+	root.push_input(e)
+	var got: bool = m.box_active
+	var r := e.duplicate() as InputEventMouseButton
+	r.pressed = false
+	root.push_input(r)
+	m.box_active = false
+	return got
+
+func t_shop(m: Node2D, l: String) -> void:
+	print("выдвижной магазин, %s" % l)
+	var keys: Dictionary = lay["keys"]
+	check("%s: клавиша сворачивания магазина по умолчанию — из ui_layout.json keys (%s)" % [l, keys.shop_toggle], key_name("shop_toggle") == keys.shop_toggle)
+	m._update_ui()
+	slide_done(m)
+	await step(1)
+	var p: Control = m.shop_panel
+	var vp := p.get_viewport_rect()
+	check("%s: передышка — магазин открыт: %s целиком на экране у правого края, кнопка «%s» видна" % [l, str(p.get_global_rect()), m.shop_tab.text],
+		m.wave_state == m.WS_RESPITE and m.shop_open and on_screen(p) and absf(p.get_global_rect().end.x - (vp.size.x - m.SHOP_EDGE)) < 1.0
+		and on_screen(m.shop_tab) and m.shop_tab.text.contains(SETTINGS_SCRIPT.key_label("shop_toggle")))
+	# два блока: заголовки и какие кнопки под каким
+	var box: VBoxContainer = p.get_child(0)
+	var block := -1
+	var ok: bool = m.shop_blocks.size() == 2
+	for c in box.get_children():
+		if c is Label:
+			block = m.shop_blocks.find(c)
+		elif c is Button:
+			var k: int = c.get_meta("shop_k")
+			ok = ok and (block == 0) == m.SHOP_PORTRAIT.has(m.SHOP_ITEMS[k]) and m.shop_buttons[k] == c
+	check("%s: два блока — «%s» (наборы отрядов) и «%s» (оружие, ворота); shop_buttons по порядку SHOP_ITEMS" % [l, tr("HUD_SHOP_TROOPS"),
+		tr("HUD_SHOP_UPGRADES")], ok)
+	# клик по панели не доходит до поля боя, мимо панели — доходит (выбор рамкой начинается)
+	m.process_mode = Node.PROCESS_MODE_INHERIT
+	var r := p.get_global_rect()
+	var hit_button := click(m, (m.shop_buttons[0] as Button).get_global_rect().get_center())
+	var hit_edge := click(m, Vector2(r.position.x + 4, r.get_center().y))   # поле панели, не кнопка
+	var hit_field := click(m, Vector2(vp.size.x * 0.5, vp.size.y * 0.45))
+	m.process_mode = Node.PROCESS_MODE_DISABLED
+	check("%s: клик по кнопке и по краю панели не доходит до поля (%s, %s), мимо — доходит (%s)" % [l, hit_button, hit_edge, hit_field],
+		not hit_button and not hit_edge and hit_field)
+	# клавиша: закрыть; анимация — shop_slide_time
+	var dur: float = lay.shop_slide_time
+	m._unhandled_input(key_ev("shop_toggle"))
+	m.shop_slide_step(dur * 0.5)
+	var half: float = m.shop_slide
+	slide_done(m)
+	await step(1)
+	check("%s: клавиша закрывает: через половину shop_slide_time (%.2f с) выехал наполовину (%.2f), потом за краем и скрыт; кнопка на месте" % [l, dur, half],
+		not m.shop_open and absf(half - 0.5) < 0.01 and not p.visible and p.position.x >= vp.size.x and on_screen(m.shop_tab))
+	m.shop_tab.pressed.emit()
+	slide_done(m)
+	await step(1)
+	check("%s: кнопка открывает снова" % l, m.shop_open and on_screen(p))
+	# бой: закрыт, кнопки нет, клавиша не открывает
+	m._start_wave()
+	m._update_ui()
+	slide_done(m)
+	await step(1)
+	m._unhandled_input(key_ev("shop_toggle"))
+	slide_done(m)
+	check("%s: бой — магазин закрыт и скрыт, кнопки сворачивания нет, клавиша не открывает" % l, m.wave_state == m.WS_BATTLE and not m.shop_open
+		and not p.visible and not m.shop_tab.visible)
+	# снова передышка — открыт
+	m.wave_state = m.WS_RESPITE
+	m._update_ui()
+	slide_done(m)
+	await step(1)
+	check("%s: передышка снова — открыт" % l, m.shop_open and on_screen(p))
+
+func t_squads(m: Node2D, l: String) -> void:
+	print("панель отрядов, %s" % l)
+	var st := root.get_node("Settings")
+	var keys: Dictionary = lay["keys"]
+	m.wave_state = m.WS_RESPITE
+	m.squad_expanded = true
+	m.squad_panel_sig = -1
+	m._update_squad_panel()
+	await step(2)
+	var used := range(m.SQUAD_MAX).filter(func(q): return m.squad_used[q] == 1)
+	var rows_ok: bool = used.all(func(q): return m.squad_buttons[q].is_visible_in_tree() and not m.squad_compact[q].visible)
+	check("%s: развёрнутая — строки отрядов (%d), кнопки действий, деление, подсказка; кнопка «%s»" % [l, used.size(), m.squad_toggle.text],
+		rows_ok and m.squad_actions.is_visible_in_tree() and m.split_box.visible and m.hint_label.visible and on_screen(m.squad_panel)
+		and m.squad_toggle.text.contains(SETTINGS_SCRIPT.key_label("squad_panel_toggle")))
+	var was: bool = st.squad_panel_expanded
+	check("%s: клавиша по умолчанию — из ui_layout.json keys (%s)" % [l, keys.squad_panel_toggle], key_name("squad_panel_toggle") == keys.squad_panel_toggle)
+	m._unhandled_input(key_ev("squad_panel_toggle"))
+	await step(2)
+	var csz := Vector2(lay.squad_compact_size[0], lay.squad_compact_size[1])
+	var comp_ok := true
+	for q in used:
+		comp_ok = comp_ok and m.squad_compact[q].is_visible_in_tree() and not m.squad_buttons[q].visible and m.squad_compact[q].size == csz 			and m.squad_compact[q].text.ends_with(str(m.squad_n[q])) and m.squad_swatches[q].is_visible_in_tree()
+	check("%s: клавиша сворачивает — квадратики и числа живых (%s), действий, деления и подсказки нет; в настройках развёрнута: %s" % [l,
+		", ".join(used.map(func(q): return m.squad_compact[q].text)), str(st.squad_panel_expanded)], comp_ok and not m.squad_actions.is_visible_in_tree()
+		and not m.split_box.visible and not m.hint_label.visible and st.squad_panel_expanded == false and was == true and on_screen(m.squad_panel)
+		and m.squad_panel.size.x < m.ui_layout.squad_button_size.x)
+	# клик по свёрнутой строке выбирает отряд
+	var q: int = used[used.size() - 1]
+	m.squad_compact[q].pressed.emit()
+	check("%s: клик по свёрнутой строке выбирает отряд %d" % [l, q + 1], m._is_sel(q) and m.squad_compact[q].button_pressed)
+	# новая сцена — то же состояние (из настроек)
+	var m2: Node2D = load("res://scenes/main.tscn").instantiate()
+	m2.process_mode = Node.PROCESS_MODE_DISABLED
+	root.add_child(m2)
+	await step(2)
+	check("%s: новая сцена — панель свёрнута (из настроек)" % l, m2.squad_expanded == false and not m2.squad_actions.is_visible_in_tree())
+	m2.queue_free()
+	await step(1)
+	m.squad_toggle.pressed.emit()
+	await step(2)
+	check("%s: кнопка разворачивает, в настройках снова развёрнута" % l, m.squad_expanded and st.squad_panel_expanded and m.squad_actions.is_visible_in_tree())

@@ -329,3 +329,11 @@ MSG_NO_SQUAD_FOR_SPEARMEN,Нет свободного отряда для коп
 GIFT_SPEAR_WALL_NAME,Сомкнутые щиты,Locked Shields
 GIFT_SPEAR_WALL_DESC,+%s п. п. к шансу блока у всех воинов со щитом,+%s pp block chance for all shield-bearing troops
 UI_SKILL_SHIELD_WALL,Стена щитов,Shield Wall
+ACTION_SHOP_TOGGLE,Магазин: свернуть / развернуть,Shop: hide / show
+ACTION_SQUAD_PANEL_TOGGLE,Панель отрядов: свернуть / развернуть,Squad panel: collapse / expand
+HUD_SHOP_TROOPS,Войска,Troops
+HUD_SHOP_UPGRADES,Улучшения,Upgrades
+HUD_SHOP_SHOW,« Магазин (%s),« Shop (%s)
+HUD_SHOP_HIDE,Свернуть » (%s),Hide » (%s)
+HUD_SQUADS_COLLAPSE,« Свернуть (%s),« Collapse (%s)
+HUD_SQUADS_EXPAND,Отряды » (%s),Squads » (%s)

@@ -4,6 +4,10 @@
 	"action_button_size": [184, 48],
 	"war_cry_size": [352, 48],
 	"debug_fps": false,
+	"shop_slide_time": 0.2,
+	"panel_toggle_size": [232, 48],
+	"squad_compact_size": [112, 48],
+	"keys": {"shop_toggle": "Tab", "squad_panel_toggle": "L"},
 	"top_hud": {
 		"top": 16,
 		"gap": 12,

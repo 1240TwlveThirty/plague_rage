@@ -56,7 +56,7 @@ func _run() -> void:
 		if ST.key_label(a) != defaults[a]:
 			bad.append("%s=%s" % [a, ST.key_label(a)])
 	check("клавиши по умолчанию прежние (InputMap из project.godot)", bad.is_empty(), ", ".join(bad))
-	check("переназначаемых действий 24 (с buy_spear, war_cry, движением героя move_* и ударом hero_attack), у всех есть клавиша", ST.REBINDABLE.size() == 24 and ST.REBINDABLE.all(func(r): return ST.action_key(r) != KEY_NONE))
+	check("переназначаемых действий 26 (с buy_spear, war_cry, движением героя move_*, ударом hero_attack и сворачиванием магазина и панели отрядов, задача 24), у всех есть клавиша", ST.REBINDABLE.size() == 26 and ST.REBINDABLE.all(func(r): return ST.action_key(r) != KEY_NONE))
 
 	print("игра по действиям")
 	var m: Node2D = load("res://scenes/main.tscn").instantiate()
@@ -155,8 +155,8 @@ func _run() -> void:
 	var titles := []
 	for t in sm.tabs.get_tab_count():
 		titles.append(tr(sm.tabs.get_tab_title(t)))
-	check("вкладки «Видео», «Звук», «Управление», «Язык»; строк 23 (buy_spear скрыт: копейщики выключены в данных, задача 9; +4 движения героя, задача 10; +удар героя, задача 11), кнопка «Сбросить»", titles == ["Видео", "Звук", "Управление", "Язык"]
-		and sm.key_buttons.size() == 23 and not sm.key_buttons.has("buy_spear") and sm.reset_keys_button != null, str(titles))
+	check("вкладки «Видео», «Звук», «Управление», «Язык»; строк 25 (buy_spear скрыт: копейщики выключены в данных, задача 9; +4 движения героя, задача 10; +удар героя, задача 11; +2 сворачивания, задача 24), кнопка «Сбросить»", titles == ["Видео", "Звук", "Управление", "Язык"]
+		and sm.key_buttons.size() == 25 and not sm.key_buttons.has("buy_spear") and sm.reset_keys_button != null, str(titles))
 	sm.key_buttons["buy_2"].pressed.emit()
 	check("клик по строке: ждёт клавишу", sm.waiting_action == "buy_2" and sm.key_buttons["buy_2"].text.begins_with("Нажмите"))
 	root.push_input(ev(KEY_ESCAPE))
