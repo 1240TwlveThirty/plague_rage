@@ -97,7 +97,7 @@ const BANNER_BG_ALPHA := 0.55                 # непрозрачность п�
 const INFO_WIDTH := 560.0                     # ширина строки разведки и сообщений слева сверху (перенос по словам; баннер не задевает)
 const BANNER_TOP := 120.0                     # верхняя граница баннера, px от верха экрана
 const OVERLAP_MAX := 0.25                     # расстановка: доля площади меньшего блока, с которой пересечение со своим отрядом запрещено
-const DRAG_MIN := 24.0                       # px: короче — обычный клик, длиннее — расстановка строя по линии
+const DRAG_MIN := 24.0                       # px мира: короче — обычный клик, длиннее — строй по линии; data/ui_layout.json drag_min
 const FORM_MARGIN := 12.0                     # строй при расстановке не ниже WALL_Y - FORM_MARGIN
 const PAUSE_ENABLED := true                   # активная пауза в бою (Space, P); false — паузы нет, как раньше
 const SIDE_POST_T := 0.45                     # стрелки: пост на отрезке ворота -> точка появления стороны, доля пути
@@ -563,7 +563,7 @@ var portraits = PORTRAITS.new()   # иллюстрации в кнопках (т
 # data/ui_layout.json: фиксированные размеры кнопок (минимум и он же ширина — текст ужимается, кнопка не растягивается).
 var ui_layout := {"shop_button_size": Vector2(464, 64), "squad_button_size": Vector2(352, 48), "action_button_size": Vector2(184, 48), "war_cry_size": Vector2(352, 48),
 	"debug_fps": false, "shop_slide_time": 0.2, "panel_toggle_size": Vector2(232, 48), "squad_compact_size": Vector2(112, 48),
-	"info_flash_time": 2.0, "info_width": 320.0}
+	"info_flash_time": 2.0, "info_width": 320.0, "drag_min": DRAG_MIN}
 var type_label := PackedStringArray()   # название типа для интерфейса
 # Характеристики выбранного отряда (задача 26): поля и время подсветки — data/ui_layout.json squad_info_fields, info_flash_time
 const INFO_FIELDS_DEFAULT := ["alive", "hp", "damage", "range", "attack_rate", "speed"]
@@ -1435,14 +1435,16 @@ func _draw() -> void:
 			if ring > 0.0:
 				draw_arc(squad_pos[s], ring, 0.0, TAU, 96, Color(sel_col, 0.35), 1.0)
 	# Рамка выбора (ЛКМ)
-	if box_active and box_start.distance_to(box_cur) >= DRAG_MIN:
+	if box_active and box_start.distance_to(box_cur) >= ui_layout.drag_min:
 		var box_rect := Rect2(box_start, box_cur - box_start).abs()
 		draw_rect(box_rect, Color(0.2, 1.0, 0.3, 0.12))
 		draw_rect(box_rect, Color(0.2, 1.0, 0.3, 0.9), false, 1.0)
 	# Предпросмотр расстановки (ПКМ): контур блока (красный, если блок не помещается и будет сдвинут или слишком
 	# пересекается с другим своим отрядом и поставлен не будет), яркий передний ряд, стрелка лица, подпись.
 	# Несколько выбранных: блок каждого отряда цветом типа, подпись — число отрядов и длина линии.
-	if drag_active and drag_start.distance_to(drag_cur) >= DRAG_MIN:
+	if drag_active and drag_start.distance_to(drag_cur) < ui_layout.drag_min:
+		_draw_ghosts()   # задача 26: ПКМ зажата, протяжки нет — копия блока там, куда отряд пойдёт по клику
+	if drag_active and drag_start.distance_to(drag_cur) >= ui_layout.drag_min:
 		var list := _order_list()
 		if list.size() == 1:
 			var g := _formation_geometry(list[0], drag_start, drag_cur, drag_flip)
@@ -1519,6 +1521,10 @@ func _draw() -> void:
 	while y <= WALL_Y:
 		draw_circle(Vector2(ROAD_X, y), 3.0, Color(1.0, 1.0, 1.0, 0.5))
 		y += 60.0
+
+
+const GHOST_BAD_COLOR := Color(1.0, 0.2, 0.2)   # призрак блока, если приказ не пройдёт (как красный контур предпросмотра строя)
+var ghost_frame := -1   # кадр, в котором призрак последний раз нарисован (тесты)
 
 
 # Блок предпросмотра: заливка и контур (bad — красный), яркий передний ряд, стрелка лица.
@@ -7001,6 +7007,18 @@ func _live_block(s: int, boxes: Array, anchor: Vector2) -> PackedVector2Array:
 func _cmd_move_group(list: PackedInt32Array, p: Vector2) -> bool:
 	if _orders_locked():
 		return false   # командир пал: приказы до конца волны недоступны
+	var plan := _group_move_plan(list, p)
+	if not plan.ok:
+		_say(plan.msg, 2.0)   # цели не меняются ни у кого
+		return false
+	for s in list:
+		squad_target[s] = squad_pos[s] + plan.delta
+	return true
+
+
+# План ПКМ-клика по набору list в точку p (без побочных эффектов; его же показывает призрак блока, задача 26):
+# {ok, delta — сдвиг якорей, msg — почему нельзя}. Правила — у _cmd_move_group.
+func _group_move_plan(list: PackedInt32Array, p: Vector2) -> Dictionary:
 	var c := Vector2.ZERO
 	var mask := 0
 	for s in list:
@@ -7020,8 +7038,7 @@ func _cmd_move_group(list: PackedInt32Array, p: Vector2) -> bool:
 	var lim := Vector2(FIELD.x, WALL_Y - FORM_MARGIN)
 	for axis in 2:
 		if hi[axis] - lo[axis] > lim[axis] + 0.01:
-			_say(tr("MSG_SQUADS_DONT_FIT"), 2.0)
-			return false
+			return {"ok": false, "delta": p - c / list.size(), "msg": tr("MSG_SQUADS_DONT_FIT")}
 		if lo[axis] < 0.0:
 			delta[axis] -= lo[axis]
 		elif hi[axis] > lim[axis]:
@@ -7029,23 +7046,70 @@ func _cmd_move_group(list: PackedInt32Array, p: Vector2) -> bool:
 	for s in list:
 		var q := _target_overlap(s, squad_pos[s] + delta, mask)
 		if q >= 0:
-			_say(tr("MSG_BLOCK_OVERLAP") % (q + 1), 2.0)   # цели не меняются ни у кого
-			return false
-	for s in list:
-		squad_target[s] = squad_pos[s] + delta
-	return true
+			return {"ok": false, "delta": delta, "msg": tr("MSG_BLOCK_OVERLAP") % (q + 1)}
+	return {"ok": true, "delta": delta, "msg": ""}
 
 
 # Обычный клик: цель отряда s. Не задаётся, если блок отряда в точке цели слишком пересечётся с другим своим отрядом.
 func _cmd_move(s: int, target: Vector2) -> bool:
 	if _orders_locked():
 		return false   # командир пал: приказы до конца волны недоступны
-	var q := _target_overlap(s, target)
-	if q >= 0:
-		_say(tr("MSG_BLOCK_OVERLAP") % (q + 1), 2.0)   # цель не меняется
+	var plan := _move_plan(s, target)
+	if not plan.ok:
+		_say(plan.msg, 2.0)   # цель не меняется
 		return false
 	squad_target[s] = target
 	return true
+
+
+# План ПКМ-клика одного отряда (без побочных эффектов; его же показывает призрак): {ok, msg}.
+func _move_plan(s: int, target: Vector2) -> Dictionary:
+	var q := _target_overlap(s, target)
+	return {"ok": false, "msg": tr("MSG_BLOCK_OVERLAP") % (q + 1)} if q >= 0 else {"ok": true, "msg": ""}
+
+
+# Призрак ПКМ-клика (задача 26): s -> якорь блока, куда встанет отряд, если отпустить ПКМ сейчас, и можно ли.
+# Пусто — призрака нет (ПКМ не зажата, протяжка длиннее drag_min, ничего не выбрано).
+func ghost_plan() -> Dictionary:
+	if not drag_active or drag_start.distance_to(drag_cur) >= ui_layout.drag_min:
+		return {}
+	var list := _order_list()
+	if list.is_empty():
+		return {}
+	var out := {"ok": true, "msg": "", "anchors": {}}
+	if list.size() == 1:
+		var pl := _move_plan(list[0], drag_start)
+		out.ok = pl.ok
+		out.msg = pl.msg
+		out.anchors[list[0]] = drag_start
+	else:
+		var pl := _group_move_plan(list, drag_start)
+		out.ok = pl.ok
+		out.msg = pl.msg
+		for s in list:
+			out.anchors[s] = squad_pos[s] + pl.delta
+	return out
+
+
+# Прозрачная копия блока живых слотов каждого отряда набора в точке приказа: тот же угол и строй, что сейчас; красная и
+# с подписью, если приказ не пройдёт (не помещается, пересекается со своим отрядом).
+func _draw_ghosts() -> void:
+	var g := ghost_plan()
+	if g.is_empty():
+		return
+	ghost_frame = Engine.get_process_frames()
+	if sel_boxes.is_empty():
+		sel_boxes = _squad_boxes()
+	for s in g.anchors:
+		var col: Color = type_color[squad_type[s]] if g.ok else GHOST_BAD_COLOR
+		var poly := _live_block(s, sel_boxes, g.anchors[s])
+		if poly.size() == 0:
+			continue
+		draw_colored_polygon(poly, Color(col, 0.22))
+		poly.append(poly[0])
+		draw_polyline(poly, Color(col, 0.75), 2.0)
+	if not g.ok:
+		draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), g.msg, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONTS.px(20), GHOST_BAD_COLOR)
 
 # На сколько сдвинуть блок (передний ряд от a вдоль dir, width колонок, ряды назад от лица), чтобы все слоты
 # были в поле и не ниже WALL_Y - FORM_MARGIN. Ноль — помещается. Сдвиг ищется вдоль лица (минимальный);
@@ -7627,7 +7691,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			queue_redraw()
 		elif box_active:
 			box_active = false
-			if box_start.distance_to(p) < DRAG_MIN:
+			if box_start.distance_to(p) < ui_layout.drag_min:
 				_click_select(box_start, event.shift_pressed, box_dbl)
 			else:
 				_box_select(Rect2(box_start, p - box_start).abs(), event.shift_pressed)
@@ -7647,7 +7711,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif drag_active:
 			drag_active = false
 			var list := _order_list()   # ведомому цель и строй задаёт ведущий
-			if drag_start.distance_to(p) >= DRAG_MIN:
+			if drag_start.distance_to(p) >= ui_layout.drag_min:
 				_place_formation_multi(list, drag_start, p, drag_flip)
 			elif list.size() == 1:
 				_cmd_move(list[0], drag_start)   # короткий клик: цель отряда (если блок не пересечётся с другим)

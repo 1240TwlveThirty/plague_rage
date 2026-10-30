@@ -54,7 +54,7 @@ HUD_PLAN,Дальше: волна %d,Next: wave %d
 HUD_PLAN_RUNNERS,бегуны %d,runners %d
 HUD_PLAN_KNIGHTS,рыцари %d,knights %d
 HUD_PAUSED,ПАУЗА,PAUSED
-HUD_MOUSE_HINT,ЛКМ выбор · ПКМ приказ · Shift добавить,LMB select · RMB order · Shift add
+HUD_MOUSE_HINT,ЛКМ выбор · ПКМ идти · ПКМ+протяжка строй · Shift добавить,LMB select · RMB move · RMB+drag formation · Shift add
 HUD_BURST,Всплеск: %s,Surge: %s
 SIDE_TOP,сверху,north
 SIDE_LEFT,слева,west
