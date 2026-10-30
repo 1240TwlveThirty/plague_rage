@@ -121,6 +121,11 @@ Godot "смоук с окном: куски тела, тряска на удар
 Godot "смоук с окном: тряска при ударе в движении и на месте (v73)" "res://bench/diag_v73_shake.gd" "SMOKE: провалов 0" @() -Window
 Godot "смоук с окном: карточки героя (v64)" "res://bench/smoke_v64_cards.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: арты — кнопки, герой (v65)" "res://bench/smoke_v65_art.gd" "SMOKE: провалов 0" @("$tmp") -Window
+Godot "смоук с окном: скриншоты F12, запись F10 (v75)" "res://bench/smoke_v75_shots.gd" "SMOKE: провалов 0" @("$tmp") -Window
+Step "сцена --scene=battle, кадр (v75)" $godot @("--path", "`"$root`"", "--", "--scene=battle", "--shot", "--shot-dir=$tmp") "SHOT\|"
+Step "сцена --scene=respite, кадр (v75)" $godot @("--path", "`"$root`"", "--", "--scene=respite", "--shot", "--shot-dir=$tmp") "SHOT\|"
+Step "сцена --scene=pick, кадр (v75)" $godot @("--path", "`"$root`"", "--", "--scene=pick", "--shot", "--shot-dir=$tmp") "SHOT\|"
+Step "сцена --scene=hub, кадр (v75)" $godot @("--path", "`"$root`"", "--", "--scene=hub", "--shot", "--shot-dir=$tmp") "SHOT\|"
 if (-not $Quick) {
 	Godot "серия 50 боёв" "res://bench/series.gd" "SERIES\|"
 	Godot "тик: волна 20 слоя 1" "res://bench/time_v35.gd" "TIME\|" @("1", "20", "0", "caps", "1", "res://scripts/main.gd")
