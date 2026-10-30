@@ -4,6 +4,8 @@
 	"action_button_size": [184, 48],
 	"war_cry_size": [352, 48],
 	"debug_fps": false,
+	"world_unit_px": 12.0,
+	"_world_unit_px": "один «шаг» (единица расстояний для игрока) в px мира: ширина бойца пехоты в строю, шаг строя SLOT_SPACING из main.gd; тест check_v76_units сверяет",
 	"shop_slide_time": 0.2,
 	"panel_toggle_size": [232, 48],
 	"squad_compact_size": [112, 48],

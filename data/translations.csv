@@ -78,7 +78,7 @@ HUD_SHOP_ROW_PRICE,%s (куплено %d),%s (bought %d)
 HUD_SHOP_PRICE,%d зол.,%d gold
 HUD_SHOP_TARGET,→ Отряд %d (%s),→ Squad %d (%s)
 HUD_PREVIEW_ONE,%d × %d · %d юн.,%d × %d · %d units
-HUD_PREVIEW_MANY,%d отр. · %d px,%d squads · %d px
+HUD_PREVIEW_MANY,%d отр. · %s,%d squads · %s
 HUD_TO_HUB,В хаб,To hub
 SHOP_INF_PACK,+%d пехоты,+%d infantry
 SHOP_ARCHER_PACK,+%d лучников,+%d archers
@@ -278,7 +278,7 @@ CARD_COMMANDER_TEMPER_DESC,+50% к здоровью Командира,+50% Comm
 CARD_LAST_BASTION_NAME,Из последних сил,Against the Odds
 CARD_LAST_BASTION_DESC,"-30% к урону по Командиру, пока его здоровье ниже 40%",-30% damage taken by the Commander while below 40% health
 CARD_COMMANDER_BANNER_NAME,Знамя командира,Commander's Banner
-CARD_COMMANDER_BANNER_DESC,"+15% к скорости атаки отрядов, чей центр ближе {hero_near_radius} px к Командиру",+15% attack speed for squads within {hero_near_radius} px of the Commander
+CARD_COMMANDER_BANNER_DESC,"+15% к скорости атаки отрядов, чей центр ближе {hero_near_radius} к Командиру",+15% attack speed for squads within {hero_near_radius} of the Commander
 UI_CARDS_TITLE,Выберите карточку,Choose a card
 UI_CARDS_HINT,Клавиши 1 / 2 / 3 или мышь. Пропустить нельзя.,Keys 1 / 2 / 3 or mouse. You can't skip.
 UI_CARDS_OWNED,Уже выбрано: %s,Already chosen: %s
@@ -317,7 +317,7 @@ COND_GOLD_HIGH,в начале волны золота не меньше %s,at l
 COND_LOST_STEPS,бонус за каждые %s%% потерь отряда,bonus for every %s%% of the squad lost
 COND_VENGEANCE,бонус растёт с каждым своим павшим в волне,the bonus grows with every soldier lost this wave
 COND_HERO_LOW,здоровье Командира ниже %s%%,the Commander is below %s%% health
-COND_HERO_NEAR,центр отряда ближе %s px к Командиру,the squad center is within %s px of the Commander
+COND_HERO_NEAR,центр отряда ближе %s к Командиру,the squad center is within %s of the Commander
 SHOP_SPEAR_PACK,+%d копейщиков,+%d spearmen
 UNIT_SPEARMAN,Копейщики,Spearmen
 UNIT_HERO,Командир,Commander
@@ -341,3 +341,6 @@ UI_SETTINGS_CARD_ANIM,Анимация выбора карточки,Card pick a
 UI_CARD_ANIM_OFF,Выкл,Off
 UI_CARD_ANIM_SHORT,Короткая,Short
 UI_CARD_ANIM_FULL,Полная,Full
+UNIT_PACE_ONE,шаг,pace
+UNIT_PACE_FEW,шага,paces
+UNIT_PACE_MANY,шагов,paces

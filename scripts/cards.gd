@@ -12,6 +12,7 @@ const CONDS := {"hold": [], "retreat": [], "gate_low": ["frac"], "squad_low": ["
 	"hero_low": ["frac"], "hero_near": []}
 const COND_STATS := ["damage", "hp", "speed", "block", "attack_rate"]   # что может давать условие: множитель урона, получаемого урона (hp), скорости отряда, бонус блока, скорость боя
 const HERO_PATH := "res://data/hero.json"
+const UNITS := preload("res://scripts/units.gd")   # расстояния для игрока в шагах (задача 26)
 const HERO_NEAR_DEFAULT := 150.0   # hero_near_radius, если в hero.json его нет
 const SPECIALS := ["vengeance", "gate_attack"]
 const FIELDS := ["id", "num", "name_key", "desc_key", "builds", "kind", "mods", "when", "on_pick", "special", "per_unit_pct", "max_pct", "disabled", "disabled_reason"]
@@ -224,13 +225,13 @@ static func make_record(d: Dictionary, rng: RandomNumberGenerator) -> Dictionary
 
 
 # Карточка героя: первый билд hero (цели hero, условия hero_*).
-# Описание карточки: {hero_near_radius} — радиус условия hero_near из data/hero.json (число как в файле).
+# Описание карточки: {hero_near_radius} — радиус условия hero_near из data/hero.json в шагах («12,5 шага», scripts/units.gd).
 static func fill_desc(text: String) -> String:
 	if not "{hero_near_radius}" in text:
 		return text
 	var d = JSON.parse_string(FileAccess.get_file_as_string(HERO_PATH)) if FileAccess.file_exists(HERO_PATH) else null
 	var r = d.get("hero_near_radius", HERO_NEAR_DEFAULT) if d is Dictionary else HERO_NEAR_DEFAULT
-	return text.replace("{hero_near_radius}", str(int(r)) if (r is float or r is int) and r == floorf(r) else str(r))
+	return text.replace("{hero_near_radius}", UNITS.dist_text(float(r)) if (r is float or r is int) else str(r))
 
 
 static func is_hero(d: Dictionary) -> bool:

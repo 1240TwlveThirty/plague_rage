@@ -6,6 +6,7 @@ extends SceneTree
 # без повторов, без карточек героя при выключенном герое (и генератор тратится как до задачи), детерминизм.
 const MAIN := "res://scripts/main.gd"
 const CARDS := preload("res://scripts/cards.gd")
+const UNITS := preload("res://scripts/units.gd")   # расстояния для игрока в шагах (задача 26)
 const MODS := preload("res://scripts/mods.gd")
 const ICONS := preload("res://scripts/icons.gd")
 const FIX := "res://bench/fixtures_hero/"
@@ -84,8 +85,8 @@ func t_data() -> void:
 	var m0 := make([])
 	m0._load_hero()
 	var desc: String = CARDS.fill_desc(tr("CARD_COMMANDER_BANNER_DESC"))
-	check("описание 45 и подсказка условия — с радиусом из hero.json (%s)" % desc, ("%d px" % int(m0.hero_near_r)) in desc and not "{" in desc
-		and ("%d" % int(m0.hero_near_r)) in m0.cond_text({"cond": "hero_near"}) and m0.hero_near_r == float(hd.hero_near_radius))
+	check("описание 45 и подсказка условия — с радиусом из hero.json (%s)" % desc, UNITS.dist_text(m0.hero_near_r) in desc and not "{" in desc
+		and UNITS.dist_text(m0.hero_near_r) in m0.cond_text({"cond": "hero_near"}) and m0.hero_near_r == float(hd.hero_near_radius))
 	m0.free()
 	var rules := CARDS.load_rules("res://data/cards_rules.json")
 	check("cards_rules.json: hero_guaranteed_slots 1, прежние поля те же", rules.get("hero_guaranteed_slots") == 1 and rules.offer_count == 3

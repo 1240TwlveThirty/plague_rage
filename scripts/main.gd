@@ -72,6 +72,7 @@ const STORY_PATH := "res://data/story.json"   # дневник: тексты б�
 const GIFTS_PATH := "res://data/gifts.json"   # дары: модификаторы забега
 const MODS := preload("res://scripts/mods.gd")
 const CARDS := preload("res://scripts/cards.gd")
+const UNITS := preload("res://scripts/units.gd")   # расстояния для игрока в шагах (задача 26)
 const CARD_PICK := preload("res://scripts/card_pick.gd")
 const ICONS := preload("res://scripts/icons.gd")   # иконки карточек (список в HUD)   # экран выбора карточки
 const CARD_RULES_PATH := "res://data/cards_rules.json"
@@ -1434,7 +1435,7 @@ func _draw() -> void:
 			var mg := _multi_geometry(list, drag_start, drag_cur, drag_flip)
 			for it in mg.items:
 				_draw_block_preview(type_color[squad_type[it.s]], it.centre, it.front, mg.angle, it.width, it.rows, mg.adjusted or not mg.fits or mg.overlap >= 0)
-			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), tr("HUD_PREVIEW_MANY") % [list.size(), roundi(mg.length)],
+			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), tr("HUD_PREVIEW_MANY") % [list.size(), UNITS.dist_text(mg.length)],
 				HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONTS.px(20), Color.WHITE)
 	# Сигнал всплеска: пульсирующая золотая полоса вдоль края экрана и мигающий (2 Гц) треугольник 48 px у своей стороны
 	var vr := view_rect()
@@ -2234,7 +2235,7 @@ func cond_text(w: Dictionary) -> String:
 		"hero_low":
 			return tr(COND_KEYS[w.cond]) % num_text(w.frac * 100.0)
 		"hero_near":
-			return tr(COND_KEYS[w.cond]) % num_text(hero_near_r)
+			return tr(COND_KEYS[w.cond]) % UNITS.dist_text(hero_near_r)
 	return tr(COND_KEYS[w.cond])
 
 
