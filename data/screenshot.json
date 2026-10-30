@@ -1,0 +1,18 @@
+{
+	"_comment": "Режим скриншотов (задача 25): клавиши — имена Godot (F12, F10…), не заняты игрой (F1–F4 — отладка, F11 — полный экран). Кадр — size, без отладочных надписей (группа shot_hidden: строка FPS, подсказки мыши). Папка — dir в пользовательских данных.",
+	"shot_key": "F12",
+	"record_key": "F10",
+	"size": [1920, 1080],
+	"dir": "screenshots",
+	"_record": "запись последовательности кадров для гифки: record_fps кадров в секунду реального времени в подпапку rec_<время>; не больше record_max_frames кадров (потом запись выключается сама), кадр уменьшается в record_downscale раз",
+	"record_fps": 15,
+	"record_max_frames": 300,
+	"record_downscale": 2,
+	"_scenes": "заготовленные сцены: --scene=battle|respite|pick|hub (с --shot — кадр и выход). Своё временное сохранение (сохранение игрока не трогается), забег с seed; battle — волна battle_wave, battle_ticks тиков боя (кадр — с физикой на паузе); pick — наведение на среднюю карточку pick_hover_frames кадров; hub — Сияния hub_radiance",
+	"scene_seed": 3,
+	"battle_wave": 10,
+	"battle_ticks": 480,
+	"hub_radiance": 1240,
+	"scene_settle_frames": 12,
+	"pick_hover_frames": 40
+}

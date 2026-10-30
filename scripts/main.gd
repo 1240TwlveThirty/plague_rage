@@ -4979,6 +4979,7 @@ func _setup_fps_label() -> void:
 		fps_label.add_theme_constant_override("outline_size", FONTS.outline(4))
 		fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		layer.add_child(fps_label)
+		fps_label.add_to_group(&"shot_hidden")   # режим скриншотов (задача 25): на кадрах нет
 	# Баннер по центру сверху (верх на BANNER_TOP): заголовок, текст, дневник, подсказка на универсальной панели;
 	# ширина BANNER_WIDTH вместе с полями панели, перенос по словам
 	banner = PanelContainer.new()
@@ -5243,6 +5244,7 @@ func _setup_fps_label() -> void:
 	hint_label = Label.new()
 	_setup_war_cry_ui(layer)
 	hint_label.text = "HUD_MOUSE_HINT"
+	hint_label.add_to_group(&"shot_hidden")   # служебная подсказка — не на скриншотах (задача 25)
 	hint_label.add_theme_font_size_override("font_size", FONTS.px(13))
 	hint_label.modulate = Color(1.0, 1.0, 1.0, 0.7)
 	squad_panel.add_child(hint_label)
