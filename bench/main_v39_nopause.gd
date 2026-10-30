@@ -74,6 +74,7 @@ const GIFTS_PATH := "res://data/gifts.json"   # дары: модификатор
 const MODS := preload("res://scripts/mods.gd")
 const CARDS := preload("res://scripts/cards.gd")
 const UNITS := preload("res://scripts/units.gd")   # расстояния для игрока в шагах (задача 26)
+const HINTS := preload("res://scripts/hints.gd")   # подсказки первой минуты (задача 26, data/hints.json)
 const CARD_PICK := preload("res://scripts/card_pick.gd")
 const ICONS := preload("res://scripts/icons.gd")   # иконки карточек (список в HUD)   # экран выбора карточки
 const CARD_RULES_PATH := "res://data/cards_rules.json"
@@ -571,6 +572,8 @@ const INFO_FIELD_KEYS := {"alive": "HUD_INFO_ALIVE", "hp": "HUD_INFO_HP", "damag
 const INFO_FLASH_COLOR := Color("#feae34")   # подсветка числа после покупки (Endesga 32, как выбранный отряд)
 var info_fields: Array = INFO_FIELDS_DEFAULT.duplicate()
 var squad_info: PanelContainer            # панель характеристик под панелью отрядов
+var hints: PanelContainer                 # подсказка первой минуты внизу по центру (scripts/hints.gd) или null (бенчи)
+var sel_touched := false                  # игрок уже выбирал отряды (условие подсказки squad_selected)
 var squad_info_title: Label
 var squad_info_labels := {}               # поле -> Label
 var info_shown := {}                      # поле -> показанное значение (число) у отряда info_for
@@ -2976,6 +2979,7 @@ func _buy(k: int) -> bool:
 			gate_hp = gate_hp_max
 	ui_t = 0.0   # обновить HUD и магазин сразу
 	_flash_changes(before)
+	_hint_event("buy")
 	return true
 
 
@@ -5305,13 +5309,15 @@ func _setup_fps_label() -> void:
 		squad_info_labels[fld] = l
 	squad_info.visible = false
 	layer.add_child(squad_info)
+	hints = HINTS.new()
+	hints.load_defs()
+	layer.add_child(hints)
 	add_child(layer)
 	_no_focus(layer)
 	_update_squad_panel()
 	if wave_state == WS_RESPITE:
-		var intro := _intro_text()
-		_set_banner(func(): _show_banner("", tr(intro) if intro != "" else "", tr("MSG_WAVE_START") % SETTINGS.key_label("wave_start"),
-			tr("UI_DIARY_TITLE") if intro != "" else ""))
+		_intro_text()   # задача 26: вступление не показывается само — отмечается прочитанным и ждёт в дневнике хаба
+		_set_banner(func(): _show_banner("", "", tr("MSG_WAVE_START") % SETTINGS.key_label("wave_start")))
 	_update_ui()
 
 
@@ -5418,6 +5424,7 @@ func _sel_nearest(s: int) -> int:
 
 
 func _sel_changed() -> void:
+	sel_touched = true    # выбор менял игрок (стартовый выбор отряда 1 ставится без этой функции) — для подсказок
 	drag_active = false   # начатая протяжка относилась к прежнему набору
 	_update_squad_panel()
 	ui_t = 0.0            # подписи товаров «→ Отряд N» зависят от выбора
@@ -5667,6 +5674,25 @@ func _update_squad_panel() -> void:
 		# набор строк изменился: размер по содержимому, снова по центру левого края
 		squad_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 16)
 	_update_squad_info()
+
+
+# --- Подсказки первой минуты (задача 26) ------------------------------------------------------------------------------------
+
+# Условия появления подсказок (имена — when в data/hints.json); squad_selected — отряд выбрал сам игрок. Не во время выбора карточки, паузы и экрана конца забега.
+# Только чтение состояния боя.
+func hint_conditions() -> Dictionary:
+	var free := not _run_over() and not _picking() and not paused and not (esc_menu != null and esc_menu.visible)
+	var near := false
+	if free and wave_state == WS_BATTLE and hero_idx >= 0 and hero_idx < count and hp[hero_idx] > 0.0 and hints != null:
+		near = _nearest_zombie_coarse(pos[hero_idx], float(hints.cfg.get("enemy_near_paces", 8)) * UNITS.world_unit_px()) >= 0
+	return {"battle_start": free and wave_state == WS_BATTLE, "squad_selected": free and sel_touched and sel_mask != 0, "enemy_near_hero": near,
+		"respite_after_wave": free and wave_state == WS_RESPITE and wave_number >= 1}
+
+
+# Действие игрока для подсказок (done_on): order, hero_attack, buy.
+func _hint_event(name: String) -> void:
+	if hints != null:
+		hints.event(name)
 
 
 # --- Характеристики отряда и «до → после» в магазине (задача 26) ------------------------------------------------------------
@@ -6040,6 +6066,8 @@ func _update_ui() -> void:
 		_update_cards_ui()
 	burst_label.text = burst_msg
 	burst_label.visible = wave_state == WS_BATTLE and burst_msg != "" and wave_t < burst_msg_until
+	if hints != null:
+		hints.poll(hint_conditions())
 	if wave_state != shop_state_seen:   # начало волны — магазин уезжает, передышка — выезжает
 		shop_state_seen = wave_state
 		shop_open = wave_state == WS_RESPITE
@@ -7618,6 +7646,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				_cmd_move(list[0], drag_start)   # короткий клик: цель отряда (если блок не пересечётся с другим)
 			elif list.size() > 1:
 				_cmd_move_group(list, drag_start)
+			_hint_event("order")
 			queue_redraw()
 	elif event is InputEventMouseMotion and (drag_active or box_active):
 		var p := (make_input_local(event) as InputEventMouseMotion).position
@@ -7705,6 +7734,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			"hero_attack":
 				if hero_idx >= 0 and not paused:
 					hero_attack_latch = true   # удар — во вводе ближайшего тика (_hero_input)
+					_hint_event("hero_attack")
 		if key == null:
 			return
 		match key.keycode:

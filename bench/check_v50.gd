@@ -155,7 +155,7 @@ func _run() -> void:
 	var titles := []
 	for t in sm.tabs.get_tab_count():
 		titles.append(tr(sm.tabs.get_tab_title(t)))
-	check("вкладки «Видео», «Звук», «Управление», «Язык»; строк 25 (buy_spear скрыт: копейщики выключены в данных, задача 9; +4 движения героя, задача 10; +удар героя, задача 11; +2 сворачивания, задача 24), кнопка «Сбросить»", titles == ["Видео", "Звук", "Управление", "Язык"]
+	check("вкладки «Видео», «Звук», «Управление», «Игра» (задача 26), «Язык»; строк 25 (buy_spear скрыт: копейщики выключены в данных, задача 9; +4 движения героя, задача 10; +удар героя, задача 11; +2 сворачивания, задача 24), кнопка «Сбросить»", titles == ["Видео", "Звук", "Управление", "Игра", "Язык"]
 		and sm.key_buttons.size() == 25 and not sm.key_buttons.has("buy_spear") and sm.reset_keys_button != null, str(titles))
 	sm.key_buttons["buy_2"].pressed.emit()
 	check("клик по строке: ждёт клавишу", sm.waiting_action == "buy_2" and sm.key_buttons["buy_2"].text.begins_with("Нажмите"))

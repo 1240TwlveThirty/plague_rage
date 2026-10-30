@@ -96,6 +96,7 @@ Godot "выбор карточки: анимация, пропуск, режим
 Godot "расстояния в шагах, без px (v76)" "res://bench/check_v76_units.gd" "CHECK: провалов 0"
 Godot "характеристики отряда, «до → после» в магазине (v76)" "res://bench/check_v76_info.gd" "CHECK: провалов 0"
 Godot "меню: фокус, окно настроек, группы клавиш (v76)" "res://bench/check_v76_menu.gd" "CHECK: провалов 0"
+Godot "первая минута: подсказки, без вступления (v76)" "res://bench/check_v76_hints.gd" "CHECK: провалов 0"
 Godot "меню, хаб, пауза по Esc (v45)" "res://bench/check_v45.gd" "CHECK: провалов 0"
 Godot "подгонка слоя замка (v48)" "res://bench/check_v48.gd" "CHECK: провалов 0"
 Godot "настройки, полный экран (v49)" "res://bench/check_v49.gd" "CHECK: провалов 0"

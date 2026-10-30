@@ -6,7 +6,7 @@ const CSV := "res://data/translations.csv"
 const KEY_RE := "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$"
 # Префиксы ключей перевода: строковые литералы с ними в коде считаются ключами
 const PREFIXES := ["UI_", "HUD_", "MSG_", "HUB_", "GIFT_", "SHOP_", "UNIT_", "ORDER_", "SIDE_", "SPLIT_MODE_", "END_",
-	"STORY_", "SIEGE_", "ACTION_", "DEBUG_FPS"]
+	"STORY_", "SIEGE_", "ACTION_", "DEBUG_FPS", "HINT_"]
 const SETTINGS := preload("res://scripts/settings.gd")
 var fails := 0
 

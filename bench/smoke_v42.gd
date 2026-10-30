@@ -81,8 +81,8 @@ func _run() -> void:
 	check("Enter при открытом дневнике нажимает «Закрыть», забег не начинается", is_scene("Hub") and not h.diary_panel.visible and g.run_index == 0)
 	await click(h.start_button)
 	var m := current_scene as Node2D
-	check("«Начать забег»: стартовый баннер со вступлением дневника", is_scene("Main") and m.banner.visible and m.banner_parts[0] == "Дневник военачальника"
-		and m.banner_parts[2] == tr(g.story.intro) and m.banner_labels[2].is_visible_in_tree())
+	check("«Начать забег»: стартовый баннер без вступления (задача 26: оно только в дневнике), вступление отмечено прочитанным", is_scene("Main") and m.banner.visible
+		and m.banner_parts[0] == "" and m.banner_parts[2] == "" and not m.banner_labels[2].is_visible_in_tree() and g.diary_read(g.INTRO_ID))
 	# волна 1 проходится быстро: зомби снимаются по мере появления (только в смоуке)
 	await key(KEY_SPACE)
 	var t := 0

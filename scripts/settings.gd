@@ -35,6 +35,8 @@ var gore := 1
 const CARD_ANIM_LEVELS := ["UI_CARD_ANIM_OFF", "UI_CARD_ANIM_SHORT", "UI_CARD_ANIM_FULL"]
 var card_pick_anim := 2
 var squad_panel_expanded := true   # ui/squad_panel_expanded: панель отрядов развёрнута (задача 24)
+var hints_enabled := true          # hints/enabled: подсказки первой минуты (задача 26)
+var hints_seen: Array = []         # hints/seen: id показанных подсказок (каждая — один раз)
 var language := "ru"           # general/language: "ru" или "en"
 var music_volume := VOLUME_DEFAULT   # audio/music: линейная громкость шины Music, 0..1
 var sfx_volume := VOLUME_DEFAULT     # audio/sfx: шины SFX
@@ -67,6 +69,9 @@ func load_settings() -> void:
 	gore = clampi(int(cfg.get_value("gameplay", "gore", 1)), 0, GORE_LEVELS.size() - 1)
 	card_pick_anim = clampi(int(cfg.get_value("display", "card_pick_anim", 2)), 0, CARD_ANIM_LEVELS.size() - 1)
 	squad_panel_expanded = bool(cfg.get_value("ui", "squad_panel_expanded", true))
+	hints_enabled = bool(cfg.get_value("hints", "enabled", true))
+	var hs = cfg.get_value("hints", "seen", [])
+	hints_seen = Array(hs).map(func(x): return str(x)) if (hs is Array or hs is PackedStringArray) else []
 	language = str(cfg.get_value("general", "language", default_language()))
 	if not language in LANGUAGES:
 		language = default_language()
@@ -87,6 +92,8 @@ func save_settings() -> void:
 	cfg.set_value("gameplay", "gore", gore)
 	cfg.set_value("display", "card_pick_anim", card_pick_anim)
 	cfg.set_value("ui", "squad_panel_expanded", squad_panel_expanded)
+	cfg.set_value("hints", "enabled", hints_enabled)
+	cfg.set_value("hints", "seen", hints_seen)
 	cfg.set_value("general", "language", language)
 	cfg.set_value("audio", "music", music_volume)
 	cfg.set_value("audio", "sfx", sfx_volume)
@@ -128,6 +135,28 @@ func set_squad_panel_expanded(on: bool) -> void:
 	squad_panel_expanded = on
 	save_settings()
 	changed.emit("ui/squad_panel_expanded")
+
+
+# Подсказки первой минуты (задача 26): вкл/выкл, отметка показанной, сброс (все покажутся снова).
+func set_hints_enabled(on: bool) -> void:
+	if on == hints_enabled:
+		return
+	hints_enabled = on
+	save_settings()
+	changed.emit("hints/enabled")
+
+
+func mark_hint_seen(id: String) -> void:
+	if id in hints_seen:
+		return
+	hints_seen.append(id)
+	save_settings()
+
+
+func reset_hints() -> void:
+	hints_seen = []
+	save_settings()
+	changed.emit("hints/seen")
 
 
 func set_card_pick_anim(level: int) -> void:

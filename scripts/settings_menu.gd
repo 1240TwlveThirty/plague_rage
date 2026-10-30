@@ -20,6 +20,9 @@ var fullscreen_check: CheckButton
 var shake_option: OptionButton   # «Тряска экрана»: выкл / слабая / обычная / сильная (задача 23)
 var gore_option: OptionButton    # «Жестокость»: выкл / обычная (задача 23)
 var card_anim_option: OptionButton   # «Анимация выбора карточки»: выкл / короткая / полная (задача 25)
+var hints_check: CheckButton     # «Подсказки» вкл/выкл (задача 26)
+var hints_reset_button: Button   # «Сбросить подсказки»
+var game_msg: Label              # итог «Сбросить подсказки»
 var back_button: Button
 var key_titles := {}            # действие -> подпись строки на вкладке «Управление»
 var key_buttons := {}           # действие -> кнопка с клавишей на вкладке «Управление»
@@ -65,6 +68,7 @@ func _ready() -> void:
 	_setup_video()
 	_setup_audio()
 	_setup_controls()
+	_setup_game()
 	_setup_language()
 	back_button = Button.new()
 	back_button.text = "UI_SETTINGS_BACK"
@@ -270,6 +274,33 @@ func _setup_controls() -> void:
 	_refresh_keys()
 
 
+# Вкладка «Игра» (задача 26): подсказки первой минуты (вкл/выкл, сбросить).
+func _setup_game() -> void:
+	var col := _tab("UI_SETTINGS_TAB_GAME")
+	hints_check = CheckButton.new()
+	hints_check.text = "UI_SETTINGS_HINTS"
+	hints_check.add_theme_font_size_override("font_size", FONTS.px(FONT))
+	hints_check.button_pressed = settings.hints_enabled
+	hints_check.toggled.connect(settings.set_hints_enabled)
+	col.add_child(hints_check)
+	hints_reset_button = Button.new()
+	hints_reset_button.text = "UI_SETTINGS_HINTS_RESET"
+	hints_reset_button.add_theme_font_size_override("font_size", FONTS.px(26))
+	hints_reset_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	UI.frame_button(hints_reset_button)
+	hints_reset_button.pressed.connect(_reset_hints)
+	col.add_child(hints_reset_button)
+	game_msg = Label.new()
+	game_msg.add_theme_font_size_override("font_size", FONTS.px(24))
+	game_msg.add_theme_color_override("font_color", Color(1.0, 0.75, 0.35))
+	col.add_child(game_msg)
+
+
+func _reset_hints() -> void:
+	settings.reset_hints()
+	game_msg.text = "MSG_HINTS_RESET_DONE"
+
+
 # Вкладка «Язык»: «Русский» и «English», переключение сразу.
 func _setup_language() -> void:
 	var col := _tab("UI_SETTINGS_TAB_LANGUAGE")
@@ -321,6 +352,7 @@ func _on_changed(_key: String) -> void:
 	shake_option.select(settings.screen_shake_level)
 	gore_option.select(settings.gore)
 	card_anim_option.select(settings.card_pick_anim)
+	hints_check.set_pressed_no_signal(settings.hints_enabled)
 	music_slider.set_value_no_signal(settings.music_volume)
 	sfx_slider.set_value_no_signal(settings.sfx_volume)
 	for l in lang_buttons:
@@ -354,6 +386,8 @@ func close() -> void:
 	waiting_action = ""
 	if key_msg != null:
 		key_msg.text = ""
+	if game_msg != null:
+		game_msg.text = ""
 	_set_focusable(self, false)
 	visible = false
 	closed.emit()
