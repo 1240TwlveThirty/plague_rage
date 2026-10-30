@@ -421,10 +421,9 @@ func t_dark(g: Node) -> void:
 	st.open()
 	await step(3)
 	var sl: Label = null
-	for c in st.tabs.get_child(0).get_child(0).get_children():
-		if c is HBoxContainer:
-			sl = c.get_child(0)
-			break
+	for c in st.tabs.get_child(0).find_children("*", "HBoxContainer", true, false):   # вкладка: поля, прокрутка (задача 26), колонка
+		sl = c.get_child(0)
+		break
 	var scn := contrast(sl.get_theme_color("font_color"), dark)
 	print("CONTRAST|настройки на тёмной панели|%.2f" % scn)
 	check("настройки: вкладки на тёмной панели, подписи — контраст %.2f" % scn, st.tabs.get_theme_stylebox("panel") == sb and scn >= minc)

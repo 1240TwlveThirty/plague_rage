@@ -7,6 +7,15 @@
 	"squad_info_fields": ["alive", "hp", "damage", "range", "attack_rate", "speed"],
 	"_squad_info_fields": "панель выбранного отряда (задача 26): поля по порядку — alive живых, hp HP бойца (средний / максимум), damage урон удара (у стрелков — стрелы), range дальность в шагах, attack_rate ударов в секунду, speed скорость строя в шагах/с",
 	"info_flash_time": 2.0,
+	"settings_size": [1100, 640],
+	"settings_key_row_height": 56,
+	"_controls_groups": "вкладка «Управление» (задача 26): группы переназначаемых действий по порядку; заголовок — ключ перевода; пустая группа не показывается (у камеры переназначаемых клавиш пока нет)",
+	"controls_groups": [
+		{"title": "UI_SETTINGS_GROUP_SQUADS", "actions": ["squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4", "squad_select_5", "squad_select_6", "squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side", "war_cry"]},
+		{"title": "UI_SETTINGS_GROUP_HERO", "actions": ["move_up", "move_down", "move_left", "move_right", "hero_attack"]},
+		{"title": "UI_SETTINGS_GROUP_CAMERA", "actions": []},
+		{"title": "UI_SETTINGS_GROUP_INTERFACE", "actions": ["wave_start", "buy_1", "buy_2", "buy_3", "buy_4", "buy_spear", "shop_toggle", "squad_panel_toggle"]}
+	],
 	"info_width": 320,
 	"world_unit_px": 12.0,
 	"_world_unit_px": "один «шаг» (единица расстояний для игрока) в px мира: ширина бойца пехоты в строю, шаг строя SLOT_SPACING из main.gd; тест check_v76_units сверяет",

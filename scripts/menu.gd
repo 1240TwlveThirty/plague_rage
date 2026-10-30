@@ -42,6 +42,9 @@ func _ready() -> void:
 	settings_menu.closed.connect(func(): settings_button.grab_focus())
 	add_child(settings_menu)
 	play_button.grab_focus()   # Enter нажимает «Играть»
+	var f := get_node_or_null("/root/Focus")
+	if f != null:
+		f.hide_focus()   # задача 26: подсветка фокуса — только после клавиши
 
 
 func _button(box: Container, text: String) -> Button:

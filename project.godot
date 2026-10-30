@@ -21,6 +21,7 @@ Settings="*res://scripts/settings.gd"
 Game="*res://scripts/game.gd"
 Audio="*res://scripts/audio.gd"
 Shots="*res://scripts/shots.gd"
+Focus="*res://scripts/focus_ui.gd"
 
 [display]
 

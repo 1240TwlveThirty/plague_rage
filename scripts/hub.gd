@@ -107,6 +107,9 @@ func _ready() -> void:
 	add_child(esc_menu)
 	_refresh()
 	start_button.grab_focus()   # Enter начинает забег
+	var f := get_node_or_null("/root/Focus")
+	if f != null:
+		f.hide_focus()   # задача 26: подсветка фокуса — только после клавиши
 
 
 func _label(box: Container, text: String, size: int) -> Label:

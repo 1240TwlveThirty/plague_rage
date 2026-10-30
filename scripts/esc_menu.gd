@@ -81,6 +81,9 @@ func open(note := "") -> void:
 	get_tree().paused = true
 	_set_focusable(true)
 	continue_button.grab_focus()   # Enter продолжает
+	var f := get_node_or_null("/root/Focus")
+	if f != null:
+		f.hide_focus()   # задача 26: подсветка фокуса — только после клавиши
 
 
 func close() -> void:

@@ -355,3 +355,7 @@ HUD_STAT_GATE,Ворота (макс. HP),Gate (max HP)
 HUD_STAT_ALIVE,Бойцов в отряде,Soldiers in squad
 HUD_SHOP_DELTA,%s → %s,%s → %s
 HUD_SHOP_TIP_DELTA,%s: %s,%s: %s
+UI_SETTINGS_GROUP_SQUADS,Отряды,Squads
+UI_SETTINGS_GROUP_HERO,Командир,Commander
+UI_SETTINGS_GROUP_CAMERA,Камера,Camera
+UI_SETTINGS_GROUP_INTERFACE,Интерфейс,Interface
