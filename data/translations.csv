@@ -337,3 +337,7 @@ HUD_SHOP_SHOW,« Магазин (%s),« Shop (%s)
 HUD_SHOP_HIDE,Свернуть » (%s),Hide » (%s)
 HUD_SQUADS_COLLAPSE,« Свернуть (%s),« Collapse (%s)
 HUD_SQUADS_EXPAND,Отряды » (%s),Squads » (%s)
+UI_SETTINGS_CARD_ANIM,Анимация выбора карточки,Card pick animation
+UI_CARD_ANIM_OFF,Выкл,Off
+UI_CARD_ANIM_SHORT,Короткая,Short
+UI_CARD_ANIM_FULL,Полная,Full

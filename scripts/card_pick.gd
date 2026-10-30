@@ -585,8 +585,7 @@ func _pick(k: int) -> void:
 # Настройка «Анимация выбора карточки» (Settings.card_pick_anim); без автозагрузки — полная.
 func setting_mode() -> int:
 	var st := get_node_or_null("/root/Settings")
-	var v = st.get("card_pick_anim") if st != null else null
-	return int(v) if v != null else ANIM_FULL
+	return int(st.card_pick_anim) if st != null else ANIM_FULL
 
 
 # Пропуск: сразу конечное состояние и следующая фаза (эффект уже применён при выборе).

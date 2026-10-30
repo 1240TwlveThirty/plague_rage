@@ -14,6 +14,7 @@ var tabs: TabContainer
 var fullscreen_check: CheckButton
 var shake_option: OptionButton   # «Тряска экрана»: выкл / слабая / обычная / сильная (задача 23)
 var gore_option: OptionButton    # «Жестокость»: выкл / обычная (задача 23)
+var card_anim_option: OptionButton   # «Анимация выбора карточки»: выкл / короткая / полная (задача 25)
 var back_button: Button
 var key_titles := {}            # действие -> подпись строки на вкладке «Управление»
 var key_buttons := {}           # действие -> кнопка с клавишей на вкладке «Управление»
@@ -94,6 +95,7 @@ func _setup_video() -> void:
 	col.add_child(fullscreen_check)
 	shake_option = _option_row(col, "UI_SETTINGS_SCREEN_SHAKE", settings.SHAKE_LEVELS, settings.screen_shake_level, settings.set_screen_shake_level)
 	gore_option = _option_row(col, "UI_SETTINGS_GORE", settings.GORE_LEVELS, settings.gore, settings.set_gore)
+	card_anim_option = _option_row(col, "UI_SETTINGS_CARD_ANIM", settings.CARD_ANIM_LEVELS, settings.card_pick_anim, settings.set_card_pick_anim)
 
 
 # Строка «подпись — выбор из списка» (ключи перевода items, индекс — значение).
@@ -240,6 +242,7 @@ func _on_changed(_key: String) -> void:
 	fullscreen_check.set_pressed_no_signal(settings.fullscreen)
 	shake_option.select(settings.screen_shake_level)
 	gore_option.select(settings.gore)
+	card_anim_option.select(settings.card_pick_anim)
 	music_slider.set_value_no_signal(settings.music_volume)
 	sfx_slider.set_value_no_signal(settings.sfx_volume)
 	for l in lang_buttons:

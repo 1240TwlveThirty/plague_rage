@@ -31,6 +31,9 @@ var screen_shake: bool:
 		if on != (screen_shake_level > SHAKE_OFF):
 			screen_shake_level = SHAKE_NORMAL if on else SHAKE_OFF
 var gore := 1
+# display/card_pick_anim (задача 25): анимация выбора карточки — 0 выкл, 1 короткая, 2 полная (по умолчанию)
+const CARD_ANIM_LEVELS := ["UI_CARD_ANIM_OFF", "UI_CARD_ANIM_SHORT", "UI_CARD_ANIM_FULL"]
+var card_pick_anim := 2
 var squad_panel_expanded := true   # ui/squad_panel_expanded: панель отрядов развёрнута (задача 24)
 var language := "ru"           # general/language: "ru" или "en"
 var music_volume := VOLUME_DEFAULT   # audio/music: линейная громкость шины Music, 0..1
@@ -62,6 +65,7 @@ func load_settings() -> void:
 	var old_shake := bool(cfg.get_value("display", "screen_shake", true))
 	screen_shake_level = clampi(int(cfg.get_value("display", "screen_shake_level", SHAKE_NORMAL if old_shake else SHAKE_OFF)), 0, SHAKE_LEVELS.size() - 1)
 	gore = clampi(int(cfg.get_value("gameplay", "gore", 1)), 0, GORE_LEVELS.size() - 1)
+	card_pick_anim = clampi(int(cfg.get_value("display", "card_pick_anim", 2)), 0, CARD_ANIM_LEVELS.size() - 1)
 	squad_panel_expanded = bool(cfg.get_value("ui", "squad_panel_expanded", true))
 	language = str(cfg.get_value("general", "language", default_language()))
 	if not language in LANGUAGES:
@@ -81,6 +85,7 @@ func save_settings() -> void:
 	cfg.set_value("display", "screen_shake", screen_shake)   # прежний ключ — для старых сборок
 	cfg.set_value("display", "screen_shake_level", screen_shake_level)
 	cfg.set_value("gameplay", "gore", gore)
+	cfg.set_value("display", "card_pick_anim", card_pick_anim)
 	cfg.set_value("ui", "squad_panel_expanded", squad_panel_expanded)
 	cfg.set_value("general", "language", language)
 	cfg.set_value("audio", "music", music_volume)
@@ -123,6 +128,15 @@ func set_squad_panel_expanded(on: bool) -> void:
 	squad_panel_expanded = on
 	save_settings()
 	changed.emit("ui/squad_panel_expanded")
+
+
+func set_card_pick_anim(level: int) -> void:
+	level = clampi(level, 0, CARD_ANIM_LEVELS.size() - 1)
+	if level == card_pick_anim:
+		return
+	card_pick_anim = level
+	save_settings()
+	changed.emit("display/card_pick_anim")
 
 
 func set_gore(level: int) -> void:

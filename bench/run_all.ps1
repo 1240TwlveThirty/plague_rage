@@ -92,6 +92,7 @@ Godot "шрифты: варианты, кегли, хаб (v70)" "res://bench/ch
 Godot "итоговые размеры кнопок под шрифт (v72)" "res://bench/check_v72_layout.gd" "CHECK: провалов 0"
 Godot "резня, слой крови, тряска, жестокость (v73)" "res://bench/check_v73_fx.gd" "CHECK: провалов 0"
 Godot "интерфейс: кнопки, FPS, рамки, панели (v74)" "res://bench/check_v74_ui.gd" "CHECK: провалов 0"
+Godot "выбор карточки: анимация, пропуск, режимы (v75)" "res://bench/check_v75_pick.gd" "CHECK: провалов 0"
 Godot "меню, хаб, пауза по Esc (v45)" "res://bench/check_v45.gd" "CHECK: провалов 0"
 Godot "подгонка слоя замка (v48)" "res://bench/check_v48.gd" "CHECK: провалов 0"
 Godot "настройки, полный экран (v49)" "res://bench/check_v49.gd" "CHECK: провалов 0"
