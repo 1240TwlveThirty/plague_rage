@@ -22,6 +22,7 @@ var gore_option: OptionButton    # «Жестокость»: выкл / обыч
 var card_anim_option: OptionButton   # «Анимация выбора карточки»: выкл / короткая / полная (задача 25)
 var hints_check: CheckButton     # «Подсказки» вкл/выкл (задача 26)
 var hints_reset_button: Button   # «Сбросить подсказки»
+var data_folder_button: Button   # «Открыть папку данных» (user://: настройки, сохранение, журнал забегов runs.csv)
 var game_msg: Label              # итог «Сбросить подсказки»
 var back_button: Button
 var key_titles := {}            # действие -> подпись строки на вкладке «Управление»
@@ -274,7 +275,7 @@ func _setup_controls() -> void:
 	_refresh_keys()
 
 
-# Вкладка «Игра» (задача 26): подсказки первой минуты (вкл/выкл, сбросить).
+# Вкладка «Игра» (задача 26): подсказки первой минуты (вкл/выкл, сбросить) и папка данных игры.
 func _setup_game() -> void:
 	var col := _tab("UI_SETTINGS_TAB_GAME")
 	hints_check = CheckButton.new()
@@ -294,11 +295,26 @@ func _setup_game() -> void:
 	game_msg.add_theme_font_size_override("font_size", FONTS.px(24))
 	game_msg.add_theme_color_override("font_color", Color(1.0, 0.75, 0.35))
 	col.add_child(game_msg)
+	data_folder_button = Button.new()
+	data_folder_button.text = "UI_SETTINGS_DATA_FOLDER"
+	data_folder_button.add_theme_font_size_override("font_size", FONTS.px(26))
+	data_folder_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	UI.frame_button(data_folder_button)
+	data_folder_button.pressed.connect(open_data_folder)
+	col.add_child(data_folder_button)
 
 
 func _reset_hints() -> void:
 	settings.reset_hints()
 	game_msg.text = "MSG_HINTS_RESET_DONE"
+
+
+# Папка user:// в проводнике системы (там settings.cfg, save.json и журнал забегов runs.csv). Возвращает путь (тесты).
+var shell_open := func(path: String) -> Error: return OS.shell_open(path)   # тесты подменяют: окно проводника не открывается
+func open_data_folder() -> String:
+	var path := ProjectSettings.globalize_path("user://")
+	shell_open.call(path)
+	return path
 
 
 # Вкладка «Язык»: «Русский» и «English», переключение сразу.

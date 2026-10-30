@@ -848,6 +848,7 @@ var hero_swings := 0   # статистика героя за забег: уда
 var hero_hits := 0
 var hero_kills := 0
 var hero_deaths := 0
+var gold_spent := 0.0   # потрачено золота в магазине за забег (журнал забегов, задача 26; на симуляцию не влияет)
 const SIDE_TOP := 0     # стороны появления орды
 const SIDE_LEFT := 1
 const SIDE_RIGHT := 2
@@ -2958,6 +2959,7 @@ func _buy(k: int) -> bool:
 				_say(tr("MSG_NO_SQUAD_FOR_SPEARMEN"))
 				return false
 	var before := _flash_snapshot()   # задача 26: что изменится — подсветить
+	gold_spent += _price(k)   # журнал забегов (только учёт)
 	gold -= _price(k)
 	shop_bought[k] += 1
 	match SHOP_ITEMS[k]:
@@ -3314,7 +3316,7 @@ func _on_defeat() -> void:
 	if game == null:
 		_set_banner(func(): _show_banner("", _ending_text(wave_number), tr("MSG_RESTART") % "R"))
 		return
-	game.end_run("loss", wave_number, run_kills)
+	game.end_run("loss", wave_number, run_kills, _run_stats())
 	_set_banner(func():
 		_show_banner("", _ending_text(wave_number), tr("END_DEFEAT_HINT") % [
 			GAME_SCRIPT.roman(game.siege), game.records[game.siege].best_wave, SETTINGS.key_label("to_hub")])
@@ -3328,7 +3330,7 @@ func _on_win() -> void:
 	_set_paused(false)   # при победе пауза недоступна
 	set_physics_process(false)
 	best_wave = maxi(best_wave, wave_number)
-	game.end_run("win", wave_number, run_kills)
+	game.end_run("win", wave_number, run_kills, _run_stats())
 	_set_banner(func():
 		_show_banner(tr("END_WIN_TITLE") % [wave_number, waves_per_run], tr(story_victories.get(debug_layer, "")),
 			tr("END_TO_HUB_HINT") % SETTINGS.key_label("to_hub"))
@@ -3363,7 +3365,7 @@ func _abandon_run() -> void:
 	var w := wave_number if wave_state == WS_BATTLE else wave_number + 1
 	wave_state = WS_DEFEAT
 	set_physics_process(false)
-	game.end_run("loss", w, run_kills)
+	game.end_run("loss", w, run_kills, _run_stats())
 
 
 # Экран итога: строка «+N Сияния» между дневником и подсказкой (после _show_banner: он её прячет).
@@ -5687,6 +5689,11 @@ func hint_conditions() -> Dictionary:
 		near = _nearest_zombie_coarse(pos[hero_idx], float(hints.cfg.get("enemy_near_paces", 8)) * UNITS.world_unit_px()) >= 0
 	return {"battle_start": free and wave_state == WS_BATTLE, "squad_selected": free and sel_touched and sel_mask != 0, "enemy_near_hero": near,
 		"respite_after_wave": free and wave_state == WS_RESPITE and wave_number >= 1}
+
+
+# Итоги боя для журнала забегов (Game.end_run).
+func _run_stats() -> Dictionary:
+	return {"hero_deaths": hero_deaths, "gold_spent": gold_spent}
 
 
 # Действие игрока для подсказок (done_on): order, hero_attack, buy.

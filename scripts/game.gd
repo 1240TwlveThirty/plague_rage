@@ -7,6 +7,7 @@ const RADIANCE_PATH := "res://data/radiance.json"
 const GIFTS_PATH := "res://data/gifts.json"
 const MODS := preload("res://scripts/mods.gd")   # общий загрузчик gifts.json
 const CARDS := preload("res://scripts/cards.gd")   # карточки забега: data/cards.json, data/cards_rules.json
+const RUN_LOG := preload("res://scripts/run_log.gd")   # журнал забегов user://runs.csv (задача 26)
 const CARDS_PATH := "res://data/cards.json"
 const CARD_RULES_PATH := "res://data/cards_rules.json"
 const SAVE_PATH := "user://save.json"
@@ -57,9 +58,14 @@ var card_rules := {}           # cards_rules.json (CARDS.load_rules) или {} �
 var run_cards: Array = []      # выбранные карточки забега: записи {id[, result]}; очищается в start_run; в сохранение не пишется (сохранения посреди забега нет)
 var run_rng := RandomNumberGenerator.new()   # генератор забега: подбор тройки и случайные эффекты карточек; не ГСЧ симуляции
 var run_seed := -1             # seed генератора забега: -1 — случайный в start_run; бенчи и тесты задают
+var runs_log_path := ""        # журнал забегов: "" — не пишется (тестовый SceneTree), в игре — RUN_LOG.PATH (_ready); тесты задают свой
+var run_started := 0.0         # play_time в начале забега (длительность в журнале)
+var run_logged := false        # строка этого забега уже в журнале: второй раз end_run её не пишет
 
 
 func _ready() -> void:
+	if get_tree().get_script() == null:
+		runs_log_path = RUN_LOG.PATH   # обычный запуск игры, не тестовый SceneTree
 	_setup()
 
 
@@ -496,6 +502,8 @@ func start_run(s: int) -> void:
 	run_index += 1
 	active_gifts = owned_gifts() if gifts_override == null else gifts_override.duplicate()
 	run_cards = []
+	run_started = play_time
+	run_logged = false
 	run_rng.seed = run_seed if run_seed >= 0 else randi()
 	_clear_last_run()
 	get_tree().change_scene_to_file(MAIN_SCENE)
@@ -503,7 +511,8 @@ func start_run(s: int) -> void:
 
 # Итог забега: result "win" или "loss", wave — волна, на которой он кончился, kills — убито зомби за забег.
 # Победа на последней осаде в первый раз ставит completed. Сияние за забег начисляется здесь же (last_run.radiance). Итог сразу сохраняется.
-func end_run(result: String, wave: int, kills: int) -> void:
+# stats — из боя для журнала забегов: hero_deaths, gold_spent. Строка журнала — одна на забег (run_logged).
+func end_run(result: String, wave: int, kills: int, stats := {}) -> void:
 	if not records.has(siege):
 		push_error("Нет рекордов осады %d" % siege)
 		return
@@ -520,6 +529,12 @@ func end_run(result: String, wave: int, kills: int) -> void:
 	radiance += earned
 	last_run = {"siege": siege, "result": result, "wave": wave, "kills": kills, "radiance": earned}
 	save()
+	if runs_log_path != "" and not run_logged:
+		run_logged = true
+		RUN_LOG.append(runs_log_path, {"date": Time.get_datetime_string_from_system(false, true), "version": RUN_LOG.version(),
+			"run": runs_total, "siege": siege, "result": result, "wave": wave, "duration_s": snappedf(play_time - run_started, 0.1),
+			"cards": ";".join(run_cards.map(func(c): return str(c.id))), "hero_deaths": int(stats.get("hero_deaths", 0)),
+			"gold_spent": roundi(float(stats.get("gold_spent", 0.0)))})
 
 
 func go_hub() -> void:
