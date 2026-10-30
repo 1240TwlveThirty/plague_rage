@@ -344,3 +344,14 @@ UI_CARD_ANIM_FULL,Полная,Full
 UNIT_PACE_ONE,шаг,pace
 UNIT_PACE_FEW,шага,paces
 UNIT_PACE_MANY,шагов,paces
+HUD_INFO_ALIVE,Живых: %d,Alive: %d
+HUD_INFO_HP,HP бойца: %s / %s,Soldier HP: %s / %s
+HUD_INFO_DAMAGE,Урон: %s,Damage: %s
+HUD_INFO_RANGE,Дальность: %s,Range: %s
+HUD_INFO_ATTACK_RATE,Скорость атаки: %s уд./с,Attack speed: %s hits/s
+HUD_INFO_SPEED,Скорость: %s/с,Speed: %s/s
+HUD_STAT_RATE,%s уд./с,%s hits/s
+HUD_STAT_GATE,Ворота (макс. HP),Gate (max HP)
+HUD_STAT_ALIVE,Бойцов в отряде,Soldiers in squad
+HUD_SHOP_DELTA,%s → %s,%s → %s
+HUD_SHOP_TIP_DELTA,%s: %s,%s: %s

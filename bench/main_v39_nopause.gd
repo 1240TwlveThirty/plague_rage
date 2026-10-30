@@ -9,6 +9,7 @@ const WAVES_PATH := "res://data/waves.json"
 const SHOP_PATH := "res://data/shop.json"
 const SHOP_ITEMS := ["inf_pack", "archer_pack", "weapons", "gate", "spear_pack"]   # товары магазина передышки
 const SHOP_LINE_TITLE_COST := "%s — %s"   # товар — цена (первая строка кнопки набора)   # tr-skip: разделитель
+const SHOP_LINE_COST_DELTA := "%s · %s"   # цена · до → после (вторая строка кнопки улучшения, задача 26)   # tr-skip: разделитель
 const SHOP_LINE_COST_TARGET := "%s  %s"   # цена и отряд во второй строке, если первая не помещается   # tr-skip: разделитель
 const SHOP_ACTIONS := ["buy_1", "buy_2", "buy_3", "buy_4", "buy_spear"]   # действие покупки товара k (по умолчанию Z X C V B)
 const SHOP_COST_STATS := ["unit_cost", "unit_cost", "weapon_cost", "repair_cost", "unit_cost"]   # стат цены товара для Mods.value, порядок SHOP_ITEMS
@@ -560,8 +561,22 @@ var type_id := {}   # имя -> номер
 var portraits = PORTRAITS.new()   # иллюстрации в кнопках (только интерфейс)
 # data/ui_layout.json: фиксированные размеры кнопок (минимум и он же ширина — текст ужимается, кнопка не растягивается).
 var ui_layout := {"shop_button_size": Vector2(464, 64), "squad_button_size": Vector2(352, 48), "action_button_size": Vector2(184, 48), "war_cry_size": Vector2(352, 48),
-	"debug_fps": false, "shop_slide_time": 0.2, "panel_toggle_size": Vector2(232, 48), "squad_compact_size": Vector2(112, 48)}
+	"debug_fps": false, "shop_slide_time": 0.2, "panel_toggle_size": Vector2(232, 48), "squad_compact_size": Vector2(112, 48),
+	"info_flash_time": 2.0, "info_width": 320.0}
 var type_label := PackedStringArray()   # название типа для интерфейса
+# Характеристики выбранного отряда (задача 26): поля и время подсветки — data/ui_layout.json squad_info_fields, info_flash_time
+const INFO_FIELDS_DEFAULT := ["alive", "hp", "damage", "range", "attack_rate", "speed"]
+const INFO_FIELD_KEYS := {"alive": "HUD_INFO_ALIVE", "hp": "HUD_INFO_HP", "damage": "HUD_INFO_DAMAGE", "range": "HUD_INFO_RANGE",
+	"attack_rate": "HUD_INFO_ATTACK_RATE", "speed": "HUD_INFO_SPEED"}
+const INFO_FLASH_COLOR := Color("#feae34")   # подсветка числа после покупки (Endesga 32, как выбранный отряд)
+var info_fields: Array = INFO_FIELDS_DEFAULT.duplicate()
+var squad_info: PanelContainer            # панель характеристик под панелью отрядов
+var squad_info_title: Label
+var squad_info_labels := {}               # поле -> Label
+var info_shown := {}                      # поле -> показанное значение (число) у отряда info_for
+var info_for := -1                        # отряд, чьи характеристики показаны
+var info_flash := {}                      # поле -> до какого Time.get_ticks_msec подсвечено
+var hud_flash := {}                       # id окошка верхней панели -> до какого мс подсвечено
 
 # --- Ворота и поражение (data/castle.json) ---
 var wave_state := WS_BATTLE
@@ -1823,7 +1838,45 @@ func _apply_mods() -> void:
 # all_units и своей (infantry, archer). Изменился максимум HP типа — у живых юнитов этого типа HP сохраняет долю от максимума;
 # изменилась скорость — скорость строя отряда этого типа меняется в той же пропорции. Без модификаторов все множители ровно 1.0
 # и числа те же бит в бит. Вызывается при старте забега и в начале каждой волны (_prepare_wave).
+# Числа считает _wave_data (без побочных эффектов) — ею же магазин показывает «до → после» покупки (задача 26).
 func _apply_wave_data() -> void:
+	var wd := _wave_data(shop_bought)
+	var hp_new: PackedFloat32Array = wd.hp
+	var speed_new: PackedFloat32Array = wd.speed
+	type_cd_floor = wd.cd_floor
+	for t in hp_new.size():
+		if hp_new[t] != type_hp[t] and type_hp[t] > 0.0:
+			var k: float = hp_new[t] / type_hp[t]
+			for i in mini(count, unit_type.size()):   # при старте забега массивов юнитов ещё нет
+				if unit_type[i] == t:
+					hp[i] *= k
+		if speed_new[t] != type_speed[t] and type_speed[t] > 0.0:
+			for sq in SQUAD_MAX:
+				if squad_used.size() > sq and squad_used[sq] == 1 and squad_type[sq] == t:
+					squad_speed[sq] *= speed_new[t] / type_speed[t]
+	type_hp = hp_new
+	type_damage = wd.damage
+	type_arrow_dmg = wd.arrow
+	type_speed = speed_new
+	type_cooldown = wd.cooldown
+	type_volley_period = wd.volley
+	type_range_far = wd.range_far
+	type_bounty_mult = wd.bounty
+	type_block_bonus = wd.block_bonus
+	if wd.gate_mult != gate_mult:   # ворота — только при смене множителя: от базы с прибавками ремонта, текущее HP сохраняет долю
+		var gmax: float = wd.gate_max
+		if gate_hp_max > 0.0:
+			gate_hp *= gmax / gate_hp_max
+		gate_hp_max = gmax
+		gate_mult = wd.gate_mult
+	income_pct = mods.get_mult("income", "player") - 1.0
+	income_flat = mods.value("income_flat", 0.0)
+
+
+# Эффективные данные типов при покупках bought (shop_bought или его копия с лишней покупкой): база + модификаторы + покупки
+# «Оружия» в том же порядке, что _buy. Ничего не меняет. Ключи: hp, damage, arrow, speed, cooldown, cd_floor, volley, range_far,
+# bounty, block_bonus — массивы по типам; gate_mult, gate_max — множитель ворот и максимум от базы с прибавками ремонта.
+func _wave_data(bought: PackedInt32Array) -> Dictionary:
 	var names := {infantry_type: "infantry", archer_type: "archer", spearman_type: "spearman"}
 	if hero_type >= 0:
 		names[hero_type] = "hero"   # герой — юнит игрока: множители цели all_units и своей цели hero (карточки героя, задача 14)
@@ -1844,9 +1897,9 @@ func _apply_wave_data() -> void:
 	var wk := SHOP_ITEMS.find("weapons")
 	var wrate := 1.0   # «Оружие» на скорости боя: x dmg_mult за покупку пехоте, копейщикам и лучникам
 	if weapon_stat == "attack_rate":
-		for n in shop_bought[wk]:
+		for n in bought[wk]:
 			wrate *= shop_param[wk]
-	for n in (shop_bought[wk] if weapon_stat == "damage" else 0):   # покупки оружия — после модификаторов, как в _buy
+	for n in (bought[wk] if weapon_stat == "damage" else 0):   # покупки оружия — после модификаторов, как в _buy
 		dmg_new[infantry_type] *= shop_param[wk]
 		dmg_new[spearman_type] *= shop_param[wk]
 		arrow_new[archer_type] *= shop_param[wk]
@@ -1865,6 +1918,7 @@ func _apply_wave_data() -> void:
 	var spear_rate: float = (1.0 + rate_all + (mods.get_mult("attack_rate", "infantry") - 1.0)) * wrate
 	var arch_on: bool = mods.has_key("reload", "archer") or ar_all or mods.has_key("attack_rate", "archer") or w_on
 	var reload: float = (mods.get_mult("reload", "archer") + rate_all + (mods.get_mult("attack_rate", "archer") - 1.0)) * wrate
+	var floor_new := type_cd_floor.duplicate()
 	if inf_on:
 		cd_new[infantry_type] = _cd_actual(base_type_cooldown[infantry_type]) / inf_rate
 	if spear_on:
@@ -1873,52 +1927,30 @@ func _apply_wave_data() -> void:
 		cd_new[archer_type] = _cd_actual(base_type_cooldown[archer_type]) / reload
 	volley_new[archer_type] /= reload
 	range_new[archer_type] *= mods.get_mult("range", "archer")
-	type_cd_floor[infantry_type] = -CD_CARRY if inf_on else 0.0
-	type_cd_floor[spearman_type] = -CD_CARRY if spear_on else 0.0
-	type_cd_floor[archer_type] = -CD_CARRY if arch_on else 0.0
+	floor_new[infantry_type] = -CD_CARRY if inf_on else 0.0
+	floor_new[spearman_type] = -CD_CARRY if spear_on else 0.0
+	floor_new[archer_type] = -CD_CARRY if arch_on else 0.0
 	if hero_type >= 0:   # герой: attack_rate all_units и своей цели (карточка 42), «Оружие»; решает каждый тик — интервал без округления до 2 тиков, перенос до 1 тика
 		var hero_on_rate: bool = ar_all or w_on or mods.has_key("attack_rate", "hero")
 		var hero_rate: float = (1.0 + rate_all + (mods.get_mult("attack_rate", "hero") - 1.0)) * wrate
 		cd_new[hero_type] = base_type_cooldown[hero_type] / hero_rate if hero_on_rate else base_type_cooldown[hero_type]
-		type_cd_floor[hero_type] = -1.0 / 30.0 if hero_on_rate else 0.0
+		floor_new[hero_type] = -1.0 / 30.0 if hero_on_rate else 0.0
 	var bounty: float = mods.get_mult("bounty", "player")
 	for t in bounty_new.size():
 		bounty_new[t] *= bounty
 	bounty_new[knight_type] *= mods.get_mult("bounty", "knight")
-	for t in hp_new.size():
-		if hp_new[t] != type_hp[t] and type_hp[t] > 0.0:
-			var k: float = hp_new[t] / type_hp[t]
-			for i in mini(count, unit_type.size()):   # при старте забега массивов юнитов ещё нет
-				if unit_type[i] == t:
-					hp[i] *= k
-		if speed_new[t] != type_speed[t] and type_speed[t] > 0.0:
-			for sq in SQUAD_MAX:
-				if squad_used.size() > sq and squad_used[sq] == 1 and squad_type[sq] == t:
-					squad_speed[sq] *= speed_new[t] / type_speed[t]
-	type_hp = hp_new
-	type_damage = dmg_new
-	type_arrow_dmg = arrow_new
-	type_speed = speed_new
-	type_cooldown = cd_new
-	type_volley_period = volley_new
-	type_range_far = range_new
-	type_bounty_mult = bounty_new
-	type_block_bonus.resize(type_hp.size())
-	type_block_bonus.fill(0.0)
+	var block_new := PackedFloat32Array()
+	block_new.resize(hp_new.size())
+	block_new.fill(0.0)
 	for t in names:   # стат block: «все» и своя цель (пехота, копейщики)
-		type_block_bonus[t] = mods.get_flat("block", "all_units") + mods.get_flat("block", names[t])
+		block_new[t] = mods.get_flat("block", "all_units") + mods.get_flat("block", names[t])
 	var gm: float = mods.get_mult("gate_hp", "gate")
-	if gm != gate_mult:   # ворота — только при смене множителя: от базы с прибавками ремонта, текущее HP сохраняет долю
-		var gk := SHOP_ITEMS.find("gate")
-		var gmax: float = base_gate_hp_max * gm
-		for n in shop_bought[gk]:   # прибавки ремонта — после множителя, как в _buy
-			gmax += shop_param[gk]
-		if gate_hp_max > 0.0:
-			gate_hp *= gmax / gate_hp_max
-		gate_hp_max = gmax
-		gate_mult = gm
-	income_pct = mods.get_mult("income", "player") - 1.0
-	income_flat = mods.value("income_flat", 0.0)
+	var gk := SHOP_ITEMS.find("gate")
+	var gmax: float = base_gate_hp_max * gm
+	for n in bought[gk]:   # прибавки ремонта — после множителя, как в _buy
+		gmax += shop_param[gk]
+	return {"hp": hp_new, "damage": dmg_new, "arrow": arrow_new, "speed": speed_new, "cooldown": cd_new, "cd_floor": floor_new,
+		"volley": volley_new, "range_far": range_new, "bounty": bounty_new, "block_bonus": block_new, "gate_mult": gm, "gate_max": gmax}
 
 
 # Фактический интервал удара без модификатора: cooldown убывает шагами решения юнита (CD_CARRY = 2 тика) до 0 без переноса,
@@ -2922,6 +2954,7 @@ func _buy(k: int) -> bool:
 			if spear_sq < 0:
 				_say(tr("MSG_NO_SQUAD_FOR_SPEARMEN"))
 				return false
+	var before := _flash_snapshot()   # задача 26: что изменится — подсветить
 	gold -= _price(k)
 	shop_bought[k] += 1
 	match SHOP_ITEMS[k]:
@@ -2939,9 +2972,10 @@ func _buy(k: int) -> bool:
 				type_damage[spearman_type] *= shop_param[k]   # оружие и копейщикам (удар ближнего боя)
 				type_arrow_dmg[archer_type] *= shop_param[k]
 		"gate":
-			gate_hp_max += shop_param[k]   # фиксированная прибавка gate_max_gain
+			gate_hp_max = _gate_after_buy(gate_hp_max)   # фиксированная прибавка gate_max_gain
 			gate_hp = gate_hp_max
 	ui_t = 0.0   # обновить HUD и магазин сразу
+	_flash_changes(before)
 	return true
 
 
@@ -5250,6 +5284,27 @@ func _setup_fps_label() -> void:
 	hint_label.modulate = Color(1.0, 1.0, 1.0, 0.7)
 	squad_panel.add_child(hint_label)
 	layer.add_child(squad_panel)
+	# Характеристики выбранного отряда (задача 26): тёмная панель под панелью отрядов, видна, пока отряд выбран
+	squad_info = PanelContainer.new()
+	UI.frame_panel_dark(squad_info)
+	squad_info.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	squad_info.custom_minimum_size.x = ui_layout.info_width
+	var info_box := VBoxContainer.new()
+	info_box.add_theme_constant_override("separation", 0)
+	squad_info.add_child(info_box)
+	squad_info_title = Label.new()
+	squad_info_title.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	squad_info_title.add_theme_font_size_override("font_size", FONTS.px(FONTS.DEFAULT_SIZE))
+	squad_info_title.add_theme_color_override("font_color", INFO_FLASH_COLOR)
+	info_box.add_child(squad_info_title)
+	for fld in info_fields:
+		var l := Label.new()
+		l.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # собранная строка
+		l.add_theme_font_size_override("font_size", FONTS.px(18))
+		info_box.add_child(l)
+		squad_info_labels[fld] = l
+	squad_info.visible = false
+	layer.add_child(squad_info)
 	add_child(layer)
 	_no_focus(layer)
 	_update_squad_panel()
@@ -5611,6 +5666,171 @@ func _update_squad_panel() -> void:
 		squad_panel_sig = sig
 		# набор строк изменился: размер по содержимому, снова по центру левого края
 		squad_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 16)
+	_update_squad_info()
+
+
+# --- Характеристики отряда и «до → после» в магазине (задача 26) ------------------------------------------------------------
+# Числа — из тех же массивов и функций, что у симуляции (type_*, _cd_actual, _wave_data); только чтение.
+
+# Средний интервал удара типа t, с: по данным wd (_wave_data) или текущим. С переносом остатка (cd_floor != 0) — ровно
+# cooldown, без него cooldown убывает шагами решения и интервал — _cd_actual(cooldown).
+func _attack_interval(t: int, wd := {}) -> float:
+	var cd: float = (type_cooldown if wd.is_empty() else wd.cooldown)[t]
+	var fl: float = (type_cd_floor if wd.is_empty() else wd.cd_floor)[t]
+	return cd if fl != 0.0 else _cd_actual(cd)
+
+
+# Урон удара типа t (у стрелков — стрелы) по данным wd или текущим.
+func _type_damage_of(t: int, wd := {}) -> float:
+	if type_range_far[t] > 0.0:
+		return (type_arrow_dmg if wd.is_empty() else wd.arrow)[t]
+	return (type_damage if wd.is_empty() else wd.damage)[t]
+
+
+# Характеристики отряда s: поле -> число. alive — живых, hp — средний HP, hp_max — максимум бойца, damage — урон удара,
+# range — дальность px мира (стрелки — стрельбы), attack_rate — ударов в секунду (с бонусами отряда: Клич, карточки),
+# speed — скорость строя px/с.
+func squad_stats(s: int) -> Dictionary:
+	var t := squad_type[s]
+	var sum := 0.0
+	var n := 0
+	for i in count:
+		if unit_squad[i] == s:
+			sum += hp[i]
+			n += 1
+	var interval := _attack_interval(t) / squad_atk_speed_mult[s]
+	return {"alive": squad_n[s], "hp": sum / n if n > 0 else 0.0, "hp_max": type_hp[t], "damage": _type_damage_of(t),
+		"range": type_range_far[t] if type_range_far[t] > 0.0 else sqrt(type_range_sq[t]),
+		"attack_rate": 1.0 / interval if interval > 0.0 else 0.0, "speed": squad_speed[s] * squad_speed_mult[s]}
+
+
+# Строка поля для игрока.
+func info_text(fld: String, st: Dictionary) -> String:
+	match fld:
+		"alive":
+			return tr("HUD_INFO_ALIVE") % st.alive
+		"hp":
+			return tr("HUD_INFO_HP") % [UNITS.num(st.hp, 1), UNITS.num(st.hp_max, 1)]
+		"damage":
+			return tr("HUD_INFO_DAMAGE") % UNITS.num(st.damage, 2)
+		"range":
+			return tr("HUD_INFO_RANGE") % UNITS.dist_text(st.range)
+		"attack_rate":
+			return tr("HUD_INFO_ATTACK_RATE") % UNITS.num(st.attack_rate, 2)
+		"speed":
+			return tr("HUD_INFO_SPEED") % UNITS.dist_text(st.speed)
+	return ""
+
+
+# Панель характеристик главного выбранного отряда; число, изменённое покупкой, подсвечено info_flash_time с.
+func _update_squad_info() -> void:
+	if squad_info == null:
+		return
+	var s := sel_primary
+	var on := s >= 0 and squad_used[s] == 1 and squad_n[s] > 0 and squad_team[s] == 0
+	squad_info.visible = on
+	if not on:
+		info_for = -1
+		return
+	var st := squad_stats(s)
+	var now := Time.get_ticks_msec()
+	squad_info_title.text = "%d  %s" % [s + 1, _squad_label(s)]
+	for fld in info_fields:
+		var l: Label = squad_info_labels[fld]
+		var t := info_text(fld, st)
+		if l.text != t:
+			l.text = t
+		var lit: bool = info_flash.get(fld, 0) > now
+		l.add_theme_color_override("font_color", INFO_FLASH_COLOR if lit else Color.WHITE)
+	info_for = s
+	info_shown = st
+	squad_info.size = squad_info.get_combined_minimum_size()
+	# под панелью отрядов у левого края (не на поле, где стоят войска); не помещается снизу — над ней
+	var below := squad_panel.position.y + squad_panel.size.y + 12.0
+	var vp := squad_info.get_viewport_rect().size
+	squad_info.position = Vector2(squad_panel.position.x, below if below + squad_info.size.y <= vp.y - 16.0
+		else maxf(squad_panel.position.y - 12.0 - squad_info.size.y, 16.0))
+	for id in hud_flash:
+		if top_hud != null and top_hud.slots.has(id):
+			top_hud.slots[id].modulate = INFO_FLASH_COLOR if hud_flash[id] > now else Color.WHITE
+
+
+# Что покажет панель и верхняя панель до покупки (снимок для подсветки изменённого).
+func _flash_snapshot() -> Dictionary:
+	var out := {"hud": {}, "info": {}}
+	if top_hud == null:
+		return out   # бенчи без интерфейса
+	for id in top_hud.slots:
+		if id != "gold":
+			out.hud[id] = _hud_value(id)
+	if sel_primary >= 0 and squad_used[sel_primary] == 1 and squad_n[sel_primary] > 0:
+		out.info = squad_stats(sel_primary)
+	return out
+
+
+# После покупки: изменившиеся числа подсвечиваются на info_flash_time с (поля панели отряда, окошки верхней панели).
+func _flash_changes(before: Dictionary) -> void:
+	if top_hud == null:
+		return
+	var until := Time.get_ticks_msec() + int(ui_layout.info_flash_time * 1000.0)
+	for id in before.hud:
+		if _hud_value(id) != before.hud[id]:
+			hud_flash[id] = until
+	if not before.info.is_empty() and sel_primary >= 0 and squad_n[sel_primary] > 0:
+		var now_st := squad_stats(sel_primary)
+		for fld in info_fields:
+			var k: String = "hp_max" if fld == "hp" else fld
+			if not is_equal_approx(float(now_st[k]), float(before.info[k])):
+				info_flash[fld] = until
+	_update_squad_info()
+
+
+# «До → после» покупки товара k: [[подпись, до, после, формат], ...]; формат — "rate" (ударов/с), "num", "int".
+# Оружие — _wave_data с покупками сейчас и с ещё одной (та же функция, что пересчитывает данные волны);
+# ворота — прибавка, как в _buy; набор — живых в отряде, куда пойдёт покупка, и + amount.
+func shop_preview(k: int) -> Array:
+	var out := []
+	match SHOP_ITEMS[k]:
+		"weapons":
+			var b1 := shop_bought.duplicate()
+			b1[k] += 1
+			var w0 := _wave_data(shop_bought)
+			var w1 := _wave_data(b1)
+			var types := [infantry_type, archer_type]
+			if type_enabled[spearman_type] == 1:
+				types.append(spearman_type)
+			for t in types:
+				if weapon_stat == "attack_rate":
+					out.append([tr(type_label[t]), 1.0 / _attack_interval(t, w0), 1.0 / _attack_interval(t, w1), "rate"])
+				else:
+					out.append([tr(type_label[t]), _type_damage_of(t, w0), _type_damage_of(t, w1), "num"])
+		"gate":
+			out.append([tr("HUD_STAT_GATE"), gate_hp_max, _gate_after_buy(gate_hp_max), "int"])
+		_:
+			var pack_type: int = {"inf_pack": infantry_type, "archer_pack": archer_type, "spear_pack": spearman_type}[SHOP_ITEMS[k]]
+			var tg := _buy_target(pack_type)
+			var n0 := squad_n[tg] if squad_used[tg] == 1 and squad_type[tg] == pack_type else 0
+			out.append([tr("HUD_STAT_ALIVE"), n0, n0 + int(shop_param[k]), "int"])
+	return out
+
+
+# Число для «до → после».
+func preview_num(v: float, fmt: String) -> String:
+	match fmt:
+		"rate":
+			return tr("HUD_STAT_RATE") % UNITS.num(v, 2)
+		"int":
+			return str(roundi(v))
+	return UNITS.num(v, 2)
+
+
+func preview_delta(e: Array) -> String:
+	return tr("HUD_SHOP_DELTA") % [preview_num(e[1], e[3]), preview_num(e[2], e[3])]
+
+
+# Максимум ворот после ещё одного ремонта (прибавка gate_max_gain; ею же пользуется _buy).
+func _gate_after_buy(gmax: float) -> float:
+	return gmax + shop_param[SHOP_ITEMS.find("gate")]
 
 
 # data/ui_layout.json поверх значений по умолчанию: размеры — [w, h] больше 0, числа — больше 0, флаги — true или false.
@@ -5634,6 +5854,11 @@ func _load_ui_layout() -> void:
 		else:
 			push_warning("%s: %s — %s; остаётся %s" % [UI_LAYOUT_PATH, key, "[w, h] больше 0" if ui_layout[key] is Vector2
 				else ("true или false" if ui_layout[key] is bool else "число больше 0"), str(ui_layout[key])])
+	var f = d.get("squad_info_fields")
+	if f is Array and not f.is_empty() and f.all(func(x): return INFO_FIELD_KEYS.has(x)):
+		info_fields = f.duplicate()
+	else:
+		push_warning("%s: squad_info_fields — список из %s; остаётся %s" % [UI_LAYOUT_PATH, str(INFO_FIELD_KEYS.keys()), str(info_fields)])
 
 
 # Отладочная строка FPS (задача 24): только в отладочной сборке и только при флаге — debug_fps в data/ui_layout.json
@@ -5857,11 +6082,19 @@ func _shop_text(k: int, cost: String) -> void:
 		if font.get_string_size(tr("HUD_SHOP_ROW_TITLE") % [key, line1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > room:
 			line1 = title   # цена — во вторую строку, перед отрядом
 			line2 = SHOP_LINE_COST_TARGET % [cost, to]
+	var pv := shop_preview(k)   # задача 26: «до → после» — в подсказке всё, на кнопке улучшения — первое, если помещается
+	if pack_type < 0 and not pv.is_empty() and cost != tr("HUD_SHOP_MAX"):
+		var with_delta: String = SHOP_LINE_COST_DELTA % [cost, preview_delta(pv[0])]
+		if font.get_string_size(with_delta, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x <= room:
+			line2 = with_delta
 	var shown := key
 	while shown.length() > 1 and font.get_string_size(tr("HUD_SHOP_ROW_TITLE") % [shown, line1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > room:
 		shown = shown.left(shown.length() - (1 if shown == key else 2)) + "…"
 	b.text = tr("HUD_SHOP_ROW_TITLE") % [shown, line1] + "\n" + line2
-	b.tooltip_text = tr("HUD_SHOP_TIP") % [key, shop_bought[k]]
+	var tip := tr("HUD_SHOP_TIP") % [key, shop_bought[k]]
+	for e in pv:
+		tip += "\n" + tr("HUD_SHOP_TIP_DELTA") % [e[0], preview_delta(e)]
+	b.tooltip_text = tip
 
 
 # Симуляция: фиксированный шаг (по умолчанию 30 раз в секунду)

@@ -49,6 +49,14 @@ static func pace_key(v: float) -> String:
 	return "UNIT_PACE_MANY"
 
 
+# Число для игрока: не больше digits знаков после запятой, без лишних нулей; ru — запятая.
+static func num(v: float, digits := 1) -> String:
+	var s := String.num(snappedf(v, pow(10.0, -digits)), digits)
+	if "." in s:
+		s = s.rstrip("0").trim_suffix(".")
+	return s.replace(".", ",") if TranslationServer.get_locale().begins_with("ru") else s
+
+
 # Расстояние px мира текстом для игрока: «12,5 шага», «20 paces».
 static func dist_text(px: float) -> String:
 	var v := paces(px)
