@@ -890,6 +890,8 @@ var burst_msg := ""                    # надпись «Всплеск: ...»
 var burst_msg_until := 0.0             # до какого wave_t она видна
 var burst_label: Label
 var signal_player: AudioStreamPlayer   # null, если звукового файла нет
+static var hero_legacy_warned := false   # задача 28: предупреждение о прежней картинке героя (блок legacy) — один раз за запуск
+var hero_sheet_legacy := false          # сетка героя из блока legacy hero.json (картинка ещё прежняя)
 static var signal_warned := false      # предупреждение об отсутствии звука — один раз за запуск игры (R сцену пересоздаёт)
 var sort_keys := PackedInt64Array()           # scratch для _reflow_squad
 var squad_aspect := PackedVector2Array()      # пропорция строя (ширина, глубина): пехота 20/15, лучники 25/4
@@ -4014,6 +4016,20 @@ func _setup_hero_sheet(tex: Texture2D) -> void:
 		return
 	var fw = hero_cfg.get("frame_w")
 	var fh = hero_cfg.get("frame_h")
+	var pv0 = hero_cfg.get("pivot")
+	# Задача 28: кадр героя 24x24 (frame_w, frame_h, pivot). Картинка другого размера (не frames x frame_w по ширине или не
+	# frame_h по высоте: прежний файл 104x26) — сетка из блока legacy, одно предупреждение за запуск.
+	hero_sheet_legacy = false
+	var leg = hero_cfg.get("legacy")
+	if _is_whole(fw) and _is_whole(fh) and _is_whole(nf) and (tex.get_width() != int(nf) * int(fw) or tex.get_height() != int(fh)) and leg is Dictionary:
+		fw = leg.get("frame_w")
+		fh = leg.get("frame_h")
+		pv0 = leg.get("pivot")
+		hero_sheet_legacy = true
+		if not hero_legacy_warned:
+			hero_legacy_warned = true
+			push_warning("%s: картинка героя %dx%d — не %d кадров %sx%s, взята прежняя сетка legacy (кадр %sx%s)" % [hero_path, tex.get_width(), tex.get_height(),
+				int(nf), str(hero_cfg.frame_w), str(hero_cfg.frame_h), str(fw), str(fh)])
 	var anims = hero_cfg.get("animations")
 	var ok: bool = _is_whole(fw) and _is_whole(fh) and _is_whole(nf) and fw > 0 and fh > 0 and tex.get_width() % int(fw) == 0 \
 		and tex.get_height() % int(fh) == 0 and int(nf) <= (tex.get_width() / int(fw)) * (tex.get_height() / int(fh)) \
@@ -4029,7 +4045,7 @@ func _setup_hero_sheet(tex: Texture2D) -> void:
 				ok = false
 				break
 			parsed[name] = {"frames": PackedInt32Array(fr.map(func(x): return int(x))), "fps": float(fps)}
-	var pv = hero_cfg.get("pivot", [fw / 2.0, fh / 2.0]) if ok else null
+	var pv = (pv0 if pv0 != null else [fw / 2.0, fh / 2.0]) if ok else null
 	ok = ok and pv is Array and pv.size() == 2 and pv.all(func(x): return x is float or x is int) and hero_cfg.get("orient", "flip") in ["flip", "rotate"]
 	if not ok:
 		push_warning("%s: сетка спрайтшита героя неверна (frame_w и frame_h делят картинку, frames не больше кадров, есть animations.idle, " % hero_path
@@ -4066,11 +4082,18 @@ func _hero_play(name: String) -> void:
 	hero_sprite.frame = _hero_frame(hero_anim, hero_anim_t)
 
 
+# Задача 28: радиус кольца в px мира — HERO_RING_PX экрана при базовом зуме, умноженный на hero_screen_scale_rel: растёт с героем
+# (размер кадра на него не влияет — рост героя на экране задаёт hero_screen_scale_rel) и с зумом игрока, как спрайт.
+func hero_ring_radius() -> float:
+	var base := camera_min_zoom() if camera != null else 1.0
+	return HERO_RING_PX * float(hero_cfg.get("hero_screen_scale_rel", 1.0)) / base
+
+
 # Кольцо цвета маркера (Endesga 32, hero.json marker_color) с тёмной обводкой и полоса HP под ним; толщина и радиус
-# делятся на зум — на экране одного размера при любом зуме. Рисуется под спрайтом (своя отрисовка ноды раньше дочерних).
+# делятся на зум — на экране одного размера при любом зуме (радиус — hero_ring_radius, с героем). Рисуется под спрайтом (своя отрисовка ноды раньше дочерних).
 func _draw_hero_marker() -> void:
 	var z := camera.zoom.x if camera != null else 1.0
-	var r := HERO_RING_PX / z
+	var r := hero_ring_radius()
 	var dark := Color("#181425")
 	hero_view.draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, dark, 5.0 / z)
 	hero_view.draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, Color(hero_cfg.marker_color), 3.0 / z)

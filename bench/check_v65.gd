@@ -64,6 +64,11 @@ func t_sheet() -> void:
 	var m := make()
 	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/hero.json"))
 	var tex: Texture2D = load(d.sprite_path)
+	# задача 28: картинка не frames x frame_w (прежний файл до замены) — сетка из блока legacy; дальше d.frame_* — действующая сетка
+	if (tex.get_width() != int(d.frames) * int(d.frame_w) or tex.get_height() != int(d.frame_h)) and d.has("legacy"):
+		d.frame_w = d.legacy.frame_w
+		d.frame_h = d.legacy.frame_h
+		d.pivot = d.legacy.pivot
 	check("hero.json: sprite_path %s (%dx%d), кадр %sx%s, кадров %s, анимации %s" % [d.sprite_path, tex.get_width(), tex.get_height(), d.frame_w, d.frame_h,
 		d.frames, ", ".join(d.animations.keys())], d.sprite_path == "res://art/knight_player.png" and not d.has("sprite") and d.animations.has("idle")
 		and d.animations.has("attack") and int(tex.get_width()) % int(d.frame_w) == 0 and int(tex.get_height()) % int(d.frame_h) == 0)
@@ -97,15 +102,16 @@ func t_sheet() -> void:
 		{"animations": {"idle": {"frames": []}}}, {"animations": {"idle": {"frames": [0], "fps": -1}}}, {"pivot": [1]}, {"orient": "spin"}]
 	var wrong := []
 	for p in bad:
+		p["legacy"] = null   # задача 28: без запасной сетки — иначе картинка не по frame_w берёт legacy
 		s = sheet(m, p)
 		if not m.hero_anims.is_empty() or s.hframes != 1:
 			wrong.append(str(p))
 	check("неверная сетка (%d вариантов: кадр не делит картинку, кадров больше, нет idle, кадр вне frames, fps < 0, pivot, orient) — прежнее поведение" % bad.size(),
 		wrong.is_empty(), ", ".join(wrong))
 	# высота на экране не зависит от размера кадра: другая сетка того же листа и другой множитель
-	s = sheet(m, {"frame_w": 52, "frame_h": 26, "frames": 2, "animations": {"idle": {"frames": [0]}}})
+	s = sheet(m, {"frame_w": 52, "frame_h": 26, "frames": 2, "animations": {"idle": {"frames": [0]}}, "legacy": null})
 	var h1 := s.scale.y * 26.0
-	s = sheet(m, {"frame_w": 13, "frame_h": 13, "frames": 16, "animations": {"idle": {"frames": [0]}}})
+	s = sheet(m, {"frame_w": 13, "frame_h": 13, "frames": 16, "animations": {"idle": {"frames": [0]}}, "legacy": null})
 	var h2 := s.scale.y * 13.0
 	s = sheet(m, {"hero_screen_scale_rel": 1.5})
 	check("кадр 26 и кадр 13 px — одна высота на экране (%.1f, %.1f px мира); hero_screen_scale_rel 1.5 — %.1f; без сетки (вся картинка) — %.1f" % [h1, h2,

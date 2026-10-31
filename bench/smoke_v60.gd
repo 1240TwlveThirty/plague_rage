@@ -26,16 +26,38 @@ func shot(m: Node2D, name: String) -> Image:
 	img.save_png(out_dir.path_join(name))
 	return img
 
-# Пикселей цвета маркера (с допуском) на окружности кольца вокруг героя на скриншоте.
+# Задача 28: кольцо героя — под слоями замка и леса. Точка мира w под непрозрачным слоем (кольцо там закрыто законно)?
+var layer_imgs := {}
+func under_layer(m: Node2D, w: Vector2) -> bool:
+	for sp in [m.trees_sprite, m.castle_sprite]:
+		if sp == null:
+			continue
+		if not layer_imgs.has(sp):
+			var im: Image = sp.texture.get_image()
+			if im != null and im.is_compressed():
+				im.decompress()
+			layer_imgs[sp] = im
+		var im: Image = layer_imgs[sp]
+		var uv: Vector2 = (w - sp.position) / (Vector2(im.get_size()) * sp.scale)
+		if uv.x >= 0.0 and uv.y >= 0.0 and uv.x < 1.0 and uv.y < 1.0 and im.get_pixel(int(uv.x * im.get_width()), int(uv.y * im.get_height())).a >= 0.5:
+			return true
+	return false
+
+# Пикселей цвета маркера (с допуском) на окружности кольца вокруг героя на скриншоте; точки под слоем замка или леса (кольцо
+# под ними, задача 28) пропускаются и засчитываются — порог «30 из 72» прежний.
 func ring_pixels(m: Node2D, img: Image) -> int:
 	var px: Vector2 = Vector2(img.get_size()) / m.get_viewport_rect().size
 	var c: Vector2 = (m.get_viewport().get_canvas_transform() * m.hero_view.position) * px
 	var col := Color(m.hero_cfg.marker_color)
+	var inv: Transform2D = m.get_viewport().get_canvas_transform().affine_inverse()
 	var n := 0
 	for a in 72:
 		var p: Vector2 = c + Vector2.from_angle(a * TAU / 72.0) * m.HERO_RING_PX * px.x
 		var q := Vector2i(roundi(p.x), roundi(p.y))
 		if q.x < 0 or q.y < 0 or q.x >= img.get_width() or q.y >= img.get_height():
+			continue
+		if under_layer(m, inv * (p / px)):
+			n += 1
 			continue
 		var g := img.get_pixelv(q)
 		if absf(g.r - col.r) < 0.12 and absf(g.g - col.g) < 0.12 and absf(g.b - col.b) < 0.12:
