@@ -1,0 +1,10 @@
+{
+	"_comment": "Бенчи и снимки (задача 27). watchdog_sec — предохранитель скриптов bench/view_* и bench/shots_*: сцена не закончилась за столько секунд реального времени (не зависит от Engine.time_scale и паузы) — печать FAIL с именем скрипта и выход с кодом watchdog_exit_code. Ключ — имя скрипта без .gd, иначе default. Меньше таймаута шага run_all (300 с), чтобы сработал раньше и с понятной ошибкой.",
+	"watchdog_exit_code": 3,
+	"watchdog_sec": {
+		"default": 180,
+		"view_v47": 240,
+		"view_v73_stress": 240,
+		"diag_v77_hang": 5
+	}
+}

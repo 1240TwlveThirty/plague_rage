@@ -47,6 +47,7 @@ func tick() -> void:
 	m._process(1.0 / 60.0)
 
 func _initialize() -> void:
+	preload("res://bench/watchdog.gd").arm(self)   # задача 27: предохранитель по времени (data/bench.json)
 	if root.has_node("Game"):
 		root.get_node("Game").free()
 	_run.call_deferred()

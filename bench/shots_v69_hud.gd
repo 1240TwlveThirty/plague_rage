@@ -46,6 +46,7 @@ func _on_node_added(n: Node) -> void:
 		n.process_mode = Node.PROCESS_MODE_DISABLED
 
 func _initialize() -> void:
+	preload("res://bench/watchdog.gd").arm(self)   # задача 27: предохранитель по времени (data/bench.json)
 	_run.call_deferred()
 
 func _run() -> void:

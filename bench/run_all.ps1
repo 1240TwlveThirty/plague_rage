@@ -128,6 +128,8 @@ Godot "смоук с окном: тряска при ударе в движен�
 Godot "смоук с окном: карточки героя (v64)" "res://bench/smoke_v64_cards.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: арты — кнопки, герой (v65)" "res://bench/smoke_v65_art.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "смоук с окном: скриншоты F12, запись F10 (v75)" "res://bench/smoke_v75_shots.gd" "SMOKE: провалов 0" @("$tmp") -Window
+Godot "вид поля с окном: волна 10, герой, FPS (view_v47)" "res://bench/view_v47.gd" "HEROFX\|" @("$tmp", "1", "0", "nearest", "0", "0", "1") -Window
+Step "выход из игры: меню, пауза, бой, хаб, WM_CLOSE; предохранитель (v77)" "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$root\bench\check_v77_exit.ps1`"") "EXIT: провалов 0"
 Step "сцена --scene=battle, кадр (v75)" $godot @("--path", "`"$root`"", "--", "--scene=battle", "--shot", "--shot-dir=$tmp") "SHOT\|"
 Step "сцена --scene=respite, кадр (v75)" $godot @("--path", "`"$root`"", "--", "--scene=respite", "--shot", "--shot-dir=$tmp") "SHOT\|"
 Step "сцена --scene=pick, кадр (v75)" $godot @("--path", "`"$root`"", "--", "--scene=pick", "--shot", "--shot-dir=$tmp") "SHOT\|"

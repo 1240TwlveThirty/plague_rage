@@ -11,6 +11,7 @@ const KILL := 40   # зомби, которых скрипт добивает п
 const HOT := 10   # «резня»: тиков с 10+ смертями
 
 func _initialize() -> void:
+	preload("res://bench/watchdog.gd").arm(self)   # задача 27: предохранитель по времени (data/bench.json)
 	if root.has_node("Game"):
 		root.get_node("Game").free()
 	_run.call_deferred()

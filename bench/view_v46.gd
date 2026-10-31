@@ -6,6 +6,7 @@ const WARM_TICKS := 480    # 16 с (ускоренно): орда подходи
 const FRAMES := 2000
 
 func _initialize() -> void:
+	preload("res://bench/watchdog.gd").arm(self)   # задача 27: предохранитель по времени (data/bench.json)
 	if root.has_node("Game"):
 		root.get_node("Game").free()   # бенч без каркаса забега: слой DEBUG_LAYER, волны без предела
 	_run.call_deferred()
