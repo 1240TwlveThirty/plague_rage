@@ -217,7 +217,7 @@ func _run() -> void:
 	var shakes: int = m.shake_hit_count
 	swing(m)
 	m._process(0.0)
-	var off: Vector2 = m.camera.offset * m.camera.zoom
+	var off: Vector2 = m.shake_raw * m.camera.zoom   # задача 28: до урезания краем поля
 	var lvl: float = c.shake_levels[st.screen_shake_level]
 	var want: float = minf(float(c.shake_base_px) + float(c.shake_extra_px) * floorf(m.hero_hit_pos.size() / float(c.shake_extra_per)), float(c.shake_max_px)) * lvl
 	var shake_img := await shot(m, "hit_shake.png", 0.02)

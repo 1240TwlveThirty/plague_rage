@@ -99,7 +99,7 @@ func phase(name: String, moving: bool) -> Dictionary:
 			key_j()   # и нажатия J событием (защёлка на ближайший тик)
 		await process_frame
 		frames += 1
-		var off: Vector2 = m.camera.offset * m.camera.zoom   # px экрана
+		var off: Vector2 = m.shake_raw * m.camera.zoom   # px экрана; задача 28: до урезания краем поля
 		if off != Vector2.ZERO:
 			frames_offset += 1
 			offset_sum += off.length()

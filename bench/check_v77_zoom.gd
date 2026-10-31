@@ -3,12 +3,12 @@ extends SceneTree
 # клавиш — через root.push_input (как от системы: интерфейс, затем _unhandled_input сцены). Пределы, шаг — из data/camera.json.
 #   Колесо без Shift: множитель × zoom_step (вверх) / ÷ (вниз), в пределах zoom_user_min..max; точка мира под курсором
 #   остаётся под ним (сверено обратным преобразованием холста); Shift + колесо зум не меняет.
-#   Камера не выходит за поле: вид меньше поля по оси — внутри поля, больше — поле по центру; у края поля центр упирается.
+#   Камера не выходит за поле: вид внутри поля (больше поля по оси — поле по центру); у края поля центр упирается.
 #   Сброс — действие camera_zoom_reset (по умолчанию из ui_layout.json keys), в группе «Камера» вкладки «Управление»,
 #   переназначается; множитель 1, центр поля.
 #   Множитель живёт в забеге (перезапуск сцены боя — тот же), новый забег — 1.
 #   Интерфейс не масштабируется: слой HUD без преобразования, верхняя панель на том же месте.
-#   Приказы мышью при зуме ×2 и ×0,7: рамка ЛКМ выбирает отряд по мировым координатам, ПКМ-клик — цель в мировой точке.
+#   Приказы мышью при зуме ×2 и zoom_user_min (задача 27 — ×0,7, с задачи 28 предел 1.0): рамка ЛКМ выбирает отряд по мировым координатам, ПКМ-клик — цель в мировой точке.
 #   Тряска при любом зуме — в px экрана (не больше shake_cap).
 #   Симуляция: зум — только отрисовка (поля камеры и зума не трогают тики; регрессия — отдельным шагом run_all).
 var fails := 0
@@ -114,7 +114,7 @@ func _run() -> void:
 	m = current_scene
 	m.banner_hidden = true
 	m.banner.visible = false
-	check("data/camera.json: пределы и шаг — числа, min < 1 < max, шаг > 1", zmin < 1.0 and zmax > 1.0 and zstep > 1.0 and zmin <= 0.7 and zmax >= 2.0, "%s..%s шаг %s" % [zmin, zmax, zstep])
+	check("data/camera.json: пределы и шаг — числа, min ≤ 1 < max, шаг > 1 (задача 28: min не меньше 1)", zmin <= 1.0 and zmin >= m.CAMERA_ZOOM_FLOOR and zmax > 1.0 and zstep > 1.0 and zmax >= 2.0, "%s..%s шаг %s" % [zmin, zmax, zstep])
 	check("в начале забега множитель 1, зум базовый (поле вписано)", m.zoom_user == 1.0 and is_equal_approx(m.camera.zoom.x, m.camera_min_zoom()) and view_ok())
 	var hud_rect: Rect2 = m.top_hud.get_global_rect()
 	var hud_xf: Transform2D = m.top_hud.get_global_transform_with_canvas()
@@ -144,7 +144,7 @@ func _run() -> void:
 		wheel(sp, false)
 	await settle()
 	check("много щелчков вниз — не меньше zoom_user_min", is_equal_approx(m.zoom_user, zmin), str(m.zoom_user))
-	check("у минимума поле по центру (вид шире поля), вид в поле по остальным осям", view_ok(), str(m.view_rect()))
+	check("у минимума вид в поле", view_ok(), str(m.view_rect()))
 
 	# у края поля: зум к точке у угла экрана — точка под курсором на месте, вид в поле; якорь за краем поля — вид упирается в край
 	key(KEY_HOME)
@@ -217,8 +217,8 @@ func _run() -> void:
 		check("тряска ×%s: смещение на экране 1..shake_cap px, как при любом зуме" % mult, worst <= 6.01 and least >= 0.99 and worst >= 5.0, "%.2f..%.2f" % [least, worst])
 	m.shake_cap = cap_was
 
-	# приказы мышью при ×2 и ×0,7
-	for mult in [2.0, 0.7]:
+	# приказы мышью при ×2 и у нижнего предела (задача 27 — ×0,7; задача 28 — zoom_user_min, не меньше 1)
+	for mult in [2.0, zmin]:
 		await set_zoom(1.0, ss() * 0.5)
 		var s0 := 0
 		var c: Vector2 = m.squad_pos[s0]

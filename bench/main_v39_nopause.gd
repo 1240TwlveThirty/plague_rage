@@ -938,7 +938,9 @@ var fx_castle_mat: ShaderMaterial = null
 var fx_vps: Array[SubViewport] = []          # вьюпорты слоёв леса и замка с эффектами
 var camera: Camera2D = null                   # камера поля (_setup_camera); null в бенчах без дерева
 const CAMERA_CFG := "res://data/camera.json"  # зум игрока (задача 27): пределы, шаг колеса, сглаживание
-const CAMERA_DEFAULTS := {"zoom_user_min": 0.7, "zoom_user_max": 2.5, "zoom_step": 1.15, "zoom_smooth": 14.0}
+const CAMERA_DEFAULTS := {"zoom_user_min": 1.0, "zoom_user_max": 2.5, "zoom_step": 1.15, "zoom_smooth": 14.0}
+var shake_raw := Vector2.ZERO                # задача 28: смещение тряски до урезания краем поля (camera.offset — после), px мира
+const CAMERA_ZOOM_FLOOR := 1.0               # задача 28: множитель не меньше — при 1.0 поле закрывает экран целиком
 var cam_cfg: Dictionary = CAMERA_DEFAULTS     # data/camera.json (нет файла — значения выше с предупреждением)
 var zoom_user := 1.0                          # множитель зума игрока поверх базового (camera_min_zoom), сглаженный
 var zoom_user_target := 1.0                   # куда идёт zoom_user (колесо, сброс); хранится в Game.camera_zoom_user
@@ -1373,20 +1375,24 @@ func _setup_camera() -> void:
 	camera.make_current()
 
 
-static func _load_camera_cfg() -> Dictionary:
-	var d = JSON.parse_string(FileAccess.get_file_as_string(CAMERA_CFG)) if FileAccess.file_exists(CAMERA_CFG) else null
+static func _load_camera_cfg(path := CAMERA_CFG) -> Dictionary:
+	var d = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
 	var out := CAMERA_DEFAULTS.duplicate()
 	if not d is Dictionary:
-		push_warning("%s не читается: зум камеры по умолчанию" % CAMERA_CFG)
+		push_warning("%s не читается: зум камеры по умолчанию" % path)
 		return out
 	for k in out:
 		if d.get(k) is float or d.get(k) is int:
 			out[k] = float(d[k])
 		else:
-			push_warning("%s: нет числа %s — %s" % [CAMERA_CFG, k, str(out[k])])
+			push_warning("%s: нет числа %s — %s" % [path, k, str(out[k])])
 	if out.zoom_user_min > out.zoom_user_max or out.zoom_user_min <= 0.0 or out.zoom_step <= 1.0:
-		push_warning("%s: пределы или шаг зума неверны — по умолчанию" % CAMERA_CFG)
+		push_warning("%s: пределы или шаг зума неверны — по умолчанию" % path)
 		out = CAMERA_DEFAULTS.duplicate()
+	if out.zoom_user_min < CAMERA_ZOOM_FLOOR:   # задача 28: дальше базового — чёрные поля за краем карты
+		push_warning("%s: zoom_user_min %s меньше %s — взят %s" % [path, str(out.zoom_user_min), str(CAMERA_ZOOM_FLOOR), str(CAMERA_ZOOM_FLOOR)])
+		out.zoom_user_min = CAMERA_ZOOM_FLOOR
+		out.zoom_user_max = maxf(out.zoom_user_max, CAMERA_ZOOM_FLOOR)
 	return out
 
 
@@ -4520,9 +4526,11 @@ func _hit_fx_frame(dt: float) -> void:
 		shake_hit_t = maxf(shake_hit_t - dt, 0.0)
 		if shake_hit_t > 0.0:
 			if dt > 0.0 or camera.offset == Vector2.ZERO:   # на паузе смещение стоит
-				camera.offset = _shake_offset(shake_amp * shake_hit_t / maxf(float(hit_cfg.shake_time), 0.001))
+				shake_raw = _shake_offset(shake_amp * shake_hit_t / maxf(float(hit_cfg.shake_time), 0.001))
+				camera.offset = _shake_in_field(shake_raw)
 		elif dt > 0.0:
 			camera.offset = Vector2.ZERO
+			shake_raw = Vector2.ZERO
 
 
 # Слой крови за кадр: шаг подсыхания (если пора) и пятна очереди — одна перерисовка SubViewport; очередь пуста после отрисовки.
@@ -4547,6 +4555,20 @@ func _stain_frame(dt: float) -> void:
 		stain_redraws += 1
 	stain_pending = true
 	stain_pending_frame = Engine.get_process_frames()
+
+
+# Задача 28: смещение тряски off (px мира) урезано по каждой оси до запаса вида до края поля (целые px экрана) — у края карты
+# чёрная полоса не мелькает. При зуме 1.0 вид по высоте равен полю: тряска только по горизонтали. ГСЧ не трогает; смещение
+# до урезания — в shake_raw (тесты тряски).
+func _shake_in_field(off: Vector2) -> Vector2:
+	var z := camera.zoom.x
+	var half := _screen_size() * 0.5 / z
+	var px := (off * z).round()
+	for a in 2:
+		var lo := floorf((camera.position[a] - half[a]) * z + 0.001)
+		var hi := floorf((FIELD[a] - camera.position[a] - half[a]) * z + 0.001)
+		px[a] = clampf(px[a], -maxf(lo, 0.0), maxf(hi, 0.0))
+	return px / z
 
 
 # Смещение камеры тряски силой a px экрана: целые пиксели экрана (иначе пиксель-арт мылится), не меньше 1 px, не больше shake_cap;

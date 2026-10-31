@@ -189,7 +189,7 @@ func _run() -> void:
 	for k in 12:
 		swing(m)
 		m._process(1.0 / 60.0)
-		var o: Vector2 = m.camera.offset * m.camera.zoom   # px экрана
+		var o: Vector2 = m.shake_raw * m.camera.zoom   # px экрана; задача 28: до урезания краем поля
 		max_off = maxf(max_off, o.length())
 		whole = whole and absf(o.x - roundf(o.x)) < 1e-3 and absf(o.y - roundf(o.y)) < 1e-3
 		nonzero += 1 if o != Vector2.ZERO else 0
@@ -203,7 +203,7 @@ func _run() -> void:
 	for k in 30:
 		swing(m)
 		m._process(1.0 / 240.0)
-		max_off = maxf(max_off, m.camera.offset.length() * m.camera.zoom.x)
+		max_off = maxf(max_off, m.shake_raw.length() * m.camera.zoom.x)
 	check("удержание (30 ударов подряд, кадры по 4 мс): смещение не копится — %.2f px, не больше %.0f" % [max_off, one], max_off <= one + 1e-3)
 	clear_units(m, tough)
 	settle(m)
@@ -212,7 +212,7 @@ func _run() -> void:
 	m._build_grid()
 	swing(m)
 	var shot_img := await shot(m, "shake_ui.png", 1.0 / 120.0)
-	var off: Vector2 = m.camera.offset * m.camera.zoom
+	var off: Vector2 = m.shake_raw * m.camera.zoom
 	var ct1: Transform2D = m.get_viewport().get_canvas_transform()
 	var hud1: Vector2 = m.top_hud.get_global_transform_with_canvas().origin
 	var d := ct1.origin - ct0.origin

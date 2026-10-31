@@ -124,7 +124,7 @@ func _run() -> void:
 			else:
 				ok = m.shake_hit_count == cnt0 + 1 and is_equal_approx(m.shake_last_amp, want)
 				m._hit_fx_frame(1.0 / 60.0)
-				var off: Vector2 = m.camera.offset * zoom
+				var off: Vector2 = m.shake_raw * zoom   # задача 28: до урезания краем поля (camera.offset — урезанное, проверка в check_v78_camera)
 				var cap := float(c.shake_max_px) * float(levels[lvl])
 				ok = ok and off != Vector2.ZERO and off == off.round() and off.length() <= maxf(floorf(cap), 1.0) + 0.001
 				info += ", смещение %s px экрана (не больше %.1f)" % [str(off), cap]
