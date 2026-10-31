@@ -250,7 +250,7 @@ func _input(event: InputEvent) -> void:
 const REBINDABLE := ["squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4", "squad_select_5", "squad_select_6",
 	"squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side", "wave_start", "buy_1", "buy_2",
 	"buy_3", "buy_4", "buy_spear", "war_cry", "move_up", "move_down", "move_left", "move_right", "hero_attack", "shop_toggle",
-	"squad_panel_toggle"]
+	"squad_panel_toggle", "camera_zoom_reset"]
 # Действия, которых нет в [input] project.godot: клавиша по умолчанию задаётся здесь, действие добавляется после каждой загрузки InputMap
 # (war_cry — «Клич Благодати»: с задачи 10 U, D занята движением героя; move_* — движение героя WASD, задача 10; hero_attack — удар
 # героя J, задача 11).
@@ -461,10 +461,10 @@ static func ensure_code_actions() -> void:
 			_set_key(a, CODE_REMAP[a])
 
 
-# Клавиши по умолчанию из data/ui_layout.json keys (задача 24: свернуть магазин и панель отрядов): действие -> Key.
+# Клавиши по умолчанию из data/ui_layout.json keys (задача 24: свернуть магазин и панель отрядов; задача 27: сброс зума): действие -> Key.
 # Нет файла, поля или клавиша не распознана — DATA_KEYS_DEFAULT (с предупреждением).
 const UI_LAYOUT := "res://data/ui_layout.json"
-const DATA_KEYS_DEFAULT := {"shop_toggle": KEY_TAB, "squad_panel_toggle": KEY_L}
+const DATA_KEYS_DEFAULT := {"shop_toggle": KEY_TAB, "squad_panel_toggle": KEY_L, "camera_zoom_reset": KEY_HOME}   # camera_zoom_reset — сброс зума (задача 27)
 static func data_keys() -> Dictionary:
 	var out := DATA_KEYS_DEFAULT.duplicate()
 	var d = JSON.parse_string(FileAccess.get_file_as_string(UI_LAYOUT)) if FileAccess.file_exists(UI_LAYOUT) else null

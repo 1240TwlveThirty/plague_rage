@@ -61,6 +61,7 @@ var run_seed := -1             # seed генератора забега: -1 — 
 var runs_log_path := ""        # журнал забегов: "" — не пишется (тестовый SceneTree), в игре — RUN_LOG.PATH (_ready); тесты задают свой
 var run_started := 0.0         # play_time в начале забега (длительность в журнале)
 var run_logged := false        # строка этого забега уже в журнале: второй раз end_run её не пишет
+var camera_zoom_user := 1.0    # множитель зума камеры игрока (задача 27): живёт в пределах забега, start_run сбрасывает в 1
 
 
 func _ready() -> void:
@@ -504,6 +505,7 @@ func start_run(s: int) -> void:
 	run_cards = []
 	run_started = play_time
 	run_logged = false
+	camera_zoom_user = 1.0
 	run_rng.seed = run_seed if run_seed >= 0 else randi()
 	_clear_last_run()
 	get_tree().change_scene_to_file(MAIN_SCENE)

@@ -331,6 +331,7 @@ GIFT_SPEAR_WALL_DESC,+%s п. п. к шансу блока у всех воино
 UI_SKILL_SHIELD_WALL,Стена щитов,Shield Wall
 ACTION_SHOP_TOGGLE,Магазин: свернуть / развернуть,Shop: hide / show
 ACTION_SQUAD_PANEL_TOGGLE,Панель отрядов: свернуть / развернуть,Squad panel: collapse / expand
+ACTION_CAMERA_ZOOM_RESET,Сбросить зум камеры,Reset camera zoom
 HUD_SHOP_TROOPS,Войска,Troops
 HUD_SHOP_UPGRADES,Улучшения,Upgrades
 HUD_SHOP_SHOW,« Магазин (%s),« Shop (%s)

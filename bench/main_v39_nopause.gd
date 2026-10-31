@@ -36,7 +36,7 @@ const KEY_ACTIONS := ["select_all", "debug_restart", "squad_select_1", "squad_se
 	"squad_select_5", "squad_select_6", "squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side",
 	"wave_start", "buy_1", "buy_2", "buy_3", "buy_4", "order_attack", "order_hold", "order_retreat", "about_face", "banner_toggle",
 	"auto_width", "pause", "post_left", "post_top", "post_right", "post_back", "war_cry", "buy_spear", "hero_attack", "shop_toggle",
-	"squad_panel_toggle"]
+	"squad_panel_toggle", "camera_zoom_reset"]
 const ROWS_MAX := 20       # строй не глубже: при большом отряде растёт ширина
 const WIDTH_MAX := 100     # и не шире
 const WAVE_DMG_TO_UNITS := true   # урон зомби по юнитам растёт с волной (team_dmg_mult[1])
@@ -937,6 +937,13 @@ var fx_trees_mat: ShaderMaterial = null
 var fx_castle_mat: ShaderMaterial = null
 var fx_vps: Array[SubViewport] = []          # вьюпорты слоёв леса и замка с эффектами
 var camera: Camera2D = null                   # камера поля (_setup_camera); null в бенчах без дерева
+const CAMERA_CFG := "res://data/camera.json"  # зум игрока (задача 27): пределы, шаг колеса, сглаживание
+const CAMERA_DEFAULTS := {"zoom_user_min": 0.7, "zoom_user_max": 2.5, "zoom_step": 1.15, "zoom_smooth": 14.0}
+var cam_cfg: Dictionary = CAMERA_DEFAULTS     # data/camera.json (нет файла — значения выше с предупреждением)
+var zoom_user := 1.0                          # множитель зума игрока поверх базового (camera_min_zoom), сглаженный
+var zoom_user_target := 1.0                   # куда идёт zoom_user (колесо, сброс); хранится в Game.camera_zoom_user
+var zoom_anchor_screen := Vector2.ZERO        # точка экрана, под которой при зуме остаётся zoom_anchor_world
+var zoom_anchor_world := Vector2.ZERO
 var unit_node: MultiMeshInstance2D = null      # юниты на экране (пятна крови вставляются в дерево перед ним — под юнитами)
 var castle_filter := CASTLE_FILTER            # бенчи переопределяют до _ready
 var layer_tuning_path := LAYER_TUNING_PATH    # и путь подгонки замка тоже
@@ -1351,14 +1358,99 @@ func _layer_sprite(path: String, tx_offset: Vector2, tx_scale: Vector2, alpha: f
 	return sp
 
 
-# Камера на центре поля, без отдаления при росте армии. Зум не меньше camera_min_zoom(): поле закрывает весь экран
+# Камера на центре поля, без отдаления при росте армии. Базовый зум camera_min_zoom(): поле закрывает весь экран
 # (при 1920x1080 и поле 2208x1056 — по высоте, 1080/1056), центр зажат так, чтобы края вида не выходили за поле.
+# Задача 27: зум = базовый × множитель игрока zoom_user (колесо, data/camera.json); множитель забега — из Game.
 func _setup_camera() -> void:
+	cam_cfg = _load_camera_cfg()
+	var g := _game()
+	zoom_user = clampf(float(g.camera_zoom_user) if g != null else 1.0, float(cam_cfg.zoom_user_min), float(cam_cfg.zoom_user_max))
+	zoom_user_target = zoom_user
 	camera = Camera2D.new()
-	camera.zoom = Vector2.ONE * camera_min_zoom()
+	camera.zoom = Vector2.ONE * camera_min_zoom() * zoom_user
 	camera.position = _camera_clamp(FIELD * 0.5, camera.zoom.x)
 	add_child(camera)
 	camera.make_current()
+
+
+static func _load_camera_cfg() -> Dictionary:
+	var d = JSON.parse_string(FileAccess.get_file_as_string(CAMERA_CFG)) if FileAccess.file_exists(CAMERA_CFG) else null
+	var out := CAMERA_DEFAULTS.duplicate()
+	if not d is Dictionary:
+		push_warning("%s не читается: зум камеры по умолчанию" % CAMERA_CFG)
+		return out
+	for k in out:
+		if d.get(k) is float or d.get(k) is int:
+			out[k] = float(d[k])
+		else:
+			push_warning("%s: нет числа %s — %s" % [CAMERA_CFG, k, str(out[k])])
+	if out.zoom_user_min > out.zoom_user_max or out.zoom_user_min <= 0.0 or out.zoom_step <= 1.0:
+		push_warning("%s: пределы или шаг зума неверны — по умолчанию" % CAMERA_CFG)
+		out = CAMERA_DEFAULTS.duplicate()
+	return out
+
+
+# Точка мира под точкой экрана sp (px интерфейса, как event.position) без тряски (смещение камеры не учитывается).
+func screen_to_world(sp: Vector2) -> Vector2:
+	if camera == null:
+		return sp
+	return camera.position + (sp - _screen_size() * 0.5) / camera.zoom.x
+
+
+# Колесо: steps щелчков (больше 0 — ближе) к точке экрана sp. Цель множителя — в пределах data; точка мира под sp
+# остаётся под sp, пока идёт сглаживание (если центр не упрётся в край поля).
+func zoom_by(steps: float, sp: Vector2) -> void:
+	if camera == null:
+		return
+	zoom_user_target = clampf(zoom_user_target * pow(float(cam_cfg.zoom_step), steps), float(cam_cfg.zoom_user_min), float(cam_cfg.zoom_user_max))
+	zoom_anchor_screen = sp
+	zoom_anchor_world = screen_to_world(sp)
+	_store_zoom()
+
+
+# Клавиша camera_zoom_reset: множитель 1, центр поля.
+func zoom_reset() -> void:
+	if camera == null:
+		return
+	zoom_user_target = 1.0
+	zoom_anchor_screen = _screen_size() * 0.5
+	zoom_anchor_world = FIELD * 0.5
+	_store_zoom()
+
+
+func _store_zoom() -> void:
+	var g := _game()
+	if g != null:
+		g.camera_zoom_user = zoom_user_target
+
+
+# Кадр камеры: множитель сглаженно (в логарифме, скорость zoom_smooth) идёт к цели, центр — чтобы точка-якорь стояла под
+# своей точкой экрана, зажат в поле. Базовый зум пересчитывается (окно могло смениться). Только отрисовка.
+func _camera_frame(delta: float) -> void:
+	if camera == null:
+		return
+	var base := camera_min_zoom()
+	var moving := zoom_user != zoom_user_target
+	if moving:
+		var sm := float(cam_cfg.zoom_smooth)
+		var a := 1.0 if sm <= 0.0 else 1.0 - exp(-sm * delta)
+		zoom_user = exp(lerpf(log(zoom_user), log(zoom_user_target), a))
+		if absf(zoom_user / zoom_user_target - 1.0) < 0.002:
+			zoom_user = zoom_user_target
+	var z := base * zoom_user
+	if moving:
+		camera.zoom = Vector2.ONE * z
+		camera.position = _camera_clamp(zoom_anchor_world - (zoom_anchor_screen - _screen_size() * 0.5) / z, z)
+		queue_redraw()   # полосы сигнала, маркеры и подписи у курсора — в px экрана
+	elif camera.zoom.x != z:
+		camera.zoom = Vector2.ONE * z
+		camera.position = _camera_clamp(camera.position, z)
+
+
+# Px экрана в px мира поверх базового зума: элементы интерфейса, нарисованные в мире (полосы у края, маркеры, подписи
+# у курсора), делятся на множитель игрока — на экране того же размера при любом зуме.
+func ui_k() -> float:
+	return 1.0 / zoom_user
 
 
 # Наименьший зум, при котором поле перекрывает экран целиком по обеим осям.
@@ -1450,70 +1542,68 @@ func _draw() -> void:
 			var g := _formation_geometry(list[0], drag_start, drag_cur, drag_flip)
 			if g.n > 0:
 				_draw_block_preview(type_color[squad_type[list[0]]], g.centre, g.front, g.angle, g.width, g.rows, g.adjusted or g.overlap >= 0)
-				draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), tr("HUD_PREVIEW_ONE") % [g.width, g.rows, g.n],
-					HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONTS.px(20), Color.WHITE)
+				_draw_cursor_text(tr("HUD_PREVIEW_ONE") % [g.width, g.rows, g.n], Color.WHITE)
 		elif list.size() > 1:
 			var mg := _multi_geometry(list, drag_start, drag_cur, drag_flip)
 			for it in mg.items:
 				_draw_block_preview(type_color[squad_type[it.s]], it.centre, it.front, mg.angle, it.width, it.rows, mg.adjusted or not mg.fits or mg.overlap >= 0)
-			draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), tr("HUD_PREVIEW_MANY") % [list.size(), UNITS.dist_text(mg.length)],
-				HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONTS.px(20), Color.WHITE)
+			_draw_cursor_text(tr("HUD_PREVIEW_MANY") % [list.size(), UNITS.dist_text(mg.length)], Color.WHITE)
 	# Сигнал всплеска: пульсирующая золотая полоса вдоль края экрана и мигающий (2 Гц) треугольник 48 px у своей стороны
 	var vr := view_rect()
 	var view_lo := vr.position
 	var view_size := vr.size
+	var k := ui_k()   # задача 27: полосы и треугольники — в px экрана при любом зуме
 	# Слои: мягкая красная полоса у края экрана своей стороны — 0.30 у края, плавно до 0 на 100 px вглубь (10 ступеней)
 	for side in 3:
 		var sa := _signal_alpha(side)
 		if sa <= 0.0:
 			continue
 		for q in 10:
-			var band := Rect2(view_lo + Vector2(0.0, q * 10.0), Vector2(view_size.x, 10.0))
+			var band := Rect2(view_lo + Vector2(0.0, q * 10.0 * k), Vector2(view_size.x, 10.0 * k))
 			if side == SIDE_LEFT:
-				band = Rect2(view_lo + Vector2(q * 10.0, 0.0), Vector2(10.0, view_size.y))
+				band = Rect2(view_lo + Vector2(q * 10.0 * k, 0.0), Vector2(10.0 * k, view_size.y))
 			elif side == SIDE_RIGHT:
-				band = Rect2(view_lo + Vector2(view_size.x - (q + 1) * 10.0, 0.0), Vector2(10.0, view_size.y))
+				band = Rect2(view_lo + Vector2(view_size.x - (q + 1) * 10.0 * k, 0.0), Vector2(10.0 * k, view_size.y))
 			draw_rect(band, Color(0.85, 0.12, 0.12, sa * (1.0 - q / 10.0)))
 		if SIGNAL_ICONS_SHOWN and fmod(wave_t * 2.0, 1.0) < 0.5:
-			var tri_at := Vector2(wave_cfg.spawn_center_x, 150.0)
+			var tri_at := _edge_point(side, vr)
 			var tri_dir := Vector2.DOWN
 			if side == SIDE_LEFT:
-				tri_at = Vector2(view_lo.x + 120.0, wave_cfg.spawn_left_y)
 				tri_dir = Vector2.RIGHT
 			elif side == SIDE_RIGHT:
-				tri_at = Vector2(view_lo.x + view_size.x - 120.0, wave_cfg.spawn_right_y)
 				tri_dir = Vector2.LEFT
-			var tri_lat := Vector2(-tri_dir.y, tri_dir.x)
-			draw_colored_polygon(PackedVector2Array([tri_at + tri_dir * 24.0, tri_at - tri_dir * 24.0 + tri_lat * 24.0, tri_at - tri_dir * 24.0 - tri_lat * 24.0]), Color(0.85, 0.12, 0.12, 0.95))
+			var tri_lat := Vector2(-tri_dir.y, tri_dir.x) * 24.0 * k
+			var tri_d := tri_dir * 24.0 * k
+			draw_colored_polygon(PackedVector2Array([tri_at + tri_d, tri_at - tri_d + tri_lat, tri_at - tri_d - tri_lat]), Color(0.85, 0.12, 0.12, 0.95))
 	for side in _burst_signals():
 		var pulse := 0.5 + 0.5 * sin(wave_t * 2.0 * TAU)
-		var strip := Rect2(view_lo, Vector2(view_size.x, 24.0))
-		var icon_at := Vector2(wave_cfg.spawn_center_x, 150.0)
+		var strip := Rect2(view_lo, Vector2(view_size.x, 24.0 * k))
+		var icon_at := _edge_point(side, vr)
 		var icon_dir := Vector2.DOWN
 		if side == SIDE_LEFT:
-			strip = Rect2(view_lo, Vector2(24.0, view_size.y))
-			icon_at = Vector2(view_lo.x + 120.0, wave_cfg.spawn_left_y)
+			strip = Rect2(view_lo, Vector2(24.0 * k, view_size.y))
 			icon_dir = Vector2.RIGHT
 		elif side == SIDE_RIGHT:
-			strip = Rect2(view_lo + Vector2(view_size.x - 24.0, 0.0), Vector2(24.0, view_size.y))
-			icon_at = Vector2(view_lo.x + view_size.x - 120.0, wave_cfg.spawn_right_y)
+			strip = Rect2(view_lo + Vector2(view_size.x - 24.0 * k, 0.0), Vector2(24.0 * k, view_size.y))
 			icon_dir = Vector2.LEFT
 		draw_rect(strip, Color(1.0, 0.8, 0.2, 0.35 * pulse))
 		if fmod(wave_t * 2.0, 1.0) < 0.5:
-			var icon_lat := Vector2(-icon_dir.y, icon_dir.x)
-			draw_colored_polygon(PackedVector2Array([icon_at + icon_dir * 24.0, icon_at - icon_dir * 24.0 + icon_lat * 24.0, icon_at - icon_dir * 24.0 - icon_lat * 24.0]), Color(1.0, 0.8, 0.2, 0.95))
+			var icon_lat := Vector2(-icon_dir.y, icon_dir.x) * 24.0 * k
+			var icon_d := icon_dir * 24.0 * k
+			draw_colored_polygon(PackedVector2Array([icon_at + icon_d, icon_at - icon_d + icon_lat, icon_at - icon_d - icon_lat]), Color(1.0, 0.8, 0.2, 0.95))
 	# Разведка в передышке: у каждой активной стороны треугольник внутрь поля и состав (цвет типа, число)
 	for mk in _recon_markers():
 		var d: Vector2 = mk.dir
 		var side_lat := Vector2(-d.y, d.x)
-		var at: Vector2 = mk.pos
-		draw_colored_polygon(PackedVector2Array([at + d * 16.0, at - d * 8.0 + side_lat * 12.0, at - d * 8.0 - side_lat * 12.0]), Color(1.0, 0.35, 0.25, 0.9))
+		draw_set_transform(mk.pos, 0.0, Vector2.ONE * k)   # маркер и состав — в px экрана от точки маркера (задача 27)
+		draw_colored_polygon(PackedVector2Array([d * 16.0, -d * 8.0 + side_lat * 12.0, -d * 8.0 - side_lat * 12.0]), Color(1.0, 0.35, 0.25, 0.9))
 		var items: Array = mk.items
-		var x0 := at.x - 22.0 - items.size() * 78.0 if mk.side == SIDE_RIGHT else at.x + 22.0   # справа список идёт влево от маркера
+		var x0 := -22.0 - items.size() * 78.0 if mk.side == SIDE_RIGHT else 22.0   # справа список идёт влево от маркера
 		for q in items.size():
-			var cell := Vector2(x0 + q * 78.0, at.y - 7.0)
+			var cell := Vector2(x0 + q * 78.0, -7.0)
 			draw_rect(Rect2(cell, Vector2(14, 14)), type_color[items[q][0]])
 			draw_string(ThemeDB.fallback_font, cell + Vector2(18.0, 13.0), "×%d" % items[q][1], HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONTS.px(18), Color.WHITE)
+		draw_set_transform(Vector2.ZERO)
 	if not DEBUG_COLORS:
 		return
 	draw_circle(GATE_POS, 8.0, Color(1.0, 0.85, 0.2, 0.8))
@@ -2429,15 +2519,34 @@ func _plan_text() -> String:
 	return text if extra.is_empty() else text + " (%s)" % ", ".join(extra)
 
 
+# Точка значка стороны у края вида vr (сигнал всплеска, разведка). Без зума игрока (множитель 1) — как до задачи 27: верх —
+# (spawn_center_x, 150), левая и правая — в 120 px от края экрана на высоте своей точки появления. С зумом отступы в px экрана
+# (ui_k), точка не выходит за вид: верх — не выше 150 мира и не выше края вида, x и y зажаты в вид.
+func _edge_point(side: int, vr: Rect2) -> Vector2:
+	var k := ui_k()
+	var p := Vector2(wave_cfg.spawn_center_x, 150.0)
+	if side == SIDE_LEFT:
+		p = Vector2(vr.position.x + 120.0 * k, wave_cfg.spawn_left_y)
+	elif side == SIDE_RIGHT:
+		p = Vector2(vr.end.x - 120.0 * k, wave_cfg.spawn_right_y)
+	if zoom_user == 1.0:
+		return p
+	var m := 120.0 * k
+	if side == SIDE_TOP:
+		p.y = maxf(150.0, vr.position.y + 150.0 * k)
+	p.x = clampf(p.x, vr.position.x + m, maxf(vr.end.x - m, vr.position.x + m))
+	p.y = clampf(p.y, vr.position.y + m, maxf(vr.end.y - m, vr.position.y + m))
+	return p
+
+
 # Маркеры разведки (только в передышке): на сторону — точка у края, направление внутрь поля и состав [тип, число].
-# Верх: (spawn_center_x, 150); левая и правая — в 120 px от края экрана на высоте своей точки появления.
+# Места — _edge_point.
 func _recon_markers() -> Array:
 	var out := []
 	if not scout_shown or not waves_enabled or wave_state != WS_RESPITE:
 		return out
 	var vr := view_rect()
-	var at := [Vector2(wave_cfg.spawn_center_x, 150.0), Vector2(vr.position.x + 120.0, wave_cfg.spawn_left_y),
-		Vector2(vr.end.x - 120.0, wave_cfg.spawn_right_y)]
+	var at := [_edge_point(SIDE_TOP, vr), _edge_point(SIDE_LEFT, vr), _edge_point(SIDE_RIGHT, vr)]
 	var dirs := [Vector2.DOWN, Vector2.RIGHT, Vector2.LEFT]
 	for side in 3:
 		var items := []
@@ -6234,6 +6343,7 @@ func _physics_process(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	var t := Time.get_ticks_usec()
+	_camera_frame(delta)
 	_update_fx(delta)
 	shop_slide_step(delta)
 	ui_t -= delta
@@ -7109,7 +7219,14 @@ func _draw_ghosts() -> void:
 		poly.append(poly[0])
 		draw_polyline(poly, Color(col, 0.75), 2.0)
 	if not g.ok:
-		draw_string(ThemeDB.fallback_font, drag_cur + Vector2(16.0, -12.0), g.msg, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONTS.px(20), GHOST_BAD_COLOR)
+		_draw_cursor_text(g.msg, GHOST_BAD_COLOR)
+
+
+# Подпись у курсора (протяжка, призрак): справа сверху от drag_cur, кегль 20; в px экрана при любом зуме (ui_k).
+func _draw_cursor_text(text: String, col: Color) -> void:
+	draw_set_transform(drag_cur, 0.0, Vector2.ONE * ui_k())
+	draw_string(ThemeDB.fallback_font, Vector2(16.0, -12.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONTS.px(20), col)
+	draw_set_transform(Vector2.ZERO)
 
 # На сколько сдвинуть блок (передний ряд от a вдоль dir, width колонок, ряды назад от лица), чтобы все слоты
 # были в поле и не ниже WALL_Y - FORM_MARGIN. Ноль — помещается. Сдвиг ищется вдоль лица (минимальный);
@@ -7726,9 +7843,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			box_cur = p
 		queue_redraw()   # предпросмотр и рамка перерисовываются только во время перетаскивания
+	elif event is InputEventMouseButton and event.pressed and not event.shift_pressed and event.button_index in [
+			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		# задача 27: колесо без Shift — зум к точке под курсором (вверх — ближе); factor — доля щелчка (тачпад)
+		var f: float = event.factor if event.factor > 0.0 else 1.0
+		zoom_by(f if event.button_index == MOUSE_BUTTON_WHEEL_UP else -f, event.position)
 	elif event is InputEventMouseButton and event.pressed and event.shift_pressed and event.button_index in [
 			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_LEFT, MOUSE_BUTTON_WHEEL_RIGHT]:
-		# Shift + колесо: поворот на месте (с Shift система может прислать горизонтальное колесо); без Shift колесо не занято
+		# Shift + колесо: поворот на месте (с Shift система может прислать горизонтальное колесо); без Shift — зум (выше)
 		_cmd_rotate(-1 if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_LEFT] else 1)
 	elif (event is InputEventKey and event.pressed and not event.echo) or (event is InputEventMouseButton and event.pressed
 			and SETTINGS.MOUSE_BINDABLE.has(event.button_index)):
@@ -7802,6 +7924,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				toggle_shop()
 			"squad_panel_toggle":
 				toggle_squad_panel()
+			"camera_zoom_reset":
+				zoom_reset()
 			"hero_attack":
 				if hero_idx >= 0 and not paused:
 					hero_attack_latch = true   # удар — во вводе ближайшего тика (_hero_input)
