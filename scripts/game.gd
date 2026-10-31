@@ -539,6 +539,25 @@ func end_run(result: String, wave: int, kills: int, stats := {}) -> void:
 			"gold_spent": roundi(float(stats.get("gold_spent", 0.0)))})
 
 
+# Задача 28: сброс прогресса — профиль как новый, без перезапуска игры. Сбрасывается всё, что хранит сохранение (осады,
+# рекорды, дневник и вступление, время игры, число забегов, Сияние, купленные дары), состояние забега в памяти и показанные
+# подсказки (Settings [hints] seen). Остаются настройки (звук, клавиши, язык, видео, «Игра») и журнал забегов runs.csv.
+# Файл сохранения перезаписывается чистым состоянием, и файл от более новой версии тоже (игрок подтвердил сброс). Сцену
+# не меняет: кнопка в настройках уводит в главное меню сама. Возвращает, записано ли сохранение.
+func reset_progress() -> bool:
+	_clean_state()
+	_clear_last_run()
+	active_gifts = {}
+	run_cards = []
+	camera_zoom_user = 1.0
+	save_locked = false
+	save_warning = ""
+	var st := get_node_or_null("/root/Settings")
+	if st != null:
+		st.reset_hints()
+	return save()
+
+
 func go_hub() -> void:
 	get_tree().change_scene_to_file(HUB_SCENE)
 

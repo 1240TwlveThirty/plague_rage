@@ -23,7 +23,11 @@ var card_anim_option: OptionButton   # «Анимация выбора карт�
 var hints_check: CheckButton     # «Подсказки» вкл/выкл (задача 26)
 var hints_reset_button: Button   # «Сбросить подсказки»
 var data_folder_button: Button   # «Открыть папку данных» (user://: настройки, сохранение, журнал забегов runs.csv)
-var game_msg: Label              # итог «Сбросить подсказки»
+var game_msg: Label              # итог «Сбросить подсказки» и «Сбросить прогресс»
+var progress_reset_button: Button   # «Сбросить прогресс» (задача 28): открывает окно подтверждения
+var confirm_box: Control         # окно подтверждения сброса прогресса поверх вкладок; скрыто
+var confirm_yes: Button          # «Сбросить»
+var confirm_no: Button           # «Отмена» — в фокусе при открытии
 var back_button: Button
 var key_titles := {}            # действие -> подпись строки на вкладке «Управление»
 var key_buttons := {}           # действие -> кнопка с клавишей на вкладке «Управление»
@@ -79,6 +83,7 @@ func _ready() -> void:
 	UI.frame_button(back_button)
 	back_button.pressed.connect(close)
 	box.add_child(back_button)
+	_setup_confirm()
 	settings.changed.connect(_on_changed)
 	_set_focusable(self, false)
 
@@ -331,6 +336,90 @@ func _setup_game() -> void:
 	UI.frame_button(data_folder_button)
 	data_folder_button.pressed.connect(open_data_folder)
 	col.add_child(data_folder_button)
+	progress_reset_button = Button.new()
+	progress_reset_button.text = "UI_SETTINGS_PROGRESS_RESET"
+	progress_reset_button.add_theme_font_size_override("font_size", FONTS.px(26))
+	progress_reset_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	UI.frame_button(progress_reset_button)
+	progress_reset_button.pressed.connect(open_confirm)
+	col.add_child(progress_reset_button)
+
+
+# Окно подтверждения сброса прогресса: затемнение (клики под него не проходят), что сбрасывается и что остаётся, «Сбросить»
+# и «Отмена». Esc — «Отмена».
+func _setup_confirm() -> void:
+	confirm_box = ColorRect.new()
+	(confirm_box as ColorRect).color = Color(0.0, 0.0, 0.0, 0.75)
+	confirm_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	confirm_box.visible = false
+	add_child(confirm_box)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	confirm_box.add_child(center)
+	var panel := PanelContainer.new()
+	UI.frame_panel_dark(panel)
+	center.add_child(panel)
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 32)
+	panel.add_child(margin)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 24)
+	margin.add_child(col)
+	var title := Label.new()
+	title.text = "UI_RESET_PROGRESS_TITLE"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", FONTS.px(40))
+	col.add_child(title)
+	var text := Label.new()
+	text.text = "UI_RESET_PROGRESS_TEXT"
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.custom_minimum_size.x = 760
+	text.add_theme_font_size_override("font_size", FONTS.px(26))
+	col.add_child(text)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 32)
+	col.add_child(row)
+	confirm_yes = Button.new()
+	confirm_yes.text = "UI_RESET_PROGRESS_CONFIRM"
+	confirm_no = Button.new()
+	confirm_no.text = "UI_RESET_PROGRESS_CANCEL"
+	for b in [confirm_yes, confirm_no]:
+		b.add_theme_font_size_override("font_size", FONTS.px(30))
+		b.custom_minimum_size.x = 260
+		UI.frame_button(b)
+		row.add_child(b)
+	confirm_yes.pressed.connect(_confirm_reset)
+	confirm_no.pressed.connect(close_confirm)
+
+
+func open_confirm() -> void:
+	game_msg.text = ""
+	confirm_box.visible = true
+	confirm_no.grab_focus()   # по умолчанию — «Отмена»: Enter и Space ничего не сбрасывают
+
+
+func close_confirm() -> void:
+	confirm_box.visible = false
+	progress_reset_button.grab_focus()
+
+
+# «Сбросить»: Game.reset_progress. В главном меню — сообщение на вкладке; из паузы боя или хаба — в главное меню (забег
+# с прежним прогрессом не продолжается; дерево снимается с паузы).
+func _confirm_reset() -> void:
+	confirm_box.visible = false
+	var g := get_node_or_null("/root/Game")
+	if g != null:
+		g.reset_progress()
+	var scene := get_tree().current_scene
+	if g != null and scene != null and scene.scene_file_path != g.MENU_SCENE:
+		close()
+		get_tree().paused = false
+		g.go_menu()
+		return
+	game_msg.text = "MSG_PROGRESS_RESET_DONE"
+	progress_reset_button.grab_focus()
 
 
 func _reset_hints() -> void:
@@ -428,6 +517,8 @@ func open() -> void:
 
 
 func close() -> void:
+	if confirm_box != null:
+		confirm_box.visible = false
 	waiting_action = ""
 	if key_msg != null:
 		key_msg.text = ""
@@ -448,5 +539,8 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if visible and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
-		close()
+		if confirm_box.visible:
+			close_confirm()   # Esc в окне подтверждения — «Отмена», экран настроек остаётся
+		else:
+			close()
 		get_viewport().set_input_as_handled()

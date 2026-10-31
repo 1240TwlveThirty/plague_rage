@@ -364,6 +364,12 @@ UI_SETTINGS_TAB_GAME,Игра,Game
 UI_SETTINGS_HINTS,Подсказки,Hints
 UI_SETTINGS_HINTS_RESET,Сбросить подсказки,Reset hints
 MSG_HINTS_RESET_DONE,Подсказки покажутся снова,Hints will be shown again
+UI_SETTINGS_PROGRESS_RESET,Сбросить прогресс,Reset progress
+UI_RESET_PROGRESS_TITLE,Сбросить прогресс?,Reset progress?
+UI_RESET_PROGRESS_TEXT,"Будут удалены: открытые осады, рекорды, дневник, Сияние, купленные дары и показанные подсказки. Настройки (звук, управление, язык) и журнал забегов останутся. Отменить сброс нельзя.","This deletes unlocked sieges, records, the diary, Radiance, bought gifts and shown hints. Settings (sound, controls, language) and the run log are kept. This cannot be undone."
+UI_RESET_PROGRESS_CONFIRM,Сбросить,Reset
+UI_RESET_PROGRESS_CANCEL,Отмена,Cancel
+MSG_PROGRESS_RESET_DONE,"Прогресс сброшен: профиль как новый","Progress reset: the profile is new"
 HINT_SELECT_ORDER,"ЛКМ или {squad_select_1}…{squad_select_8} — выбрать отряд, ПКМ — отдать приказ","LMB or {squad_select_1}…{squad_select_8}: select a squad, RMB: give an order"
 HINT_MOUSE_ORDERS,"ПКМ — идти, форма сохраняется. Протяжка ПКМ — построить линию","RMB: move, formation is kept. RMB drag: form a line"
 HINT_HERO_ATTACK,Враг рядом: {hero_attack} — удар Командира,Enemy close: {hero_attack} to strike with the Commander

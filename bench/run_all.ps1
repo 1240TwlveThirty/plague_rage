@@ -132,6 +132,7 @@ Godot "зум камеры: колесо, край поля, сброс, заб�
 Godot "смоук с окном: скриншоты F12, запись F10 при зуме (v77)" "res://bench/smoke_v77_zoom.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "камера: предел отдаления 1.0, тряска у края, перетаскивание колесом (v78)" "res://bench/check_v78_camera.gd" "CHECK: провалов 0"
 Godot "смоук с окном: нет чёрных полос за краем поля (v78)" "res://bench/smoke_v78_camera.gd" "SMOKE: провалов 0" @() -Window
+Godot "сброс прогресса: профиль во временной папке, подтверждение (v78)" "res://bench/check_v78_reset.gd" "CHECK: провалов 0"
 Godot "вид поля с окном: волна 10, герой, FPS (view_v47)" "res://bench/view_v47.gd" "HEROFX\|" @("$tmp", "1", "0", "nearest", "0", "0", "1") -Window
 Step "выход из игры: меню, пауза, бой, хаб, WM_CLOSE; предохранитель (v77)" "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$root\bench\check_v77_exit.ps1`"") "EXIT: провалов 0"
 Step "сцена --scene=battle, кадр (v75)" $godot @("--path", "`"$root`"", "--", "--scene=battle", "--shot", "--shot-dir=$tmp") "SHOT\|"
