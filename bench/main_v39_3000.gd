@@ -236,6 +236,8 @@ const LEAF_SWAY_AMP := 2.5      # покачивание по вертикали
 const LEAF_SWAY_FREQ := 2.2     # рад/с
 const LEAF_COLORS: Array[Color] = [Color(0.36, 0.62, 0.22), Color(0.25, 0.48, 0.16), Color(0.78, 0.66, 0.24), Color(0.6, 0.42, 0.18)]
 const LEAF_Z := 2
+const HERO_Z := FG_Z - 1           # задача 28: герой (спрайт, кольцо, полоса HP, дуга удара) — под слоями замка и леса, как юниты; над ними — позже в дереве
+const HERO_OCC_Z := LEAF_Z + 1     # силуэт героя там, где его закрывают слои (_setup_hero_occlusion)
 const FX_NOISE_GLSL := """
 float hash3(vec3 p) {
 	p = fract(p * vec3(0.1031, 0.1030, 0.0973));
@@ -759,6 +761,8 @@ const HERO_FX_GROW_PX := 2.5    # кромка дуги расширяется �
 const HERO_FX_GLOW_PX := 3.0    # свечение — шире основного сектора на столько px и на HERO_FX_GLOW_ANG по краям
 const HERO_FX_GLOW_ANG := 0.08
 const HIT_FLASH_FRAMES := 2     # задетые зомби белые столько кадров (custom.y инстанса, шейдер MultiMesh)
+var hero_occ: Sprite2D = null  # задача 28: силуэт героя над слоями (только где слой его закрывает); null — выключен в hero.json или нет слоёв
+var hero_occ_mat: ShaderMaterial = null
 var hero_fx: Node2D             # дуга-вспышка (_draw_hero_fx): над юнитами, под спрайтом героя; null в бенчах без дерева
 var hero_fx_seen := 0           # hero_swing_n, вспышка которого уже начата
 var hero_fx_age := -1.0         # с от начала вспышки (сумма delta кадров); < 0 — вспышки нет
@@ -952,6 +956,7 @@ var pan_cam0 := Vector2.ZERO                 # и после шага зума �
 var unit_node: MultiMeshInstance2D = null      # юниты на экране (пятна крови вставляются в дерево перед ним — под юнитами)
 var castle_filter := CASTLE_FILTER            # бенчи переопределяют до _ready
 var layer_tuning_path := LAYER_TUNING_PATH    # и путь подгонки замка тоже
+var trees_sprite: Sprite2D = null             # спрайт слоя леса на экране (задача 28: маска силуэта героя)
 var castle_sprite: Sprite2D = null            # спрайт слоя замка на экране (с эффектами — спрайт текстуры вьюпорта)
 var castle_offset := CASTLE_TX_OFFSET         # положение и масштаб замка в текселях фона (data/layer_tuning.json)
 var castle_scale := Vector2(CASTLE_TX_SCALE, CASTLE_TX_SCALE)
@@ -1042,6 +1047,7 @@ func _setup_background() -> void:
 			trees = _fx_bake(trees)
 			fx_gust_wait = lerpf(GUST_EVERY_MIN, GUST_EVERY_MAX, _fx_hash(0))
 		add_child(trees)
+		trees_sprite = trees
 	_load_layer_tuning()
 	var castle := _layer_sprite(CASTLE_LAYER_PATH, castle_offset, castle_scale, CASTLE_ALPHA)
 	if castle != null:
@@ -3873,14 +3879,14 @@ func _spawn_hero(frac: float) -> void:
 # Нода героя: спрайт (hero.json sprite_path; нет файла — квадрат цвета маркера), nearest. Высота кадра на экране — как у павшего
 # рыцаря (KNIGHT_SPRITE_SCALE x SPRITE_PX) x hero_screen_scale_rel при любом размере кадра (_hero_sprite_scale).
 func _setup_hero_view() -> void:
-	hero_fx = Node2D.new()   # дуга удара: тот же слой, что герой (над юнитами и замком, ниже интерфейса), раньше в дереве — под спрайтом
+	hero_fx = Node2D.new()   # дуга удара: тот же слой, что герой (над юнитами, под замком и лесом), раньше в дереве — под спрайтом
 	hero_fx.visible = false
-	hero_fx.z_index = LEAF_Z + 1
+	hero_fx.z_index = HERO_Z
 	add_child(hero_fx)
 	hero_fx.draw.connect(_draw_hero_fx)
 	hero_view = Node2D.new()
 	hero_view.visible = false
-	hero_view.z_index = LEAF_Z + 1   # над юнитами и над слоями замка и листвы (у ворот стена закрыла бы героя), ниже интерфейса
+	hero_view.z_index = HERO_Z   # задача 28: под слоями замка и леса, как юниты (раньше LEAF_Z + 1 — над ними); закрытую часть показывает силуэт
 	add_child(hero_view)
 	hero_sprite = Sprite2D.new()
 	var path: String = hero_cfg.get("sprite_path", hero_cfg.get("sprite"))
@@ -3896,7 +3902,100 @@ func _setup_hero_view() -> void:
 	_setup_hero_sheet(tex)
 	hero_view.add_child(hero_sprite)
 	hero_view.draw.connect(_draw_hero_marker)
+	_setup_hero_occlusion()
 	_setup_hit_fx()   # кровь и искры: тот же слой, позже героя — поверх него (попадания в 10–28 px, под спрайтом не видны); пятна — под юнитами
+
+
+# Задача 28: силуэт героя поверх слоёв — тот же кадр спрайта ребёнком hero_sprite (позиция, поворот, масштаб — его), z HERO_OCC_Z,
+# шейдер HERO_OCC_SHADER: однотонный hero_occlusion_color с hero_occlusion_alpha только в точках, где непрозрачен слой замка
+# или леса (их текстуры и прямоугольники в мире — в шейдер). Открытый герой силуэта не получает: маска по точкам, не по
+# прямоугольнику. Выключатель hero_occlusion_enabled (data/hero.json). Только отрисовка.
+const HERO_OCC_DEFAULTS := {"hero_occlusion_enabled": true, "hero_occlusion_color": "#feae34", "hero_occlusion_alpha": 0.6}
+const HERO_OCC_SHADER := """
+shader_type canvas_item;
+uniform vec4 occ_color : source_color;
+uniform sampler2D layer0 : filter_nearest;
+uniform sampler2D layer1 : filter_nearest;
+uniform vec4 layer0_rect;   // xy — левый верхний угол слоя в мире, zw — размер; z = 0 — слоя нет
+uniform vec4 layer1_rect;
+uniform vec2 xf_x;   // преобразование ноды силуэта в мир (get_global_transform: оси и начало) — задаёт _sync_hero_occ
+uniform vec2 xf_y;
+uniform vec2 xf_o;
+varying vec2 world;
+void vertex() {
+	world = xf_o + VERTEX.x * xf_x + VERTEX.y * xf_y;
+}
+float cover(sampler2D t, vec4 r) {
+	if (r.z <= 0.0) return 0.0;
+	vec2 uv = (world - r.xy) / r.zw;
+	if (uv.x < 0.0 || uv.y < 0.0 || uv.x >= 1.0 || uv.y >= 1.0) return 0.0;
+	return texture(t, uv).a;
+}
+void fragment() {
+	float occ = max(cover(layer0, layer0_rect), cover(layer1, layer1_rect));
+	COLOR = vec4(occ_color.rgb, occ_color.a * step(0.5, texture(TEXTURE, UV).a) * step(0.5, occ));
+}
+"""
+
+
+func hero_occ_cfg() -> Dictionary:
+	var out := HERO_OCC_DEFAULTS.duplicate()
+	var on = hero_cfg.get("hero_occlusion_enabled", out.hero_occlusion_enabled)
+	var col = hero_cfg.get("hero_occlusion_color", out.hero_occlusion_color)
+	var a = hero_cfg.get("hero_occlusion_alpha", out.hero_occlusion_alpha)
+	if not on is bool or not col is String or not Color.html_is_valid(col) or not (a is float or a is int) or a < 0.0 or a > 1.0:
+		push_warning("%s: hero_occlusion_enabled (bool), hero_occlusion_color (hex), hero_occlusion_alpha (0..1) — взяты по умолчанию" % hero_path)
+		return out
+	return {"hero_occlusion_enabled": on, "hero_occlusion_color": col, "hero_occlusion_alpha": float(a)}
+
+
+func _setup_hero_occlusion() -> void:
+	var c := hero_occ_cfg()
+	if not c.hero_occlusion_enabled or (trees_sprite == null and castle_sprite == null):
+		return
+	hero_occ = Sprite2D.new()
+	hero_occ.texture = hero_sprite.texture
+	hero_occ.hframes = hero_sprite.hframes
+	hero_occ.vframes = hero_sprite.vframes
+	hero_occ.offset = hero_sprite.offset
+	hero_occ.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	hero_occ.z_as_relative = false
+	hero_occ.z_index = HERO_OCC_Z
+	var sh := Shader.new()
+	sh.code = HERO_OCC_SHADER
+	hero_occ_mat = ShaderMaterial.new()
+	hero_occ_mat.shader = sh
+	var col := Color(c.hero_occlusion_color)
+	col.a = c.hero_occlusion_alpha
+	hero_occ_mat.set_shader_parameter("occ_color", col)
+	var k := 0
+	for sp in [trees_sprite, castle_sprite]:
+		if sp != null:
+			hero_occ_mat.set_shader_parameter("layer%d" % k, sp.texture)
+		k += 1
+	hero_occ.material = hero_occ_mat
+	hero_sprite.add_child(hero_occ)
+	_sync_hero_occ()
+
+
+# Кадр силуэта — кадр спрайта; прямоугольники слоёв в мире (замок двигает подгонка F3).
+func _sync_hero_occ() -> void:
+	if hero_occ == null:
+		return
+	hero_occ.frame = hero_sprite.frame
+	hero_occ.flip_h = hero_sprite.flip_h
+	var xf := hero_occ.get_global_transform()
+	hero_occ_mat.set_shader_parameter("xf_x", xf.x)
+	hero_occ_mat.set_shader_parameter("xf_y", xf.y)
+	hero_occ_mat.set_shader_parameter("xf_o", xf.origin)
+	var k := 0
+	for sp in [trees_sprite, castle_sprite]:
+		var r := Vector4.ZERO
+		if sp != null and sp.texture != null:
+			var sz: Vector2 = sp.texture.get_size() * sp.scale
+			r = Vector4(sp.position.x, sp.position.y, sz.x, sz.y)
+		hero_occ_mat.set_shader_parameter("layer%d_rect" % k, r)
+		k += 1
 
 
 # Масштаб спрайта героя: кадр высотой frame_h px — на экране ростом с павшего рыцаря (KNIGHT_SPRITE_SCALE x SPRITE_PX px мира),
@@ -4006,6 +4105,7 @@ func _update_hero_view(frac: float, have_prev: bool, delta := 0.0) -> void:
 			hero_sprite.rotation = hero_fx_ang if hero_fx_age >= 0.0 else hero_face_ang
 		else:
 			hero_sprite.flip_h = hero_face < 0.0
+	_sync_hero_occ()
 	var key := Vector2(hp[h], camera.zoom.x if camera != null else 1.0)
 	if key != hero_drawn:
 		hero_drawn = key

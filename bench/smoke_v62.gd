@@ -168,8 +168,8 @@ func _run() -> void:
 	for c in m.get_children():
 		if c is MultiMeshInstance2D and c.multimesh == m.hit_mm:
 			pn = c
-	check("слой крови под юнитами (тот же z, раньше в дереве), кровь и искры — над героем (z героя, позже в дереве)", sn != null and sn.z_index == m.unit_node.z_index
-		and sn.get_index() < m.unit_node.get_index() and pn != null and pn.z_index == m.hero_view.z_index and pn.get_index() > m.hero_view.get_index())
+	check("слой крови под юнитами (тот же z, раньше в дереве), кровь и искры — над героем (задача 28: герой под слоями, искры — над ними, как раньше)", sn != null and sn.z_index == m.unit_node.z_index
+		and sn.get_index() < m.unit_node.get_index() and pn != null and pn.z_index == m.LEAF_Z + 1 and pn.z_index > m.hero_view.z_index and pn.get_index() > m.hero_view.get_index())
 	for k in 70:
 		m._process(0.1)
 	var later := await shot(m, "hit_stains_later.png", 0.0)

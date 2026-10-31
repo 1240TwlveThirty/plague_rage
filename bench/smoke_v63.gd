@@ -118,7 +118,7 @@ func _run() -> void:
 		gn.size() == 2 and gn[0].texture.resource_path == c.gib_top_path and gn[1].texture.resource_path == c.gib_bottom_path
 		and gn[0].texture.get_size() == Vector2(16, 16) and gn[0].texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST
 		and gn[0].get_index() == ui + 1 and gn[1].get_index() == ui + 2 and sn != null and sn.get_index() < ui
-		and gn[0].z_index == m.unit_node.z_index and gn[0].z_index < m.hero_view.z_index)
+		and gn[0].z_index == m.unit_node.z_index and gn[0].z_index <= m.hero_view.z_index and gn[1].get_index() < m.hero_view.get_index())   # задача 28: герой на z юнитов, позже в дереве
 	# 1. Добивание: зомби справа, смотрит вправо
 	var z := zombies(m, [Vector2(14, 0)], 1.0)
 	m.hero_feed = func(_t): return {"move": Vector2.ZERO, "face": 0.0}

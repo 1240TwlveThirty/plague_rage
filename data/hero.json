@@ -22,5 +22,9 @@
 	"animations": {"idle": {"frames": [0], "fps": 0}, "walk": {"frames": [0], "fps": 8}, "attack": {"frames": [1, 2, 3]}},
 	"pivot": [12.5, 13.5],
 	"orient": "rotate",
-	"marker_color": "#feae34"
+	"marker_color": "#feae34",
+	"_hero_occlusion": "задача 28: герой рисуется под слоями замка и леса, как юниты; где слой его закрывает — силуэт поверх слоёв: однотонный hero_occlusion_color с прозрачностью hero_occlusion_alpha (0..1), только в закрытых точках. hero_occlusion_enabled false — без силуэта.",
+	"hero_occlusion_enabled": true,
+	"hero_occlusion_color": "#feae34",
+	"hero_occlusion_alpha": 0.6
 }

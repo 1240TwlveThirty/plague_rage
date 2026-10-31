@@ -290,4 +290,5 @@ func t_hero(m: Node2D) -> void:
 	await shot(m, "", ft)
 	await shot(m, "", 0.02)
 	check("вспышка кончилась: снова покой, кадр %d" % s.frame, m.hero_anim == "idle" and s.frame == int(m.hero_cfg.animations.idle.frames[0]))
-	check("кольцо-маркер и полоса HP рисуются нодой героя, спрайт — её ребёнок над слоями замка и листвы", s.get_parent() == m.hero_view and m.hero_view.z_index == m.LEAF_Z + 1)
+	check("кольцо-маркер и полоса HP рисуются нодой героя, спрайт — её ребёнок; задача 28: под слоями замка и леса (z %d), силуэт над ними (z %d)" % [m.HERO_Z, m.HERO_OCC_Z],
+		s.get_parent() == m.hero_view and m.hero_view.z_index == m.HERO_Z and m.HERO_Z < m.FG_Z and (m.hero_occ == null or m.hero_occ.z_index > m.LEAF_Z))
