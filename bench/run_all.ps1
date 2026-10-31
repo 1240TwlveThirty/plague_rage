@@ -130,7 +130,7 @@ Godot "смоук с окном: арты — кнопки, герой (v65)" "r
 Godot "смоук с окном: скриншоты F12, запись F10 (v75)" "res://bench/smoke_v75_shots.gd" "SMOKE: провалов 0" @("$tmp") -Window
 Godot "зум камеры: колесо, край поля, сброс, забег, мышь (v77)" "res://bench/check_v77_zoom.gd" "CHECK: провалов 0"
 Godot "смоук с окном: скриншоты F12, запись F10 при зуме (v77)" "res://bench/smoke_v77_zoom.gd" "SMOKE: провалов 0" @("$tmp") -Window
-Godot "камера: предел отдаления 1.0, тряска у края (v78)" "res://bench/check_v78_camera.gd" "CHECK: провалов 0"
+Godot "камера: предел отдаления 1.0, тряска у края, перетаскивание колесом (v78)" "res://bench/check_v78_camera.gd" "CHECK: провалов 0"
 Godot "смоук с окном: нет чёрных полос за краем поля (v78)" "res://bench/smoke_v78_camera.gd" "SMOKE: провалов 0" @() -Window
 Godot "вид поля с окном: волна 10, герой, FPS (view_v47)" "res://bench/view_v47.gd" "HEROFX\|" @("$tmp", "1", "0", "nearest", "0", "0", "1") -Window
 Step "выход из игры: меню, пауза, бой, хаб, WM_CLOSE; предохранитель (v77)" "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$root\bench\check_v77_exit.ps1`"") "EXIT: провалов 0"

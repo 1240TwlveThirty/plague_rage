@@ -368,4 +368,9 @@ HINT_SELECT_ORDER,"ЛКМ или {squad_select_1}…{squad_select_8} — выб�
 HINT_MOUSE_ORDERS,"ПКМ — идти, форма сохраняется. Протяжка ПКМ — построить линию","RMB: move, formation is kept. RMB drag: form a line"
 HINT_HERO_ATTACK,Враг рядом: {hero_attack} — удар Командира,Enemy close: {hero_attack} to strike with the Commander
 HINT_SHOP,"Передышка: войска и улучшения — в магазине справа, {wave_start} — следующая волна","Respite: buy troops and upgrades in the shop on the right, {wave_start}: next wave"
+HINT_CAMERA,"Колесо — зум, зажатое колесо — перемещение камеры, {camera_zoom_reset} — сброс","Wheel: zoom, hold the wheel: move the camera, {camera_zoom_reset}: reset"
+UI_CONTROL_CAMERA_ZOOM,Зум камеры (к курсору),Camera zoom (to the cursor)
+UI_CONTROL_CAMERA_PAN,Перемещение камеры,Move the camera
+UI_MOUSE_WHEEL,Колесо мыши,Mouse wheel
+UI_MOUSE_MIDDLE_HOLD,Зажатое колесо,Hold the wheel
 UI_SETTINGS_DATA_FOLDER,Открыть папку данных,Open data folder

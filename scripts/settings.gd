@@ -268,9 +268,11 @@ const RESERVED_KEYS := [KEY_ESCAPE, KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_
 	KEY_SHIFT, KEY_CTRL, KEY_ALT, KEY_META, KEY_CAPSLOCK]
 
 
-# Кнопки мыши, которые можно назначить переназначаемому действию: средняя и боковые (4, 5). ЛКМ (выбор), ПКМ (приказ)
-# и колесо (Shift — поворот) заняты. Подписи — ключи перевода.
-const MOUSE_BINDABLE := {MOUSE_BUTTON_MIDDLE: "UI_MOUSE_MIDDLE", MOUSE_BUTTON_XBUTTON1: "UI_MOUSE_X1", MOUSE_BUTTON_XBUTTON2: "UI_MOUSE_X2"}
+# Кнопки мыши, которые можно назначить переназначаемому действию: боковые (4, 5). ЛКМ (выбор), ПКМ (приказ), колесо
+# (зум, с Shift — поворот) и средняя (зажатое колесо — перетаскивание камеры, задача 28; раньше назначалась) заняты.
+# Подписи — ключи перевода (MOUSE_LABELS: и для занятых, в подсказках).
+const MOUSE_BINDABLE := {MOUSE_BUTTON_XBUTTON1: "UI_MOUSE_X1", MOUSE_BUTTON_XBUTTON2: "UI_MOUSE_X2"}
+const MOUSE_LABELS := {MOUSE_BUTTON_MIDDLE: "UI_MOUSE_MIDDLE", MOUSE_BUTTON_XBUTTON1: "UI_MOUSE_X1", MOUSE_BUTTON_XBUTTON2: "UI_MOUSE_X2"}
 const MOUSE_TOKEN := "Mouse"   # в файле настроек кнопка мыши — «Mouse8» (номер кнопки Godot)
 
 
@@ -302,7 +304,7 @@ static func event_label(e: InputEvent) -> String:
 		return OS.get_keycode_string((e as InputEventKey).get_keycode_with_modifiers())
 	if e is InputEventMouseButton:
 		var b: int = (e as InputEventMouseButton).button_index
-		return String(TranslationServer.translate(MOUSE_BINDABLE[b])) if MOUSE_BINDABLE.has(b) else "%s %d" % [MOUSE_TOKEN, b]
+		return String(TranslationServer.translate(MOUSE_LABELS[b])) if MOUSE_LABELS.has(b) else "%s %d" % [MOUSE_TOKEN, b]
 	return "—"
 
 

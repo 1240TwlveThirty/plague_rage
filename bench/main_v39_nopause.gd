@@ -938,7 +938,7 @@ var fx_castle_mat: ShaderMaterial = null
 var fx_vps: Array[SubViewport] = []          # вьюпорты слоёв леса и замка с эффектами
 var camera: Camera2D = null                   # камера поля (_setup_camera); null в бенчах без дерева
 const CAMERA_CFG := "res://data/camera.json"  # зум игрока (задача 27): пределы, шаг колеса, сглаживание
-const CAMERA_DEFAULTS := {"zoom_user_min": 1.0, "zoom_user_max": 2.5, "zoom_step": 1.15, "zoom_smooth": 14.0}
+const CAMERA_DEFAULTS := {"zoom_user_min": 1.0, "zoom_user_max": 2.5, "zoom_step": 1.15, "zoom_smooth": 14.0, "pan_sensitivity": 1.0}
 var shake_raw := Vector2.ZERO                # задача 28: смещение тряски до урезания краем поля (camera.offset — после), px мира
 const CAMERA_ZOOM_FLOOR := 1.0               # задача 28: множитель не меньше — при 1.0 поле закрывает экран целиком
 var cam_cfg: Dictionary = CAMERA_DEFAULTS     # data/camera.json (нет файла — значения выше с предупреждением)
@@ -946,6 +946,9 @@ var zoom_user := 1.0                          # множитель зума иг
 var zoom_user_target := 1.0                   # куда идёт zoom_user (колесо, сброс); хранится в Game.camera_zoom_user
 var zoom_anchor_screen := Vector2.ZERO        # точка экрана, под которой при зуме остаётся zoom_anchor_world
 var zoom_anchor_world := Vector2.ZERO
+var pan_active := false                      # задача 28: зажата средняя кнопка — камера идёт за курсором (pan_begin / pan_to / pan_end)
+var pan_sp0 := Vector2.ZERO                  # точка экрана и центр камеры, от которых считается перетаскивание (у края поля
+var pan_cam0 := Vector2.ZERO                 # и после шага зума — заново, чтобы обратное движение сдвигало вид сразу)
 var unit_node: MultiMeshInstance2D = null      # юниты на экране (пятна крови вставляются в дерево перед ним — под юнитами)
 var castle_filter := CASTLE_FILTER            # бенчи переопределяют до _ready
 var layer_tuning_path := LAYER_TUNING_PATH    # и путь подгонки замка тоже
@@ -1386,7 +1389,7 @@ static func _load_camera_cfg(path := CAMERA_CFG) -> Dictionary:
 			out[k] = float(d[k])
 		else:
 			push_warning("%s: нет числа %s — %s" % [path, k, str(out[k])])
-	if out.zoom_user_min > out.zoom_user_max or out.zoom_user_min <= 0.0 or out.zoom_step <= 1.0:
+	if out.zoom_user_min > out.zoom_user_max or out.zoom_user_min <= 0.0 or out.zoom_step <= 1.0 or out.pan_sensitivity <= 0.0:
 		push_warning("%s: пределы или шаг зума неверны — по умолчанию" % path)
 		out = CAMERA_DEFAULTS.duplicate()
 	if out.zoom_user_min < CAMERA_ZOOM_FLOOR:   # задача 28: дальше базового — чёрные поля за краем карты
@@ -1412,12 +1415,14 @@ func zoom_by(steps: float, sp: Vector2) -> void:
 	zoom_anchor_screen = sp
 	zoom_anchor_world = screen_to_world(sp)
 	_store_zoom()
+	_hint_event("camera")
 
 
 # Клавиша camera_zoom_reset: множитель 1, центр поля.
 func zoom_reset() -> void:
 	if camera == null:
 		return
+	pan_end()   # перетаскивание считалось от прежнего вида
 	zoom_user_target = 1.0
 	zoom_anchor_screen = _screen_size() * 0.5
 	zoom_anchor_world = FIELD * 0.5
@@ -1447,10 +1452,44 @@ func _camera_frame(delta: float) -> void:
 	if moving:
 		camera.zoom = Vector2.ONE * z
 		camera.position = _camera_clamp(zoom_anchor_world - (zoom_anchor_screen - _screen_size() * 0.5) / z, z)
+		if pan_active:   # зум во время перетаскивания: дальше — от нового вида (якорь зума — курсор)
+			pan_sp0 = zoom_anchor_screen
+			pan_cam0 = camera.position
 		queue_redraw()   # полосы сигнала, маркеры и подписи у курсора — в px экрана
 	elif camera.zoom.x != z:
 		camera.zoom = Vector2.ONE * z
 		camera.position = _camera_clamp(camera.position, z)
+
+
+# Задача 28: перетаскивание камеры зажатой средней кнопкой («берёшь карту рукой»). Нажатие над полем (не над панелью) —
+# pan_begin; движение и отпускание ловит _input (до интерфейса: курсор над панелью или отпускание над ней перетаскивание
+# не обрывают). Сдвиг 1:1, без сглаживания: точка мира под курсором остаётся под ним (pan_sensitivity 1.0), центр зажат в
+# поле; упёрся в край — отсчёт заново, обратное движение сдвигает вид сразу. Работает при любом зуме и на паузе. Только отрисовка.
+func pan_begin(sp: Vector2) -> void:
+	if camera == null:
+		return
+	pan_active = true
+	pan_sp0 = sp
+	pan_cam0 = camera.position
+	_hint_event("camera")
+
+
+func pan_to(sp: Vector2) -> void:
+	if not pan_active or camera == null:
+		return
+	var z := camera.zoom.x
+	var want := pan_cam0 - (sp - pan_sp0) / z * float(cam_cfg.pan_sensitivity)
+	camera.position = _camera_clamp(want, z)
+	if camera.position != want:
+		pan_sp0 = sp
+		pan_cam0 = camera.position
+	zoom_anchor_screen = sp   # идёт сглаживание зума — оно продолжается вокруг курсора
+	zoom_anchor_world = screen_to_world(sp)
+	queue_redraw()   # полосы сигнала и маркеры у края вида
+
+
+func pan_end() -> void:
+	pan_active = false
 
 
 # Px экрана в px мира поверх базового зума: элементы интерфейса, нарисованные в мире (полосы у края, маркеры, подписи
@@ -3631,6 +3670,8 @@ func _banner_wave_cleared(entry: String, w: int, kills: int, bonus: int) -> void
 
 # Смена языка: баннер собрать заново (скрытый клавишей H остаётся скрытым), HUD и панели — сразу, не ждать таймера.
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		pan_end()   # отпускание средней кнопки вне окна могло не прийти
 	if what != NOTIFICATION_TRANSLATION_CHANGED:
 		return
 	if banner_build.is_valid():
@@ -7810,6 +7851,13 @@ func _key_action(event: InputEvent) -> String:
 func _input(event: InputEvent) -> void:
 	if event is InputEventWithModifiers:
 		mod_shift = event.shift_pressed
+	if pan_active:   # задача 28: перетаскивание камеры — движение и отпускание средней кнопки где угодно, и над панелями
+		if event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_MIDDLE) == 0:
+			pan_end()   # отпускание не дошло (меню паузы на дереве, окно без фокуса): кнопка уже не зажата
+		elif event is InputEventMouseMotion:
+			pan_to(event.position)
+		elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_MIDDLE and not event.pressed:
+			pan_end()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -7858,8 +7906,11 @@ func _unhandled_input(event: InputEvent) -> void:
 				_cmd_move_group(list, drag_start)
 			_hint_event("order")
 			queue_redraw()
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_MIDDLE:
+		if event.pressed:
+			pan_begin(event.position)   # задача 28: зажатое колесо — перетаскивание камеры (движение — в _input)
 	elif event is InputEventMouseMotion and (drag_active or box_active):
-		var p := (make_input_local(event) as InputEventMouseMotion).position
+		var p := screen_to_world(event.position) if pan_active else (make_input_local(event) as InputEventMouseMotion).position
 		if drag_active:
 			drag_cur = p
 		else:

@@ -10,7 +10,7 @@ extends SceneTree
 # Временное сохранение и настройки — user://bench_v76_hints.
 const HINTS := preload("res://scripts/hints.gd")
 const DIR := "user://bench_v76_hints"
-const DONE_ON := ["", "order", "hero_attack", "buy"]
+const DONE_ON := ["", "order", "hero_attack", "buy", "camera"]
 var fails := 0
 var clock := 0
 
@@ -64,8 +64,8 @@ func t_data() -> void:
 		ids[e.id] = true
 	check("подсказок %d, у всех id (без повторов), условие из %s, done_on из %s, seconds > 0" % [d.hints.size(), str(conds), str(DONE_ON)],
 		bad.is_empty() and h.defs.size() == d.hints.size(), str(bad))
-	var want := ["select_order", "mouse_orders", "hero_attack", "shop"]
-	check("начальные подсказки: выбор и приказ, ПКМ, удар героя, магазин", want.all(func(id): return ids.has(id)))
+	var want := ["select_order", "mouse_orders", "hero_attack", "shop", "camera"]
+	check("начальные подсказки: выбор и приказ, ПКМ, удар героя, магазин, камера (задача 28)", want.all(func(id): return ids.has(id)))
 	var font: Font = h.label.get_theme_font("font")
 	var fs: int = h.label.get_theme_font_size("font_size")
 	var wide := []
@@ -107,7 +107,10 @@ func t_logic(st: Node) -> void:
 	h.event(d1.done_on)
 	check("действие done_on «%s» убирает сразу" % d1.done_on, not h.visible)
 	h.poll(both)
-	check("обе показаны — больше ничего (флаги в Settings: %s)" % str(st.hints_seen), not h.visible and st.hints_seen == [d0.id, d1.id])
+	var rest: Array = h.defs.slice(2).filter(func(e): return both.has(e.when))   # задача 28: camera — тоже при battle_start
+	check("обе показаны — больше ни одна из них; дальше — следующая с тем же условием (%s) или ничего (флаги в Settings: %s)" % [
+		str(rest.map(func(e): return e.id)), str(st.hints_seen)], st.hints_seen.slice(0, 2) == [d0.id, d1.id]
+		and (h.current.get("id", "") == rest[0].id if not rest.is_empty() else not h.visible))
 	st.reset_hints()
 	st.set_hints_enabled(false)
 	h.poll(both)
@@ -175,7 +178,10 @@ func t_battle(st: Node) -> void:
 	check("приказ убирает первую, затем показана «ПКМ — идти…»", m.hints.current.get("id", "") == "mouse_orders", m.hints.label.text)
 	m._hint_event("order")
 	m._update_ui()
-	check("приказ убирает и её", not m.hints.visible)
+	check("приказ убирает и её, затем — «колесо: зум, зажатое колесо: перемещение» (задача 28)", m.hints.current.get("id", "") == "camera", m.hints.label.text)
+	m.zoom_by(1.0, Vector2(960, 540))   # зум колесом — действие camera
+	m._update_ui()
+	check("зум колесом убирает её", not m.hints.visible)
 	# первая передышка: волна кончилась
 	m.wave_state = m.WS_RESPITE
 	m.wave_number = 1

@@ -36,6 +36,7 @@ var sfx_slider: HSlider
 var layout := {}                # LAYOUT_DEFAULTS поверх data/ui_layout.json
 var key_groups := []            # [[заголовок, [действия]], ...] — как показаны на «Управлении»
 var group_heads: Array[Label] = []
+var info_rows := []             # задача 28: строки-пояснения без переназначения (колесо — зум, зажатое колесо — перемещение): [подпись, кнопка]
 
 
 func _ready() -> void:
@@ -214,6 +215,17 @@ static func key_groups_for(groups: Array, rebindable: Array, hidden: Array) -> A
 	return out.filter(func(g): return not g[1].is_empty())
 
 
+# Пояснения группы title из controls_groups (поле info: [[ключ подписи, ключ кнопки мыши], ...]); нет — [].
+static func info_for(groups: Array, title: String) -> Array:
+	var out := []
+	for g in groups:
+		if g is Dictionary and g.get("title") == title and g.get("info") is Array:
+			for e in g.info:
+				if e is Array and e.size() == 2 and e[0] is String and e[1] is String:
+					out.append(e)
+	return out
+
+
 # Вкладка «Управление»: «действие — клавиша» по группам (отряды, герой, камера, интерфейс) с заголовками; клик по клавише
 # и нажатие новой клавиши или средней/боковой кнопки мыши назначает её (Esc — отмена).
 func _setup_controls() -> void:
@@ -260,6 +272,23 @@ func _setup_controls() -> void:
 			b.pressed.connect(_wait_key.bind(a))
 			grid.add_child(b)
 			key_buttons[a] = b
+		for inf in info_for(layout.controls_groups, g[0]):
+			var l := Label.new()
+			l.text = inf[0]
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			l.custom_minimum_size.y = row_h
+			l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			l.add_theme_font_size_override("font_size", FONTS.px(26))
+			grid.add_child(l)
+			var b := Button.new()   # как строка клавиши, но не нажимается: мышь не переназначается
+			b.text = inf[1]
+			b.disabled = true
+			b.focus_mode = Control.FOCUS_NONE
+			b.custom_minimum_size = Vector2(320, row_h)
+			b.add_theme_font_size_override("font_size", FONTS.px(26))
+			UI.frame_button(b, false)
+			grid.add_child(b)
+			info_rows.append([l, b])
 	key_msg = Label.new()
 	key_msg.add_theme_font_size_override("font_size", FONTS.px(24))
 	key_msg.add_theme_color_override("font_color", Color(1.0, 0.75, 0.35))

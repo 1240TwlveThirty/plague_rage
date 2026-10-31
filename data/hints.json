@@ -1,5 +1,5 @@
 {
-	"_comment": "Подсказки первой минуты (задача 26, scripts/hints.gd). Каждая показывается один раз (id запоминается в user://settings.cfg [hints] seen), одновременно не больше одной, ждущие — в порядке списка. when — условие появления (main.gd hint_conditions: battle_start — идёт бой; squad_selected — выбран отряд; enemy_near_hero — зомби ближе enemy_near_paces шагов к живому Командиру; respite_after_wave — передышка после волны). text — ключ перевода, одна строка не шире max_width px экрана; {действие} — его клавиша. Исчезает через seconds с (реальное время) или по done_on: order — приказ ПКМ, hero_attack — удар героя, buy — покупка. bottom — нижний край над краем экрана, px экрана.",
+	"_comment": "Подсказки первой минуты (задача 26, scripts/hints.gd). Каждая показывается один раз (id запоминается в user://settings.cfg [hints] seen), одновременно не больше одной, ждущие — в порядке списка. when — условие появления (main.gd hint_conditions: battle_start — идёт бой; squad_selected — выбран отряд; enemy_near_hero — зомби ближе enemy_near_paces шагов к живому Командиру; respite_after_wave — передышка после волны). text — ключ перевода, одна строка не шире max_width px экрана; {действие} — его клавиша. Исчезает через seconds с (реальное время) или по done_on: order — приказ ПКМ, hero_attack — удар героя, buy — покупка, camera — зум колесом или перетаскивание камеры (задача 28). bottom — нижний край над краем экрана, px экрана.",
 	"enemy_near_paces": 8,
 	"max_width": 1200,
 	"bottom": 120,
@@ -8,6 +8,7 @@
 		{"id": "select_order", "when": "battle_start", "text": "HINT_SELECT_ORDER", "seconds": 10, "done_on": "order"},
 		{"id": "mouse_orders", "when": "squad_selected", "text": "HINT_MOUSE_ORDERS", "seconds": 10, "done_on": "order"},
 		{"id": "hero_attack", "when": "enemy_near_hero", "text": "HINT_HERO_ATTACK", "seconds": 8, "done_on": "hero_attack"},
-		{"id": "shop", "when": "respite_after_wave", "text": "HINT_SHOP", "seconds": 12, "done_on": "buy"}
+		{"id": "shop", "when": "respite_after_wave", "text": "HINT_SHOP", "seconds": 12, "done_on": "buy"},
+		{"id": "camera", "when": "battle_start", "text": "HINT_CAMERA", "seconds": 8, "done_on": "camera"}
 	]
 }

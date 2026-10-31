@@ -11,11 +11,11 @@
 	"_drag_min": "порог протяжки, px мира (задача 26): ПКМ короче — идти с сохранением формы (пока зажата — прозрачный призрак блока в точке приказа), длиннее — строй по линии; ЛКМ короче — выбор кликом, длиннее — рамка",
 	"settings_size": [1100, 640],
 	"settings_key_row_height": 56,
-	"_controls_groups": "вкладка «Управление» (задача 26): группы переназначаемых действий по порядку; заголовок — ключ перевода; пустая группа не показывается; «Камера» — сброс зума (задача 27)",
+	"_controls_groups": "вкладка «Управление» (задача 26): группы переназначаемых действий по порядку; заголовок — ключ перевода; пустая группа не показывается; «Камера» — сброс зума (задача 27); info — строки-пояснения без переназначения [подпись, кнопка мыши] (задача 28: колесо — зум, зажатое колесо — перемещение камеры)",
 	"controls_groups": [
 		{"title": "UI_SETTINGS_GROUP_SQUADS", "actions": ["squad_select_1", "squad_select_2", "squad_select_3", "squad_select_4", "squad_select_5", "squad_select_6", "squad_select_7", "squad_select_8", "squad_new", "squad_split", "squad_merge", "split_side", "war_cry"]},
 		{"title": "UI_SETTINGS_GROUP_HERO", "actions": ["move_up", "move_down", "move_left", "move_right", "hero_attack"]},
-		{"title": "UI_SETTINGS_GROUP_CAMERA", "actions": ["camera_zoom_reset"]},
+		{"title": "UI_SETTINGS_GROUP_CAMERA", "actions": ["camera_zoom_reset"], "info": [["UI_CONTROL_CAMERA_ZOOM", "UI_MOUSE_WHEEL"], ["UI_CONTROL_CAMERA_PAN", "UI_MOUSE_MIDDLE_HOLD"]]},
 		{"title": "UI_SETTINGS_GROUP_INTERFACE", "actions": ["wave_start", "buy_1", "buy_2", "buy_3", "buy_4", "buy_spear", "shop_toggle", "squad_panel_toggle"]}
 	],
 	"info_width": 320,
