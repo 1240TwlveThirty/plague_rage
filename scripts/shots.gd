@@ -4,14 +4,16 @@ extends Node
 #     user://<dir>/shot_<дата>_<время>.png.
 #   record_key (F10): запись последовательности кадров с частотой record_fps (реальное время) в user://<dir>/rec_<дата>_<время>/
 #     для гифки; повторное нажатие — стоп; не больше record_max_frames кадров (дальше запись выключается сама).
-#   Параметры запуска (после «--»): --scene=battle|respite|pick|hub — заготовленная сцена с фиксированным seed на своём временном
+#   Параметры запуска (после «--»): --scene=battle|respite|pick|hub|menu — заготовленная сцена с фиксированным seed на своём временном
 #     сохранении (сохранение игрока не трогается); --shot — после сцены кадр и выход (печатает SHOT|путь); --shot-dir=<папка> —
-#     куда класть кадры вместо user://<dir>.
+#     куда класть кадры вместо user://<dir>; --shot-native — кадр в размере окна, без приведения к size (окно 1280x720 и т. п.).
+#     Для хаба (задача 28в): --hub-tab=siege|gifts, --hub-scroll=top|bottom (список даров), --diary (дневник со всеми записями
+#     открыт); --lang=ru|en — язык сцены (настройки игрока не меняются).
 # Ничего не меняет в симуляции: сцена battle прокручивает тики так же, как обычный бой, и с --shot останавливает физику для кадра.
 signal saved(path: String)
 
 const CFG := "res://data/screenshot.json"
-const SCENES := ["battle", "respite", "pick", "hub"]
+const SCENES := ["battle", "respite", "pick", "hub", "menu"]
 const HIDDEN_GROUP := &"shot_hidden"
 const DT := 1.0 / 30.0
 
@@ -26,6 +28,8 @@ var rec_acc := 0.0
 var rec_last_us := 0
 var scene_arg := ""
 var shot_and_quit := false
+var shot_native := false       # --shot-native: кадр в размере окна
+var scene_opts := {}           # --hub-tab, --hub-scroll, --diary, --lang
 
 
 func _ready() -> void:
@@ -44,6 +48,14 @@ func _ready() -> void:
 			shot_and_quit = true
 		elif a.begins_with("--shot-dir="):
 			shot_dir = a.trim_prefix("--shot-dir=")
+		elif a == "--shot-native":
+			shot_native = true
+		elif a == "--diary":
+			scene_opts["diary"] = true
+		else:
+			for k in ["--hub-tab=", "--hub-scroll=", "--lang="]:
+				if a.begins_with(k):
+					scene_opts[k.trim_prefix("--").trim_suffix("=")] = a.trim_prefix(k)
 	if scene_arg != "":
 		if scene_arg in SCENES:
 			_run_scene.call_deferred(scene_arg)
@@ -90,7 +102,7 @@ func capture() -> String:
 	if not recording:
 		_hide_debug(false)
 	var path := shot_dir.path_join("shot_%s.png" % _stamp())
-	if not _save(img, path, 1):
+	if not _save(img, path, 0 if shot_native else 1):
 		return ""
 	print("SHOT|%s" % path)
 	saved.emit(path)
@@ -136,6 +148,9 @@ func _process(_delta: float) -> void:
 # Кадр в size (окно другого размера — масштаб), уменьшенный в down раз; папка создаётся.
 func _save(img: Image, path: String, down: int) -> bool:
 	var size: Array = cfg.get("size", [1920, 1080])
+	if down == 0:   # --shot-native: как есть
+		size = [img.get_width(), img.get_height()]
+		down = 1
 	var w := int(size[0]) / down
 	var h := int(size[1]) / down
 	if img.get_width() != w or img.get_height() != h:
@@ -176,12 +191,29 @@ func _run_scene(which: String) -> void:
 	g.save_path = save
 	g._setup()
 	g.run_seed = int(cfg.get("scene_seed", 3))
+	if scene_opts.has("lang"):
+		TranslationServer.set_locale(str(scene_opts.lang))
 	await _frames(2)
 	match which:
+		"menu":
+			g.go_menu()
+			await _frames(4)
 		"hub":
 			g.radiance = int(cfg.get("hub_radiance", 0))
+			if scene_opts.get("diary", false):   # все записи дневника прочитаны
+				g.diary_seen = [g.INTRO_ID]
+				for e in g.story.get("entries", []):
+					g.diary_seen.append(e.id)
 			g.go_hub()
 			await _frames(4)
+			var h: Node = get_tree().current_scene
+			if scene_opts.get("hub-tab", "") == "gifts":
+				h.tabs.current_tab = 1
+				await _frames(4)
+				if scene_opts.get("hub-scroll", "top") == "bottom":
+					h.gift_scroll.scroll_vertical = int(h.gift_scroll.get_v_scroll_bar().max_value)
+			if scene_opts.get("diary", false):
+				h._open_diary()
 		_:
 			if which == "battle":   # физика — только тики сцены: движок до них не прогоняет ни одного (кадр повторяем)
 				get_tree().node_added.connect(_freeze_main)

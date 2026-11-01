@@ -79,6 +79,8 @@ func _run() -> void:
 	h.tabs.current_tab = 1
 	await step(2)
 	var row: Dictionary = h.gift_rows["reserve"]
+	h.gift_scroll.ensure_control_visible(row.frame)   # задача 28в: строки даров в прокрутке
+	await step(2)
 	check("вкладка «Дары»: по центру, целиком на экране (ширина %d), баланс виден, «Купить» с рамкой" % int(h.tabs.get_global_rect().size.x), centered(h.tabs) and centered(h.radiance_label.get_parent())
 		and gold(row.button) and Rect2(Vector2.ZERO, SCREEN).encloses(row.reason.get_global_rect()), str(h.tabs.get_global_rect()))
 	h.tabs.current_tab = 0

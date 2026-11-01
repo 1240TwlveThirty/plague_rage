@@ -42,6 +42,16 @@
 		]
 	},
 	"corner_slot": {"id": "radiance", "icon": "radiance", "width": 200, "top": 16, "right": 16},
+	"_hub_gifts": "хаб, вкладка «Дары» (задача 28в): hub_row_font — кегль строк (набор Fusion Pixel 20/30/40/60); hub_row_height — высота строки не меньше этой, по факту — две строки текста кегля hub_row_font (эффект с переносом) плюс поля hub_row_pad [слева/справа, сверху/снизу]; hub_row_gap — между строками; hub_col_gap — между колонками; hub_columns — ширины колонок, px холста; hub_buy_size — «Купить»; hub_section_gap — между «Сиянием», шапкой таблицы и списком; hub_screen_margin — хаб не ближе к краю экрана сверху и снизу (высота прокрутки — остаток)",
+	"hub_row_font": 30,
+	"hub_row_height": 56,
+	"hub_row_gap": 8,
+	"hub_row_pad": [12, 6],
+	"hub_col_gap": 16,
+	"hub_columns": {"icon": 32, "name": 260, "level": 110, "next": 620, "price": 100, "buy": 160, "reason": 300},
+	"hub_buy_size": [160, 48],
+	"hub_section_gap": 12,
+	"hub_screen_margin": 24,
 	"_menu": "главное меню (задача 28в): logo_path — логотип в натуральный размер файла (арт уже x2), nearest; нет файла или не загрузился — текстовый заголовок (ключ GAME_TITLE, кегль title_font); logo_top_margin — от верха экрана до логотипа (заголовка), px холста 1920x1080; title_gap — от логотипа до кнопок; button_gap — между кнопками",
 	"menu": {"logo_path": "res://art/ui/ui_logo.png", "logo_top_margin": 353, "title_gap": 24, "button_gap": 24, "title_font": 72}
 }

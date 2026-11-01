@@ -405,13 +405,10 @@ func t_hub() -> void:
 	await step(1)
 	var names := PackedStringArray()
 	var icons := true
-	var grid: GridContainer = h.gift_rows["mine"].button.get_parent()
-	for c in grid.get_children():
-		if c is TextureRect:
-			icons = icons and c.texture != null
-	for id in h.gift_rows:
+	for id in h.gift_rows:   # задача 28в: строка — рамка в списке прокрутки, иконка — row.icon
+		icons = icons and h.gift_rows[id].icon.texture != null
 		names.append(tr(g.gift_defs[id].name_key))
-	check("15 строк даров в порядке файла (скрытых «Стен крепости» нет), у каждой иконка; баланс «Сияние: 200»", Array(h.gift_rows.keys()) == SHOWN and icons and grid.get_child_count() == 16 * 7
+	check("15 строк даров в порядке файла (скрытых «Стен крепости» нет), у каждой иконка; баланс «Сияние: 200»", Array(h.gift_rows.keys()) == SHOWN and icons and h.gift_list.get_child_count() == SHOWN.size()
 		and tr(h.radiance_label.text) == "Сияние: 200" and h.radiance_label.is_visible_in_tree() and not "Стены крепости" in names and "Меткие стрелки" in names, ", ".join(names))
 	var row: Dictionary = h.gift_rows["tempered_steel"]
 	check("строка дара: уровень «0 / 3», эффект следующего уровня «+6% к скорости атаки пехоты», цена 60, «Купить» активна, причины нет",

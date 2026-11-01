@@ -237,6 +237,32 @@ static func slot_frame() -> PanelContainer:
 	return p
 
 
+# Полоса прокрутки из data/ui_theme.json scrollbar (задача 28в): жёлоб и ползунок — плоские цвета палитры, толщина width (не
+# стандартная серая полоса Godot). Без ключа — те же значения по умолчанию.
+static func style_scrollbar(sb: ScrollBar) -> void:
+	var c: Dictionary = {"width": 16, "track": "#262b44", "grabber": "#c0cbdc", "grabber_hover": "#feae34", "grabber_pressed": "#f77622",
+		"border": "#181425", "border_width": 2}
+	var t = theme_cfg().get("scrollbar")
+	if t is Dictionary:
+		c.merge(t, true)
+	var half := float(c.width) * 0.5
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(str(c.track))
+	track.border_color = Color(str(c.border))
+	track.set_border_width_all(int(c.border_width))
+	track.set_content_margin_all(half)   # толщина полосы = width (поля слева и справа)
+	sb.add_theme_stylebox_override("scroll", track)
+	sb.add_theme_stylebox_override("scroll_focus", track)
+	for st in [["grabber", "grabber"], ["grabber_highlight", "grabber_hover"], ["grabber_pressed", "grabber_pressed"]]:
+		var g := StyleBoxFlat.new()
+		g.bg_color = Color(str(c[st[1]]))
+		g.border_color = Color(str(c.border))
+		g.set_border_width_all(int(c.border_width))
+		g.set_content_margin_all(half)
+		sb.add_theme_stylebox_override(st[0], g)
+	sb.custom_minimum_size.x = maxf(sb.custom_minimum_size.x, float(c.width))
+
+
 # Цвет текста на светлой рамке слота (строки даров): ui_theme.json slot_text_color; контраст проверяет check_v74_ui.
 static func slot_text_color() -> Color:
 	return Color(str(theme_cfg().get("slot_text_color", "#181425")))

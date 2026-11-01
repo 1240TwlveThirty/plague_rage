@@ -37,11 +37,10 @@ func _run() -> void:
 	await step(5)
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png(out_dir.path_join("hub_gifts_icons.png"))
-	var grid: GridContainer = h.gift_rows["mine"].button.get_parent()
-	var frames := grid.get_children().filter(func(c): return c is TextureRect)
-	var with_icon := frames.filter(func(c): return c.get_child_count() == 1 and c.get_global_rect().encloses(c.get_child(0).get_global_rect()))
+	var frames: Array = h.gift_rows.values().map(func(r): return r.icon)   # задача 28в: строки в прокрутке, иконка — row.icon
+	var with_icon: Array = frames.filter(func(c): return c.get_child_count() == 1 and c.get_global_rect().encloses(c.get_child(0).get_global_rect()))
 	check("строк даров %d, у каждой рамка с иконкой внутри" % h.gift_rows.size(), frames.size() == h.gift_rows.size() and with_icon.size() == frames.size())
-	check("таблица даров целиком на экране", SCREEN.encloses(grid.get_global_rect()), str(grid.get_global_rect()))
+	check("список даров (область прокрутки) целиком на экране", SCREEN.encloses(h.gift_scroll.get_global_rect()), str(h.gift_scroll.get_global_rect()))
 	h.queue_free()
 	await step(2)
 	DirAccess.remove_absolute(g.save_path)

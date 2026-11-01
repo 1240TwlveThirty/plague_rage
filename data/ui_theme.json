@@ -44,6 +44,8 @@
 	},
 	"panel_dark": {"file": "res://art/ui/ui_panel_dark_c8.png", "content_pad": 8, "fallback_modulate": "#303040"},
 	"slot_text_color": "#181425",
+	"_scrollbar": "полоса прокрутки (задача 28в, список даров в хабе): width — толщина на экране, px холста; track — жёлоб, grabber — ползунок (hover, pressed — под мышью и при перетаскивании); цвета палитры Endesga 32",
+	"scrollbar": {"width": 16, "track": "#262b44", "grabber": "#c0cbdc", "grabber_hover": "#feae34", "grabber_pressed": "#f77622", "border": "#181425", "border_width": 2},
 	"contrast_min": 4.5,
 	"frames": {
 		"shop": {"dir": "res://art/ui", "prefix": "ui_btn_shop_c", "art_size": [232, 32], "states": 4,

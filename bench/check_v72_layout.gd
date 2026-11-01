@@ -229,13 +229,15 @@ func t_hub(g: Node) -> void:
 		h.tabs.current_tab = 1
 		await step(3)
 		var out := []
-		for id in h.gift_rows:
+		for id in h.gift_rows:   # задача 28в: список прокручивается — каждая строка прокручивается в область и проверяется там
 			var row: Dictionary = h.gift_rows[id]
+			h.gift_scroll.ensure_control_visible(row.frame)
+			await step(1)
 			for c in [row.level, row.effect, row.price, row.button, row.reason]:
 				if not scr.encloses((c as Control).get_global_rect()):
 					out.append("%s.%s" % [id, (c as Control).name])
 		check("%s: «Дары» (кегль %d) с причинами отказа: панель %s целиком на экране, цена, «Купить» и причина не за краем" % [l,
-			FONTS.px(h.GIFT_FONT), str(h.gifts_panel.get_global_rect())], scr.encloses(h.gifts_panel.get_global_rect()) and out.is_empty(), ", ".join(out))
+			FONTS.px(int(h.gcfg.hub_row_font)), str(h.gifts_panel.get_global_rect())], scr.encloses(h.gifts_panel.get_global_rect()) and out.is_empty(), ", ".join(out))
 		g.go_menu()
 		await step(2)
 	g.gift_levels.clear()

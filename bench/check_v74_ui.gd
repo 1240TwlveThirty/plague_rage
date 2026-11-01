@@ -385,7 +385,7 @@ func t_dark(g: Node) -> void:
 	await step(3)
 	check("хаб: подложка вкладок — тёмная панель, у «Даров» своей рамки нет", h.tabs.get_theme_stylebox("panel") == sb
 		and h.gifts_panel.get_theme_stylebox("panel") is StyleBoxEmpty)
-	var frames: Array = h.row_frames_box.get_children()
+	var frames: Array = h.gift_list.get_children()   # задача 28в: строка — рамка ui_slot в списке прокрутки
 	var rows_ok: bool = frames.size() == h.gift_rows.size()
 	for id in h.gift_rows:
 		var b: Control = h.gift_rows[id].button
@@ -403,7 +403,7 @@ func t_dark(g: Node) -> void:
 	print("CONTRAST|строки даров на слоте|%s|%.2f" % [UI.slot_text_color().to_html(false), worst])
 	check("хаб: текст строк даров (уровень, эффект, цена, причина) на слоте — контраст %.2f >= %.1f" % [worst, minc], worst >= minc)
 	var head: Label = null
-	for c in h.gift_grid.get_children():
+	for c in h.gift_head.get_children():
 		if c is Label:
 			head = c
 			break
