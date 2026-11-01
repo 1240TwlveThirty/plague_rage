@@ -1,5 +1,5 @@
 {
-	"_comment": "Сцены для съёмки (задача 31), только отладочная сборка. Запуск: data/cine.json autostart_scene или параметр --cine-scene=<id> (после «--»). Поле 2208 x 1056 px, стена замка — y 745, ворота (1010, 745); орда идёт к воротам или на ближайшую цель по обычному поведению. Сцена: id, title_ru, title_en; seed — генератор сцены и боя; castle_visible — спрайт замка (только отрисовка); hero {on, pos}; squads — отряды игрока: type infantry|archer, count, pos [x, y] — центр строя, facing_deg — куда смотрит строй (0 — вверх, по часовой), width — бойцов в ряду, move_to [x, y] — куда отряд идёт на старте (нет — стоит); zombies — type (имя типа из unit_types.json: peasant, runner, fallen_knight), count, area: {rect [x, y, w, h]} или {ring {center [x, y], radius}}; start_paused — бой на паузе; camera {center [x, y], zoom — множитель игрока 1.0..cine_zoom_max}. Юнитов всего не больше 4000 (MAX_UNITS в main.gd).",
+	"_comment": "Сцены для съёмки (задача 31), только отладочная сборка. Запуск: data/cine.json autostart_scene или параметр --cine-scene=<id> (после «--»). Поле 2208 x 1056 px, стена замка — y 745, ворота (1010, 745); орда идёт к воротам или на ближайшую цель по обычному поведению. Сцена: id, title_ru, title_en; seed — генератор сцены и боя; castle_visible — спрайт замка (только отрисовка); hero {on, pos}; squads — отряды игрока: type infantry|archer, count, pos [x, y] — центр строя, facing_deg — куда смотрит строй (0 — вверх, по часовой), width — бойцов в ряду, hp — HP каждого бойца отряда только в сцене (нет — HP типа), move_to [x, y] — куда отряд идёт на старте (нет — стоит); zombies — type (имя типа из unit_types.json: peasant, runner, fallen_knight), count, area: {rect [x, y, w, h]} или {ring {center [x, y], radius}}; start_paused — бой на паузе; camera {center [x, y], zoom — множитель игрока 1.0..cine_zoom_max}. Юнитов всего не больше 4000 (MAX_UNITS в main.gd).",
 	"scenes": [
 		{
 			"id": "lone_soldier",
@@ -9,13 +9,13 @@
 			"castle_visible": false,
 			"hero": {"on": false, "pos": [1010, 520]},
 			"squads": [
-				{"type": "infantry", "count": 1, "pos": [1010, 470], "facing_deg": 0, "width": 1}
+				{"type": "infantry", "count": 1, "pos": [1010, 470], "facing_deg": 0, "width": 1, "hp": 400}
 			],
 			"zombies": [
 				{"type": "peasant", "count": 2000, "area": {"rect": [310, 0, 1400, 300]}}
 			],
 			"start_paused": false,
-			"camera": {"center": [1010, 330], "zoom": 3.0}
+			"camera": {"center": [1010, 470], "zoom": 3.0}
 		},
 		{
 			"id": "three_and_hero",

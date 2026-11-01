@@ -58,6 +58,10 @@ static func build(m: Node2D, sc: Dictionary) -> void:
 		base_used[base] = true
 		m.squad_width[s] = maxi(int(q.get("width", 1)), 1)
 		m._squad_add_units(s, type, int(q.count))
+		if q.has("hp"):   # HP бойцов отряда только в этой сцене (одинокий боец доживает до поздних кадров); правила боя не меняются
+			for i in m.count:
+				if m.unit_squad[i] == s:
+					m.hp[i] = float(q.hp)
 		var ang := deg_to_rad(float(q.get("facing_deg", 0.0))) - PI / 2.0
 		m.squad_angle[s] = ang
 		var c := _v(q.pos)

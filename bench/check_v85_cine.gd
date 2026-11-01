@@ -110,6 +110,33 @@ func _run() -> void:
 	check("хеш позиций и HP на тике %d одинаков: скорость 1.0 и 0.25, режим съёмки выкл и вкл (тиков %d/%d/%d/%d)" % [N, a[1], b[1], c[1], d[1]],
 		a[0] == b[0] and a[0] == c[0] and a[0] == d[0] and a[1] == N and b[1] == N and c[1] == N and d[1] == N)
 	check("на 0.25 реального времени больше (%.1f с против %.1f с)" % [b[2], a[2]], b[2] > a[2] * 2.0)
+	# --- поле hp отряда сцены (задача 34): HP бойцов — из данных сцены, без поля — HP типа; только в сцене ---
+	for sc in CINE_SCENES.all():
+		g.run_seed = int(sc.seed)
+		var prep := func(n: Node) -> void:
+			if n.get_script() != null and n.get_script().resource_path == "res://scripts/main.gd":
+				CINE_SCENES.prepare(n, sc)
+		node_added.connect(prep)
+		g.start_run(1)
+		await step(3)
+		node_added.disconnect(prep)
+		var sm: Node2D = current_scene
+		CINE_SCENES.build(sm, sc)
+		sm.set_physics_process(false)
+		var ok := true
+		var info := []
+		for q in sc.squads:
+			var want: float = float(q.hp) if q.has("hp") else float(sm.type_hp[sm.type_id[q.type]])
+			var n := 0
+			for i in sm.count:
+				if sm.team[i] == 0 and i != sm.hero_idx and sm.unit_type[i] == sm.type_id[q.type]:
+					n += 1
+					ok = ok and is_equal_approx(sm.hp[i], want)
+			ok = ok and n > 0
+			info.append("%s %d: HP %s%s" % [q.type, n, want, " (поле hp)" if q.has("hp") else ""])
+		check("сцена %s: HP бойцов по данным сцены (%s)" % [sc.id, ", ".join(info)], ok)
+		g.go_menu()
+		await step(2)
 	# --- интерфейс до и после режима ---
 	g.run_seed = 3
 	g.start_run(1)
