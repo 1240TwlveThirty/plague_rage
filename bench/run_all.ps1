@@ -144,6 +144,7 @@ Godot "дневник в хабе: тёмный текст на светлой �
 Godot "баннер в бою: «×» скрывает, «Журнал (H)» и H показывают, клики сквозь баннер (v84)" "res://bench/check_v84_banner.gd" "CHECK: провалов 0"
 Godot "режим съёмки: детерминизм при замедлении, интерфейс до и после, скорость 1.0 при выходе (v85)" "res://bench/check_v85_cine.gd" "CHECK: провалов 0"
 Godot "смоук с окном: F12 в режиме съёмки без интерфейса, карточка выбора в кадре и в замедлении (v85)" "res://bench/smoke_v85_cine.gd" "SMOKE: провалов 0" @() -Window
+Godot "фоны меню и хаба: картинки из data/ui_layout.json bg, затемнение, без файла — чёрный фон (v86)" "res://bench/check_v86_bg.gd" "CHECK: провалов 0"
 Godot "вид поля с окном: волна 10, герой, FPS (view_v47)" "res://bench/view_v47.gd" "HEROFX\|" @("$tmp", "1", "0", "nearest", "0", "0", "1") -Window
 Step "выход из игры: меню, пауза, бой, хаб, WM_CLOSE; предохранитель (v77)" "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$root\bench\check_v77_exit.ps1`"") "EXIT: провалов 0"
 Step "сцена --scene=battle, кадр (v75)" $godot @("--path", "`"$root`"", "--", "--scene=battle", "--shot", "--shot-dir=$tmp") "SHOT\|"

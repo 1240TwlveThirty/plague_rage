@@ -60,5 +60,7 @@
 	"banner_log_size": [200, 48],
 	"banner_log_font": 24,
 	"_menu": "главное меню (задача 28в): logo_path — логотип в натуральный размер файла (арт уже x2), nearest; нет файла или не загрузился — текстовый заголовок (ключ GAME_TITLE, кегль title_font); logo_top_margin — от верха экрана до логотипа (заголовка), px холста 1920x1080; title_gap — от логотипа до кнопок; button_gap — между кнопками",
-	"menu": {"logo_path": "res://art/ui/ui_logo.png", "logo_top_margin": 353, "title_gap": 24, "button_gap": 24, "title_font": 72}
+	"menu": {"logo_path": "res://art/ui/ui_logo.png", "logo_top_margin": 353, "title_gap": 24, "button_gap": 24, "title_font": 72},
+	"_bg": "фон главного меню и хаба (задача 33): menu_path, hub_path — картинки 1920x1080 на всё окно, фильтр линейный (не пиксельный арт); mode: cover — без искажений, лишнее обрезается по центру (contain — целиком, stretch — растянуть); dim_menu, dim_hub — затемнение поверх картинки 0..1 цвета dim_color (тёмные панели и текст читаются); нет файла или не загрузился — чёрный фон",
+	"bg": {"menu_path": "res://art/ui/ui_bg_menu.png", "hub_path": "res://art/ui/ui_bg_hub.png", "mode": "cover", "dim_menu": 0.0, "dim_hub": 0.35, "dim_color": "#000000"}
 }

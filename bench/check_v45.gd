@@ -38,8 +38,11 @@ func centered(c: Control) -> bool:
 	var r := c.get_global_rect()
 	return Rect2(Vector2.ZERO, SCREEN).encloses(r) and absf(r.get_center().x - SCREEN.x * 0.5) <= 1.0 and r.size.x > 0.0
 
-func bg_of(scene: Control) -> ColorRect:
-	return scene.get_child(0) as ColorRect
+# Фон (задача 33): первый ребёнок сцены на весь экран — картинка data/ui_layout.json bg.<which>_path или, без файла, чёрный ColorRect.
+func bg_ok(scene: Control) -> bool:
+	var b: Control = scene.get_child(0)
+	var has_tex: bool = b is TextureRect and (b as TextureRect).texture != null
+	return b == scene.bg and b.size == SCREEN and (has_tex or (b is ColorRect and (b as ColorRect).color == Color.BLACK))
 
 func real_stamp() -> String:
 	return "%d/%d" % [FileAccess.get_modified_time("user://save.json"), FileAccess.get_file_as_bytes("user://save.json").size()] if FileAccess.file_exists("user://save.json") else "нет"
@@ -65,7 +68,7 @@ func _run() -> void:
 	g.go_menu()
 	await step(3)
 	var mn := current_scene as Control
-	check("меню занимает весь экран, фон чёрный на весь экран", mn != null and mn.name == "Menu" and mn.size == SCREEN and bg_of(mn).color == Color.BLACK and bg_of(mn).size == SCREEN, str(mn.size))
+	check("меню занимает весь экран, фон на весь экран", mn != null and mn.name == "Menu" and mn.size == SCREEN and bg_ok(mn), str(mn.size))
 	check("«Играть» и «Выход» по центру, с рамкой, фокус на «Играть»", centered(mn.play_button) and centered(mn.quit_button) and gold(mn.play_button) and gold(mn.quit_button)
 		and mn.play_button.has_focus() and mn.play_button.get_global_rect().get_center().y > 300.0, str(mn.play_button.get_global_rect()))
 	mn.play_button.pressed.emit()
@@ -73,7 +76,7 @@ func _run() -> void:
 
 	print("хаб")
 	var h := current_scene as Control
-	check("хаб занимает весь экран, фон чёрный на весь экран", h != null and h.name == "Hub" and h.size == SCREEN and bg_of(h).color == Color.BLACK and bg_of(h).size == SCREEN, str(h.size))
+	check("хаб занимает весь экран, фон на весь экран", h != null and h.name == "Hub" and h.size == SCREEN and bg_ok(h), str(h.size))
 	check("вкладка «Осада»: вкладки и кнопки по центру и целиком на экране, кнопки с рамкой", centered(h.tabs) and centered(h.start_button) and centered(h.diary_button) and centered(h.menu_button)
 		and gold(h.start_button) and gold(h.diary_button) and gold(h.menu_button), str(h.tabs.get_global_rect()))
 	h.tabs.current_tab = 1

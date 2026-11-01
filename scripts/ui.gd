@@ -300,3 +300,63 @@ static func diary_text_color() -> Color:
 # Цвет текста на светлой рамке слота (строки даров): ui_theme.json slot_text_color; контраст проверяет check_v74_ui.
 static func slot_text_color() -> Color:
 	return Color(str(theme_cfg().get("slot_text_color", "#181425")))
+
+
+# Фон меню и хаба (задача 33): data/ui_layout.json bg поверх значений по умолчанию. which — "menu" или "hub": картинка <which>_path
+# на всё окно (mode: cover — без искажений, лишнее обрезается по центру; contain — целиком, по краям поля; stretch — растянуть),
+# поверх — затемнение dim_<which> (0..1) цвета dim_color. Нет файла или не загрузился — прежний ColorRect BG_COLOR без сообщений.
+const LAYOUT := "res://data/ui_layout.json"
+const BG_DEFAULT := {"menu_path": "res://art/ui/ui_bg_menu.png", "hub_path": "res://art/ui/ui_bg_hub.png", "mode": "cover",
+	"dim_menu": 0.0, "dim_hub": 0.35, "dim_color": "#000000"}
+const BG_MODES := {"cover": TextureRect.STRETCH_KEEP_ASPECT_COVERED, "contain": TextureRect.STRETCH_KEEP_ASPECT_CENTERED,
+	"stretch": TextureRect.STRETCH_SCALE}
+
+
+static func bg_cfg() -> Dictionary:
+	var out := BG_DEFAULT.duplicate()
+	var d = JSON.parse_string(FileAccess.get_file_as_string(LAYOUT)) if FileAccess.file_exists(LAYOUT) else null
+	if d is Dictionary and d.get("bg") is Dictionary:
+		out.merge(d.bg, true)
+	return out
+
+
+# Текстура: импортированная (игра, экспорт) или файл с диска (тесты: копия во временной папке). Нет файла — null без сообщений.
+static func load_texture(path: String) -> Texture2D:
+	if path == "":
+		return null
+	if ResourceLoader.exists(path):
+		return load(path) as Texture2D
+	if path.begins_with("res://") or not FileAccess.file_exists(path):
+		return null
+	var img := Image.load_from_file(ProjectSettings.globalize_path(path))
+	return ImageTexture.create_from_image(img) if img != null and not img.is_empty() else null
+
+
+# Фон и затемнение первыми детьми parent (ниже всего остального), мышь сквозь них. path — тесты: другой файл вместо <which>_path.
+# Возвращает [фон (TextureRect или ColorRect), затемнение ColorRect].
+static func add_background(parent: Control, which: String, path := "") -> Array:
+	var cfg := bg_cfg()
+	var tex := load_texture(path if path != "" else str(cfg.get(which + "_path", "")))
+	var bg: Control
+	if tex != null:
+		var rect := TextureRect.new()
+		rect.texture = tex
+		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		rect.stretch_mode = BG_MODES.get(str(cfg.mode), TextureRect.STRETCH_KEEP_ASPECT_COVERED)
+		rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR   # живописный фон, не пиксельный арт: при масштабе — сглаживание
+		bg = rect
+	else:
+		var cr := ColorRect.new()
+		cr.color = BG_COLOR
+		bg = cr
+	var dim := ColorRect.new()
+	var c := Color(str(cfg.dim_color))
+	c.a = clampf(float(cfg.get("dim_" + which, 0.0)), 0.0, 1.0)
+	dim.color = c
+	dim.visible = c.a > 0.0
+	for n: Control in [bg, dim]:
+		n.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		n.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		parent.add_child(n)
+		parent.move_child(n, [bg, dim].find(n))
+	return [bg, dim]

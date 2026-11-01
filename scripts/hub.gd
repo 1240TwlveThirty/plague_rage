@@ -49,17 +49,18 @@ var gift_head: HBoxContainer    # шапка таблицы даров: над �
 var gift_scroll: ScrollContainer   # прокрутка со строками даров
 var gift_list: VBoxContainer    # строки даров (рамка ui_slot на строку)
 var gift_row_h := 0.0          # высота строки дара (gift_row_height при сборке вкладки)
+var bg: Control           # фон: TextureRect с картинкой или ColorRect UI.BG_COLOR (файла нет или не загрузился)
+var bg_dim: ColorRect     # затемнение поверх фона (dim_hub): тёмные панели и дневник читаются на картинке
+var bg_path := ""         # тесты: другой файл фона вместо bg.hub_path (до добавления в дерево)
 var gift_rows := {}            # id дара -> {frame, icon, name, level, effect, price, button, reason}: строка магазина
 
 
 func _ready() -> void:
 	game = get_node("/root/Game")
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var bg := ColorRect.new()
-	bg.color = UI.BG_COLOR
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(bg)
+	var b := UI.add_background(self, "hub", bg_path)   # задача 33: картинка data/ui_layout.json bg.hub_path и затемнение dim_hub
+	bg = b[0]
+	bg_dim = b[1]
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(center)

@@ -14,15 +14,16 @@ var title_label: Label   # запасной заголовок: название
 var logo: TextureRect    # логотип; null — файла нет или он не загрузился
 var logo_path := ""      # тесты: другой файл логотипа вместо menu.logo_path (до добавления в дерево)
 var settings_menu: CanvasLayer   # экран «Настройки» поверх меню
+var bg: Control          # фон: TextureRect с картинкой или ColorRect UI.BG_COLOR (файла нет или не загрузился)
+var bg_dim: ColorRect    # затемнение поверх фона (dim_menu)
+var bg_path := ""        # тесты: другой файл фона вместо bg.menu_path (до добавления в дерево)
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var bg := ColorRect.new()
-	bg.color = UI.BG_COLOR
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(bg)
+	var b := UI.add_background(self, "menu", bg_path)   # задача 33: картинка data/ui_layout.json bg.menu_path и затемнение dim_menu
+	bg = b[0]
+	bg_dim = b[1]
 	var cfg := _layout()
 	var top := MarginContainer.new()   # отступ сверху до логотипа
 	top.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -78,17 +79,9 @@ func _layout() -> Dictionary:
 	return out
 
 
-# Текстура логотипа: импортированная (игра, экспорт) или файл с диска (тесты: копия во временной папке). Нет файла — null без
-# сообщений в логе: меню покажет текстовый заголовок.
+# Текстура логотипа: нет файла — null без сообщений в логе, меню покажет текстовый заголовок.
 static func _logo_texture(path: String) -> Texture2D:
-	if path == "":
-		return null
-	if ResourceLoader.exists(path):
-		return load(path) as Texture2D
-	if path.begins_with("res://") or not FileAccess.file_exists(path):
-		return null
-	var img := Image.load_from_file(ProjectSettings.globalize_path(path))
-	return ImageTexture.create_from_image(img) if img != null and not img.is_empty() else null
+	return UI.load_texture(path)
 
 
 func _button(box: Container, text: String) -> Button:
