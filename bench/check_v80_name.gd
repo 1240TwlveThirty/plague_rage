@@ -36,7 +36,10 @@ func _run() -> void:
 	var menu: Control = load("res://scenes/menu.tscn").instantiate()
 	root.add_child(menu)
 	await process_frame
-	check("главное меню: заголовок — ключ названия, на экране «%s»" % tr(menu.title_label.text), menu.title_label.text == TITLE_KEY and tr(menu.title_label.text) == title)
+	if menu.logo != null:   # задача 28в: логотип вместо текста; текстовый заголовок без файла логотипа — check_v81_menu_logo
+		check("главное меню: логотип (%s), текстового заголовка нет" % menu.logo.texture.resource_path, menu.title_label == null)
+	else:
+		check("главное меню: заголовок — ключ названия, на экране «%s»" % tr(menu.title_label.text), menu.title_label.text == TITLE_KEY and tr(menu.title_label.text) == title)
 	menu.queue_free()
 	# папка данных
 	var custom := String(ProjectSettings.get_setting("application/config/custom_user_dir_name", ""))

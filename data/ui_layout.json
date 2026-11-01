@@ -41,5 +41,7 @@
 			{"id": "gold", "icon": "coin", "width": 200}
 		]
 	},
-	"corner_slot": {"id": "radiance", "icon": "radiance", "width": 200, "top": 16, "right": 16}
+	"corner_slot": {"id": "radiance", "icon": "radiance", "width": 200, "top": 16, "right": 16},
+	"_menu": "главное меню (задача 28в): logo_path — логотип в натуральный размер файла (арт уже x2), nearest; нет файла или не загрузился — текстовый заголовок (ключ GAME_TITLE, кегль title_font); logo_top_margin — от верха экрана до логотипа (заголовка), px холста 1920x1080; title_gap — от логотипа до кнопок; button_gap — между кнопками",
+	"menu": {"logo_path": "res://art/ui/ui_logo.png", "logo_top_margin": 353, "title_gap": 24, "button_gap": 24, "title_font": 72}
 }

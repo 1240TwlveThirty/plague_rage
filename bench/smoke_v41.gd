@@ -104,7 +104,8 @@ func _run() -> void:
 	check("главная сцена проекта — menu.tscn, автозагрузка Game есть", ProjectSettings.get_setting("application/run/main_scene") == "res://scenes/menu.tscn")
 	g.go_menu()
 	await step(40)   # окно только что открылось: первый клик сразу после старта иногда теряется
-	check("меню: заголовок — название игры (ключ GAME_TITLE, «%s»), «Играть» в фокусе, «Выход»" % tr("GAME_TITLE"), is_scene("Menu") and tr(current_scene.title_label.text) == tr("GAME_TITLE")
+	check("меню: заголовок — логотип или название игры (ключ GAME_TITLE, «%s»), «Играть» в фокусе, «Выход»" % tr("GAME_TITLE"), is_scene("Menu")
+		and (current_scene.logo != null or tr(current_scene.title_label.text) == tr("GAME_TITLE"))
 		and current_scene.play_button.has_focus() and tr(current_scene.quit_button.text) == "Выход")
 	await click(current_scene.play_button)
 	check("клик «Играть» -> хаб: итог пуст, выбор осады скрыт, «Начать забег» в фокусе", is_scene("Hub") and tr(current_scene.last_label.text) == ""
