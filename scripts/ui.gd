@@ -263,6 +263,27 @@ static func style_scrollbar(sb: ScrollBar) -> void:
 	sb.custom_minimum_size.x = maxf(sb.custom_minimum_size.x, float(c.width))
 
 
+# Относительная яркость и контраст (WCAG 2) — подбор фона дневника; тесты считают так же.
+static func luminance(c: Color) -> float:
+	var f := func(v: float) -> float: return v / 12.92 if v <= 0.03928 else pow((v + 0.055) / 1.055, 2.4)
+	return 0.2126 * f.call(c.r) + 0.7152 * f.call(c.g) + 0.0722 * f.call(c.b)
+
+
+static func contrast(a: Color, b: Color) -> float:
+	return (maxf(luminance(a), luminance(b)) + 0.05) / (minf(luminance(a), luminance(b)) + 0.05)
+
+
+# Цвет середины арта светлой панели (panel.file); нет файла — белый.
+static func panel_center_color() -> Color:
+	var img := _image(str(theme_cfg().get("panel", {}).get("file", "")))
+	return img.get_pixel(img.get_width() / 2, img.get_height() / 2) if img != null else Color.WHITE
+
+
+# Текст дневника (задача 28в): ui_theme.json diary_text_color.
+static func diary_text_color() -> Color:
+	return Color(str(theme_cfg().get("diary_text_color", "#181425")))
+
+
 # Цвет текста на светлой рамке слота (строки даров): ui_theme.json slot_text_color; контраст проверяет check_v74_ui.
 static func slot_text_color() -> Color:
 	return Color(str(theme_cfg().get("slot_text_color", "#181425")))

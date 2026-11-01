@@ -6,7 +6,6 @@ const FONTS := preload("res://scripts/fonts.gd")   # кегли и контур�
 const UI := preload("res://scripts/ui.gd")
 const ESC_MENU := preload("res://scripts/esc_menu.gd")
 const WARN_COLOR := Color(1.0, 0.75, 0.35)
-const STORY_COLOR := Color(1.0, 0.88, 0.6)   # как у дневника в баннере боя
 const DIARY_SIZE := Vector2(0.5, 0.7)        # панель дневника: доля экрана
 const DIARY_EMPTY := "HUB_DIARY_EMPTY"
 const RADIANCE_COLOR := Color(0.6, 0.9, 1.0)
@@ -400,13 +399,25 @@ func _setup_diary() -> void:
 	diary_panel.anchor_top = 0.5 - DIARY_SIZE.y * 0.5
 	diary_panel.anchor_bottom = 0.5 + DIARY_SIZE.y * 0.5
 	UI.frame_panel(diary_panel)
+	# задача 28в: текст дневника тёмный (diary_text_color); панель светлая — как есть, иначе (контраст ниже contrast_min) — заливка
+	# diary_panel_color с теми же полями
+	if UI.contrast(UI.diary_text_color(), UI.panel_center_color()) < float(UI.theme_cfg().get("contrast_min", 4.5)):
+		var fill := StyleBoxFlat.new()
+		fill.bg_color = Color(str(UI.theme_cfg().get("diary_panel_color", "#e8d5a8")))
+		var m := UI.panel_margins() * 0.5
+		fill.content_margin_left = m.x
+		fill.content_margin_right = m.x
+		fill.content_margin_top = m.y
+		fill.content_margin_bottom = m.y
+		diary_panel.add_theme_stylebox_override("panel", fill)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 16)
 	diary_panel.add_child(col)
-	UI.frame_label(_label(col, "UI_DIARY_TITLE", 40))
+	_diary_ink(_label(col, "UI_DIARY_TITLE", 40))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	UI.style_scrollbar(scroll.get_v_scroll_bar())   # полоса — как у списка даров (ui_theme.json scrollbar)
 	col.add_child(scroll)
 	diary_box = VBoxContainer.new()
 	diary_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -439,24 +450,29 @@ func _open_diary() -> void:
 		c.queue_free()
 	var lines := _diary_lines()
 	if lines.is_empty():
-		_diary_text(DIARY_EMPTY, 28, Color.WHITE)
+		_diary_text(DIARY_EMPTY, 28)
 	for line in lines:
 		if line[0] != "":
-			_diary_text(line[0], 22, Color(1.0, 1.0, 1.0, 0.6))
-		_diary_text(line[1], 28, STORY_COLOR)
+			_diary_text(line[0], 22)   # заголовок записи — мельче
+		_diary_text(line[1], 28)
 	diary_panel.visible = true
 	diary_close.grab_focus()
 
 
-func _diary_text(text: String, size: int, color: Color) -> void:
+func _diary_text(text: String, size: int) -> void:
 	var l := Label.new()
 	l.text = text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	l.add_theme_font_size_override("font_size", FONTS.px(size))
-	l.add_theme_color_override("font_color", color)
-	UI.frame_label(l)
+	_diary_ink(l)
 	diary_box.add_child(l)
+
+
+# Текст дневника: тёмный diary_text_color на светлой панели, без контура (тёмный контур тёмного текста только утолщает буквы).
+func _diary_ink(l: Label) -> void:
+	l.add_theme_color_override("font_color", UI.diary_text_color())
+	l.add_theme_constant_override("outline_size", 0)
 
 
 func _close_diary() -> void:
