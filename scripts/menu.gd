@@ -8,6 +8,7 @@ const SETTINGS_MENU := preload("res://scripts/settings_menu.gd")
 var play_button: Button
 var settings_button: Button
 var quit_button: Button
+var title_label: Label   # название игры — ключ GAME_TITLE (одно место: data/translations.csv)
 var settings_menu: CanvasLayer   # экран «Настройки» поверх меню
 
 
@@ -24,11 +25,11 @@ func _ready() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 24)
 	center.add_child(box)
-	var title := Label.new()
-	title.text = "UI_MENU_TITLE"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", FONTS.px(72))
-	box.add_child(title)
+	title_label = Label.new()
+	title_label.text = "GAME_TITLE"
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.add_theme_font_size_override("font_size", FONTS.px(72))
+	box.add_child(title_label)
 	play_button = _button(box, "UI_MENU_PLAY")
 	play_button.pressed.connect(_on_play)
 	play_button.set_meta("sfx", "click_play")   # звук нажатия (Audio)

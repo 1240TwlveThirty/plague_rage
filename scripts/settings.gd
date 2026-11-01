@@ -55,6 +55,7 @@ func _ready() -> void:
 		language = "ru"       # тесты сверяют русские строки
 		AudioServer.set_bus_mute(0, true)   # тесты без звука в колонках (плееры при этом играют)
 	TranslationServer.set_locale(language)
+	get_window().title = tr("GAME_TITLE")   # название игры — одно место, ключ перевода (не переводится)
 	_apply_audio()
 
 
