@@ -545,7 +545,7 @@ var arrow_from := PackedVector2Array()
 var arrow_t0 := PackedFloat64Array()
 var arrow_vid := PackedInt32Array()
 var arrow_fx: Node2D = null     # видимые стрелы (scripts/arrow_fx.gd); null — без отрисовки (бенчи без дерева, нет data/arrows_fx.json)
-var arrow_fx_on := false        # отрисовка стрел включена (настройка «Показывать стрелы»): только тогда _process_arrows отдаёт события
+var arrow_fx_on := false        # отрисовка стрел включена (настройка «Показывать стрелы»): только тогда _fire_arrow и _process_arrows отдают события
 var arrow_rng := RandomNumberGenerator.new()
 var arrows_fired := 0   # статистика
 var arrows_hit := 0     # статистика
@@ -4419,14 +4419,14 @@ func _setup_arrow_fx() -> void:
 # «Показывать стрелы» (настройка): нет узла настроек (бенчи) — показывать.
 func _arrows_shown() -> bool:
 	var st := get_node_or_null("/root/Settings")
-	return st == null or st.get("show_arrows") != false
+	return st == null or bool(st.show_arrows)
 
 
 # Кадр стрел: время картинки — как у юнитов (lerp(prev_pos, pos, frac): тик tick_counter - 1 + frac; на паузе — pos, доля 1).
 func _arrow_fx_frame(frac: float, dt: float) -> void:
 	arrow_fx_on = _arrows_shown()
 	arrow_fx.on = arrow_fx_on
-	arrow_fx.frame(tick_counter - 1 + frac, dt, view_rect(), camera.zoom.x if camera != null else 1.0)
+	arrow_fx.frame(tick_counter - 1 + frac, dt, camera.zoom.x if camera != null else 1.0)
 
 
 # «Жестокость» (настройка, задача 23): false — без крови и кусков (искры, пыль, серые пятна).
@@ -7958,6 +7958,8 @@ func _fire_arrow(i: int, aim: Vector2, delay: float, own_range := false, release
 	arrow_t0[arrow_count] = minf(tick_counter + release_in * Engine.physics_ticks_per_second, arrow_tick[arrow_count] - 1)
 	arrow_vid[arrow_count] = arrows_fired
 	arrow_count += 1
+	if arrow_fx_on:   # только отрисовка (задача 29): стрела — в слот полёта scripts/arrow_fx.gd
+		arrow_fx.fire(arrow_count - 1)
 	arrows_fired += 1
 	if contact_tick < 0:
 		arrows_before_contact += 1
@@ -7999,7 +8001,7 @@ func _process_arrows() -> void:
 				kills_by_arrows += 1
 			arrows_hit += 1
 		if arrow_fx_on:   # только отрисовка (задача 29): попадание или промах — эффект в scripts/arrow_fx.gd
-			arrow_fx.land(arrow_from[a], p, arrow_tick[a], best != -1, pos[best] if best != -1 else p)
+			arrow_fx.land(a, best != -1, pos[best] if best != -1 else p)
 		arrow_count -= 1
 		arrow_land[a] = arrow_land[arrow_count]
 		arrow_tick[a] = arrow_tick[arrow_count]

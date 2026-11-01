@@ -22,6 +22,7 @@ UI_SHAKE_WEAK,Слабая,Weak
 UI_SHAKE_NORMAL,Обычная,Normal
 UI_SHAKE_STRONG,Сильная,Strong
 UI_SETTINGS_GORE,Жестокость,Gore
+UI_SETTINGS_SHOW_ARROWS,Показывать стрелы,Show arrows
 UI_GORE_OFF,Выкл.,Off
 UI_GORE_NORMAL,Обычная,Normal
 UI_SETTINGS_KEY_WAIT,Нажмите клавишу или кнопку мыши… (Esc — отмена),Press a key or mouse button… (Esc to cancel)

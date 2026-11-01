@@ -135,6 +135,8 @@ Godot "смоук с окном: нет чёрных полос за краем 
 Godot "сброс прогресса: профиль во временной папке, подтверждение (v78)" "res://bench/check_v78_reset.gd" "CHECK: провалов 0"
 Godot "смоук с окном: герой под слоями, силуэт только где закрыт (v78)" "res://bench/smoke_v78_hero.gd" "SMOKE: провалов 0" @() -Window
 Godot "кадр героя 24x24, запасная сетка legacy, кольцо (v78)" "res://bench/check_v78_hero.gd" "CHECK: провалов 0"
+Godot "видимые стрелы: полёт, предел, падение, звук, флаг (v79)" "res://bench/check_v79_arrows.gd" "CHECK: провалов 0"
+Godot "смоук с окном: стрелы на экране там, где их считает шейдер (v79)" "res://bench/smoke_v79_arrows.gd" "SMOKE: провалов 0" @() -Window
 Godot "вид поля с окном: волна 10, герой, FPS (view_v47)" "res://bench/view_v47.gd" "HEROFX\|" @("$tmp", "1", "0", "nearest", "0", "0", "1") -Window
 Step "выход из игры: меню, пауза, бой, хаб, WM_CLOSE; предохранитель (v77)" "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$root\bench\check_v77_exit.ps1`"") "EXIT: провалов 0"
 Step "сцена --scene=battle, кадр (v75)" $godot @("--path", "`"$root`"", "--", "--scene=battle", "--shot", "--shot-dir=$tmp") "SHOT\|"

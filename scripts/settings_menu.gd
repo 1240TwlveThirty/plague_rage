@@ -21,6 +21,7 @@ var shake_option: OptionButton   # «Тряска экрана»: выкл / с�
 var gore_option: OptionButton    # «Жестокость»: выкл / обычная (задача 23)
 var card_anim_option: OptionButton   # «Анимация выбора карточки»: выкл / короткая / полная (задача 25)
 var hints_check: CheckButton     # «Подсказки» вкл/выкл (задача 26)
+var arrows_check: CheckButton    # «Показывать стрелы» (задача 29)
 var hints_reset_button: Button   # «Сбросить подсказки»
 var data_folder_button: Button   # «Открыть папку данных» (user://: настройки, сохранение, журнал забегов runs.csv)
 var game_msg: Label              # итог «Сбросить подсказки» и «Сбросить прогресс»
@@ -143,6 +144,12 @@ func _setup_video() -> void:
 	shake_option = _option_row(col, "UI_SETTINGS_SCREEN_SHAKE", settings.SHAKE_LEVELS, settings.screen_shake_level, settings.set_screen_shake_level)
 	gore_option = _option_row(col, "UI_SETTINGS_GORE", settings.GORE_LEVELS, settings.gore, settings.set_gore)
 	card_anim_option = _option_row(col, "UI_SETTINGS_CARD_ANIM", settings.CARD_ANIM_LEVELS, settings.card_pick_anim, settings.set_card_pick_anim)
+	arrows_check = CheckButton.new()
+	arrows_check.text = "UI_SETTINGS_SHOW_ARROWS"
+	arrows_check.add_theme_font_size_override("font_size", FONTS.px(FONT))
+	arrows_check.button_pressed = settings.show_arrows
+	arrows_check.toggled.connect(settings.set_show_arrows)
+	col.add_child(arrows_check)
 
 
 # Строка «подпись — выбор из списка» (ключи перевода items, индекс — значение).
@@ -486,6 +493,7 @@ func _on_changed(_key: String) -> void:
 	shake_option.select(settings.screen_shake_level)
 	gore_option.select(settings.gore)
 	card_anim_option.select(settings.card_pick_anim)
+	arrows_check.set_pressed_no_signal(settings.show_arrows)
 	hints_check.set_pressed_no_signal(settings.hints_enabled)
 	music_slider.set_value_no_signal(settings.music_volume)
 	sfx_slider.set_value_no_signal(settings.sfx_volume)

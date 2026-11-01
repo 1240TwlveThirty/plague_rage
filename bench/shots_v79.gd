@@ -33,8 +33,16 @@ func shot(out: String, name: String, info: String) -> void:
 	DirAccess.copy_absolute(p, dst)
 	DirAccess.remove_absolute(p)
 	var fx: Node2D = m.arrow_fx
-	print("SHOT79|%s|%s|в полёте %d, на экране %d, искр %d, воткнутых %d|вид %s" % [dst.get_file(), info, fx.in_flight, fx.drawn,
-		fx.get("spark_n") if fx.get("spark_n") != null else 0, fx.get("stuck_n") if fx.get("stuck_n") != null else 0, str(m.view_rect())])
+	print("SHOT79|%s|%s|в полёте %d, на экране %d, искр %d, воткнутых %d|вид %s" % [dst.get_file(), info, inflight(), fx.count_in_flight(m.tick_counter),
+		fx.spark_n, fx.stuck_count(), str(m.view_rect())])
+
+# Стрел в полёте (очередь main) в момент картинки на паузе (td = tick_counter).
+func inflight() -> int:
+	var n := 0
+	for a in m.arrow_count:
+		if m.arrow_t0[a] <= m.tick_counter and m.tick_counter < m.arrow_tick[a]:
+			n += 1
+	return n
 
 # Середина стрел в полёте (по земле) в момент картинки.
 func flight_center() -> Vector2:
@@ -83,8 +91,8 @@ func _run() -> void:
 	await _frames(2)
 	var fx: Node2D = m.arrow_fx
 	# залп в полёте: от начала волны тики по одному с кадром, пока в полёте не окажется VOLLEY_MIN стрел (первый большой залп)
-	var ok := await run_until(func(): return fx.in_flight >= VOLLEY_MIN, 1800)
-	print("SHOT79|залп найден: %s, тик %d, в полёте %d" % [ok, m.tick_counter, fx.in_flight])
+	var ok := await run_until(func(): return inflight() >= VOLLEY_MIN, 1800)
+	print("SHOT79|залп найден: %s, тик %d, в полёте %d" % [ok, m.tick_counter, inflight()])
 	await run_until(func(): return false, 6)   # стрелы на середине дуги
 	m.paused = true
 	await _frames(2)
@@ -94,21 +102,20 @@ func _run() -> void:
 	await view(2.0, c)
 	await shot(out, "arrows_z2", "залп в полёте, зум 2.0, середина %s" % str(c))
 	m.paused = false
-	if fx.get("stuck_n") != null:
-		# попадания: дождаться падения залпа (искры), зум 2.0 к местам падения
-		await run_until(func(): return fx.spark_n >= 6, 240)
-		m.paused = true
-		await _frames(1)
-		var sc: Vector2 = fx.spark_center()
-		await view(2.0, sc)
-		await shot(out, "arrows_hits", "попадания, зум 2.0, %s" % str(sc))
-		m.paused = false
-		await run_until(func(): return fx.spark_n == 0 and fx.stuck_n >= 4, 120)
-		m.paused = true
-		await _frames(1)
-		var stc: Vector2 = fx.stuck_center()
-		await view(2.0, stc)
-		await shot(out, "arrows_stuck", "воткнутые стрелы, зум 2.0, %s" % str(stc))
+	# попадания: дождаться падения залпа (искры), зум 2.0 к местам падения
+	await run_until(func(): return fx.spark_n >= 6, 240)
+	m.paused = true
+	await _frames(1)
+	var sc: Vector2 = fx.spark_center()
+	await view(2.0, sc)
+	await shot(out, "arrows_hits", "попадания, зум 2.0, %s" % str(sc))
+	m.paused = false
+	await run_until(func(): return fx.spark_n == 0 and fx.stuck_count() >= 4, 120)
+	m.paused = true
+	await _frames(1)
+	var stc: Vector2 = fx.stuck_center()
+	await view(2.0, stc)
+	await shot(out, "arrows_stuck", "воткнутые стрелы, зум 2.0, %s" % str(stc))
 	DirAccess.remove_absolute(g.save_path)
 	DirAccess.remove_absolute("user://bench_v79shots")
 	quit(0)

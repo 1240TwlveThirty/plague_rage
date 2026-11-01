@@ -34,6 +34,7 @@ var gore := 1
 # display/card_pick_anim (задача 25): анимация выбора карточки — 0 выкл, 1 короткая, 2 полная (по умолчанию)
 const CARD_ANIM_LEVELS := ["UI_CARD_ANIM_OFF", "UI_CARD_ANIM_SHORT", "UI_CARD_ANIM_FULL"]
 var card_pick_anim := 2
+var show_arrows := true            # display/show_arrows: видимые стрелы лучников (задача 29); выкл — для слабых машин
 var squad_panel_expanded := true   # ui/squad_panel_expanded: панель отрядов развёрнута (задача 24)
 var hints_enabled := true          # hints/enabled: подсказки первой минуты (задача 26)
 var hints_seen: Array = []         # hints/seen: id показанных подсказок (каждая — один раз)
@@ -68,6 +69,7 @@ func load_settings() -> void:
 	screen_shake_level = clampi(int(cfg.get_value("display", "screen_shake_level", SHAKE_NORMAL if old_shake else SHAKE_OFF)), 0, SHAKE_LEVELS.size() - 1)
 	gore = clampi(int(cfg.get_value("gameplay", "gore", 1)), 0, GORE_LEVELS.size() - 1)
 	card_pick_anim = clampi(int(cfg.get_value("display", "card_pick_anim", 2)), 0, CARD_ANIM_LEVELS.size() - 1)
+	show_arrows = bool(cfg.get_value("display", "show_arrows", true))
 	squad_panel_expanded = bool(cfg.get_value("ui", "squad_panel_expanded", true))
 	hints_enabled = bool(cfg.get_value("hints", "enabled", true))
 	var hs = cfg.get_value("hints", "seen", [])
@@ -91,6 +93,7 @@ func save_settings() -> void:
 	cfg.set_value("display", "screen_shake_level", screen_shake_level)
 	cfg.set_value("gameplay", "gore", gore)
 	cfg.set_value("display", "card_pick_anim", card_pick_anim)
+	cfg.set_value("display", "show_arrows", show_arrows)
 	cfg.set_value("ui", "squad_panel_expanded", squad_panel_expanded)
 	cfg.set_value("hints", "enabled", hints_enabled)
 	cfg.set_value("hints", "seen", hints_seen)
@@ -166,6 +169,14 @@ func set_card_pick_anim(level: int) -> void:
 	card_pick_anim = level
 	save_settings()
 	changed.emit("display/card_pick_anim")
+
+
+func set_show_arrows(on: bool) -> void:
+	if on == show_arrows:
+		return
+	show_arrows = on
+	save_settings()
+	changed.emit("display/show_arrows")
 
 
 func set_gore(level: int) -> void:
