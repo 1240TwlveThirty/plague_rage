@@ -1,0 +1,20 @@
+{
+	"_comment": "Видимые стрелы лучников (задача 29; только отрисовка, свой ГСЧ arrow_fx_rng, симуляция не меняется). Размеры — px мира, время — с.",
+	"max_visible": 512,
+	"_art": "art_path: картинка стрелы остриём вправо (один кадр — весь файл), art_size_px — её размер в мире; файла нет — стрела рисуется кодом: древко shaft_px, наконечник, контур 1 px",
+	"art_path": "res://art/arrow.png",
+	"art_size_px": [6.0, 3.0],
+	"shaft_px": 4,
+	"shaft_color": "#ead4aa",
+	"head_color": "#c0cbdc",
+	"outline_color": "#181425",
+	"_flight": "дуга: высота вершины = arc_height_rel * дистанция; launch_height_px — высота выпуска над лучником (линейно уходит в 0 к точке падения)",
+	"arc_height_rel": 0.18,
+	"launch_height_px": 4.0,
+	"shadow_color": "#181425",
+	"shadow_alpha": 0.35,
+	"shadow_size_px": [3.0, 1.0],
+	"_lod": "стрела короче lod_min_screen_px пикселей экрана (длина в мире * зум) — полёт не рисуется; view_margin_px — запас вокруг вида",
+	"lod_min_screen_px": 1.0,
+	"view_margin_px": 48.0
+}

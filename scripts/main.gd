@@ -539,6 +539,13 @@ var arrow_land := PackedVector2Array()      # точка падения
 var arrow_tick := PackedInt32Array()        # тик падения
 var arrow_dmg := PackedFloat32Array()
 var arrow_count := 0
+# Только отрисовка (задача 29, scripts/arrow_fx.gd): откуда летит, тик выпуска на экране (дробный), номер выстрела. Пишутся рядом с
+# очередью и переставляются вместе с ней; симуляция их не читает.
+var arrow_from := PackedVector2Array()
+var arrow_t0 := PackedFloat64Array()
+var arrow_vid := PackedInt32Array()
+var arrow_fx: Node2D = null     # видимые стрелы (scripts/arrow_fx.gd); null — без отрисовки (бенчи без дерева, нет data/arrows_fx.json)
+var arrow_fx_on := false        # отрисовка стрел включена (настройка «Показывать стрелы»): только тогда _process_arrows отдаёт события
 var arrow_rng := RandomNumberGenerator.new()
 var arrows_fired := 0   # статистика
 var arrows_hit := 0     # статистика
@@ -4396,6 +4403,32 @@ func _hit_particle(p: Vector2, v: Vector2, life: float, size: float, col: Color,
 	hit_drag[i] = drag
 
 
+# Видимые стрелы (задача 29): полёт над слоями (z частиц ударов), тени и воткнутые — на земле, под юнитами.
+func _setup_arrow_fx() -> void:
+	if arrow_fx != null:
+		return
+	var fx: Node2D = preload("res://scripts/arrow_fx.gd").new()
+	fx.name = "ArrowFx"
+	add_child(fx)
+	if not fx.setup(self, LEAF_Z + 1, unit_node):
+		fx.queue_free()
+		return
+	arrow_fx = fx
+
+
+# «Показывать стрелы» (настройка): нет узла настроек (бенчи) — показывать.
+func _arrows_shown() -> bool:
+	var st := get_node_or_null("/root/Settings")
+	return st == null or st.get("show_arrows") != false
+
+
+# Кадр стрел: время картинки — как у юнитов (lerp(prev_pos, pos, frac): тик tick_counter - 1 + frac; на паузе — pos, доля 1).
+func _arrow_fx_frame(frac: float, dt: float) -> void:
+	arrow_fx_on = _arrows_shown()
+	arrow_fx.on = arrow_fx_on
+	arrow_fx.frame(tick_counter - 1 + frac, dt, view_rect(), camera.zoom.x if camera != null else 1.0)
+
+
 # «Жестокость» (настройка, задача 23): false — без крови и кусков (искры, пыль, серые пятна).
 func _fx_gore() -> bool:
 	var st := get_node_or_null("/root/Settings")
@@ -5060,6 +5093,9 @@ func _setup_data() -> void:
 	arrow_land.resize(ARROW_CAP)
 	arrow_tick.resize(ARROW_CAP)
 	arrow_dmg.resize(ARROW_CAP)
+	arrow_from.resize(ARROW_CAP)
+	arrow_t0.resize(ARROW_CAP)
+	arrow_vid.resize(ARROW_CAP)
 	arrow_count = 0
 	arrow_rng.seed = spawn_seed + 7919   # отдельный seeded-генератор разброса стрел
 
@@ -5295,6 +5331,7 @@ func _setup_rendering() -> void:
 	if hero_on:
 		_setup_hero_view()   # после MultiMesh: над юнитами; интерфейс — в CanvasLayer, выше
 	_setup_hit_fx()   # резня, слой крови (задача 23) — и без героя; с героем уже установлено (после его спрайта)
+	_setup_arrow_fx()
 
 
 func _setup_fps_label() -> void:
@@ -6668,6 +6705,8 @@ func _process(delta: float) -> void:
 	multimesh.buffer = buf          # один вызов вместо UNIT_COUNT
 	if hero_view != null:
 		_update_hero_view(frac, have_prev, 0.0 if paused else delta)
+	if arrow_fx != null:
+		_arrow_fx_frame(frac if have_prev else 1.0, 0.0 if paused else delta)
 	draw_ms = (Time.get_ticks_usec() - t) / 1000.0
 	if fps_label != null:   # отладочная строка есть только при флаге debug_fps в отладочной сборке (задача 24)
 		fps_label.text = tr("DEBUG_FPS_LINE") % [
@@ -7915,6 +7954,9 @@ func _fire_arrow(i: int, aim: Vector2, delay: float, own_range := false, release
 	arrow_land[arrow_count] = land
 	arrow_tick[arrow_count] = tick_counter + maxi(ticks, 1)
 	arrow_dmg[arrow_count] = type_arrow_dmg[t] * squad_dmg_mult[unit_squad[i]]
+	arrow_from[arrow_count] = pos[i]   # только отрисовка: лучник, выпуск на экране (release_in), номер выстрела
+	arrow_t0[arrow_count] = minf(tick_counter + release_in * Engine.physics_ticks_per_second, arrow_tick[arrow_count] - 1)
+	arrow_vid[arrow_count] = arrows_fired
 	arrow_count += 1
 	arrows_fired += 1
 	if contact_tick < 0:
@@ -7960,6 +8002,9 @@ func _process_arrows() -> void:
 		arrow_land[a] = arrow_land[arrow_count]
 		arrow_tick[a] = arrow_tick[arrow_count]
 		arrow_dmg[a] = arrow_dmg[arrow_count]
+		arrow_from[a] = arrow_from[arrow_count]
+		arrow_t0[a] = arrow_t0[arrow_count]
+		arrow_vid[a] = arrow_vid[arrow_count]
 
 
 # Shift на момент последнего события мыши или клавиатуры: клик по строке панели сюда приходит раньше, чем кнопке.

@@ -4,3 +4,5 @@ build/
 *.pck
 *.bak*
 bench/report_*/*.png.import
+bench/main_v79_*.gd
+bench/main_v79_*.gd.uid
