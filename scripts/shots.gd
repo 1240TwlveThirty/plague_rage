@@ -8,7 +8,8 @@ extends Node
 #     сохранении (сохранение игрока не трогается); --shot — после сцены кадр и выход (печатает SHOT|путь); --shot-dir=<папка> —
 #     куда класть кадры вместо user://<dir>; --shot-native — кадр в размере окна, без приведения к size (окно 1280x720 и т. п.).
 #     Для хаба (задача 28в): --hub-tab=siege|gifts, --hub-scroll=top|bottom (список даров), --diary (дневник со всеми записями
-#     открыт); --lang=ru|en — язык сцены (настройки игрока не меняются).
+#     открыт); --lang=ru|en — язык сцены (настройки игрока не меняются); --window=1280x720 — размер окна в пикселях экрана
+#     (--resolution Godot на экране с масштабом Windows даёт окно крупнее).
 # Ничего не меняет в симуляции: сцена battle прокручивает тики так же, как обычный бой, и с --shot останавливает физику для кадра.
 signal saved(path: String)
 
@@ -53,7 +54,7 @@ func _ready() -> void:
 		elif a == "--diary":
 			scene_opts["diary"] = true
 		else:
-			for k in ["--hub-tab=", "--hub-scroll=", "--lang="]:
+			for k in ["--hub-tab=", "--hub-scroll=", "--lang=", "--window="]:
 				if a.begins_with(k):
 					scene_opts[k.trim_prefix("--").trim_suffix("=")] = a.trim_prefix(k)
 	if scene_arg != "":
@@ -193,6 +194,11 @@ func _run_scene(which: String) -> void:
 	g.run_seed = int(cfg.get("scene_seed", 3))
 	if scene_opts.has("lang"):
 		TranslationServer.set_locale(str(scene_opts.lang))
+	if scene_opts.has("window"):
+		var wh := str(scene_opts.window).split("x")
+		get_window().mode = Window.MODE_WINDOWED
+		get_window().size = Vector2i(int(wh[0]), int(wh[1]))
+		await _frames(4)
 	await _frames(2)
 	match which:
 		"menu":

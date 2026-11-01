@@ -47,7 +47,7 @@
 	"hub_row_height": 56,
 	"hub_row_gap": 8,
 	"hub_row_pad": [12, 6],
-	"hub_col_gap": 16,
+	"hub_col_gap": 24,
 	"hub_columns": {"icon": 32, "name": 260, "level": 110, "next": 620, "price": 100, "buy": 160, "reason": 300},
 	"hub_buy_size": [160, 48],
 	"hub_section_gap": 12,

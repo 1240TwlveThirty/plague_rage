@@ -21,7 +21,7 @@ const LAYOUT := "res://data/ui_layout.json"
 # Вкладка «Дары» (задача 28в), data/ui_layout.json — значения по умолчанию, если ключа нет: кегль строк, высота строки (не меньше;
 # по факту — две строки текста), промежуток между строками, поля строки [слева/справа, сверху/снизу], между колонками, ширины колонок,
 # размер «Купить», промежуток между Сиянием, шапкой и списком, поля до краёв экрана сверху и снизу.
-const GIFTS_DEFAULT := {"hub_row_font": 30, "hub_row_height": 56, "hub_row_gap": 8, "hub_row_pad": [12, 6], "hub_col_gap": 16,
+const GIFTS_DEFAULT := {"hub_row_font": 30, "hub_row_height": 56, "hub_row_gap": 8, "hub_row_pad": [12, 6], "hub_col_gap": 24,
 	"hub_columns": {"icon": 32, "name": 260, "level": 110, "next": 620, "price": 100, "buy": 160, "reason": 300},
 	"hub_buy_size": [160, 48], "hub_section_gap": 12, "hub_screen_margin": 24}
 
