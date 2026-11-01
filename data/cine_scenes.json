@@ -12,7 +12,7 @@
 				{"type": "infantry", "count": 1, "pos": [1010, 470], "facing_deg": 0, "width": 1}
 			],
 			"zombies": [
-				{"type": "peasant", "count": 3000, "area": {"rect": [410, 0, 1200, 230]}}
+				{"type": "peasant", "count": 2000, "area": {"rect": [310, 0, 1400, 300]}}
 			],
 			"start_paused": false,
 			"camera": {"center": [1010, 330], "zoom": 3.0}

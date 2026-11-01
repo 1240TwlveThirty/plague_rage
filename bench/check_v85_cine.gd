@@ -62,14 +62,14 @@ func run_scene(speed: float, on: bool) -> Array:
 	g.run_seed = int(sc.seed)
 	var prep := func(n: Node) -> void:
 		if n.get_script() != null and n.get_script().resource_path == "res://scripts/main.gd":
-			CINE_SCENES.prepare(n, sc)
-			n.ready.connect(func(): n.set_physics_process(false), CONNECT_ONE_SHOT)
+			CINE_SCENES.prepare(n, sc)   # физика стоит до сборки сцены
 	node_added.connect(prep)
 	g.start_run(1)
 	await step(3)
 	node_added.disconnect(prep)
 	var m: Node2D = current_scene
 	CINE_SCENES.build(m, sc)
+	m.set_physics_process(false)   # тики — с отсчёта ниже
 	if on:
 		m.cine.set_on(true)
 	m.cine.set_scale(speed) if on else null

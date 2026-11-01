@@ -25,11 +25,13 @@ static func _v(a) -> Vector2:
 	return Vector2(float(a[0]), float(a[1]))
 
 
-# До _ready боя: без волн, свой seed, герой по сцене.
+# До _ready боя: без волн, свой seed, герой по сцене; физика стоит с готовности до build (иначе тики до сборки — сколько успеет
+# пройти кадров — двигают генератор, и сцена каждый раз разная).
 static func prepare(m: Node2D, sc: Dictionary) -> void:
 	m.waves_enabled = false
 	m.spawn_seed = int(sc.get("seed", 1))
 	m.hero_mode = 1 if sc.get("hero", {}).get("on", false) else -1
+	m.ready.connect(func(): m.set_physics_process(false), CONNECT_ONE_SHOT)
 
 
 # После _ready: состав сцены вместо стартового; стены бессмертны (сцена не кончается поражением); замок по castle_visible.
@@ -103,6 +105,7 @@ static func build(m: Node2D, sc: Dictionary) -> void:
 		m.castle_sprite.visible = bool(sc.get("castle_visible", true))
 	if sc.get("start_paused", false):
 		m._set_paused(true)
+	m.set_physics_process(true)   # бой идёт с этого места
 	m.queue_redraw()
 
 
