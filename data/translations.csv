@@ -105,6 +105,7 @@ MSG_KILLS,убито: %s,slain: %s
 MSG_KILLS_PEASANTS,крестьяне %d,peasants %d
 MSG_KILLS_RUNNERS,бегуны %d,runners %d
 MSG_KILLS_KNIGHTS,рыцари %d,knights %d
+HUD_BANNER_SHOW,Журнал ({banner_toggle}),Log ({banner_toggle})
 MSG_WAVE_START,Расставь отряды. %s — начать волну 1,Position your squads. %s: start wave 1
 MSG_RESTART,%s — заново,%s: restart
 END_DEFEAT_HINT,Лучшая волна осады %s: %d. %s — в хаб,Best wave in Siege %s: %d. %s: back to hub

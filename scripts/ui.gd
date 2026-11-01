@@ -237,6 +237,19 @@ static func slot_frame() -> PanelContainer:
 	return p
 
 
+# Маленькая кнопка на универсальной рамке (задача 30, «×» баннера): поля текста слева и справа — как сверху и снизу, чтобы кнопка
+# могла быть квадратной; рамка та же (стили темы, копии).
+static func compact_button(b: Button) -> void:
+	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
+		var sb := b.get_theme_stylebox(st, BUTTON)
+		if sb == null:
+			continue
+		sb = sb.duplicate()
+		sb.content_margin_left = sb.content_margin_top
+		sb.content_margin_right = sb.content_margin_top
+		b.add_theme_stylebox_override(st, sb)
+
+
 # Полоса прокрутки из data/ui_theme.json scrollbar (задача 28в): жёлоб и ползунок — плоские цвета палитры, толщина width (не
 # стандартная серая полоса Godot). Без ключа — те же значения по умолчанию.
 static func style_scrollbar(sb: ScrollBar) -> void:

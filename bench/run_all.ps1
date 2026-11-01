@@ -141,6 +141,7 @@ Godot "название игры в одном месте, папка данны
 Godot "логотип в главном меню, без файла — текстовый заголовок (v81)" "res://bench/check_v81_menu_logo.gd" "CHECK: провалов 0"
 Godot "хаб, «Дары»: крупные строки в прокрутке, шапка закреплена, клавиши и колесо (v82)" "res://bench/check_v82_hub_gifts.gd" "CHECK: провалов 0"
 Godot "дневник в хабе: тёмный текст на светлой панели, контраст (v83)" "res://bench/check_v83_diary.gd" "CHECK: провалов 0"
+Godot "баннер в бою: «×» скрывает, «Журнал (H)» и H показывают, клики сквозь баннер (v84)" "res://bench/check_v84_banner.gd" "CHECK: провалов 0"
 Godot "вид поля с окном: волна 10, герой, FPS (view_v47)" "res://bench/view_v47.gd" "HEROFX\|" @("$tmp", "1", "0", "nearest", "0", "0", "1") -Window
 Step "выход из игры: меню, пауза, бой, хаб, WM_CLOSE; предохранитель (v77)" "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$root\bench\check_v77_exit.ps1`"") "EXIT: провалов 0"
 Step "сцена --scene=battle, кадр (v75)" $godot @("--path", "`"$root`"", "--", "--scene=battle", "--shot", "--shot-dir=$tmp") "SHOT\|"

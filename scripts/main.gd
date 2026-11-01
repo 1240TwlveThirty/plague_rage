@@ -572,7 +572,8 @@ var portraits = PORTRAITS.new()   # иллюстрации в кнопках (т
 # data/ui_layout.json: фиксированные размеры кнопок (минимум и он же ширина — текст ужимается, кнопка не растягивается).
 var ui_layout := {"shop_button_size": Vector2(464, 64), "squad_button_size": Vector2(352, 48), "action_button_size": Vector2(184, 48), "war_cry_size": Vector2(352, 48),
 	"debug_fps": false, "shop_slide_time": 0.2, "panel_toggle_size": Vector2(232, 48), "squad_compact_size": Vector2(112, 48),
-	"info_flash_time": 2.0, "info_width": 320.0, "drag_min": DRAG_MIN}
+	"info_flash_time": 2.0, "info_width": 320.0, "drag_min": DRAG_MIN,
+	"banner_close_size": Vector2(40, 40), "banner_close_margin": 12.0, "banner_close_cross": 20.0, "banner_close_line": 2.0, "banner_log_size": Vector2(200, 48), "banner_log_font": 24.0}
 var type_label := PackedStringArray()   # название типа для интерфейса
 # Характеристики выбранного отряда (задача 26): поля и время подсветки — data/ui_layout.json squad_info_fields, info_flash_time
 const INFO_FIELDS_DEFAULT := ["alive", "hp", "damage", "range", "attack_rate", "speed"]
@@ -610,7 +611,9 @@ var gate_hits := 0               # статистика
 var gate_damage_total := 0.0     # статистика
 var banner: PanelContainer             # полупрозрачный фон, внутри — колонка из четырёх подписей
 var banner_any := false                # в баннере есть текст
-var banner_hidden := false             # скрыт клавишей H (до следующего текста)
+var banner_hidden := false             # скрыт клавишей H или кнопкой «×» (до следующего текста)
+var banner_close: Button               # «×» в правом верхнем углу баннера (задача 30); null без интерфейса
+var banner_log: Button                 # «Журнал (H)» на месте скрытого баннера: показать снова; null без интерфейса
 var banner_labels: Array[Label] = []   # заголовок, текст, дневник, подсказка
 var banner_build := Callable()        # собирает текущий баннер заново при смене языка (_set_banner) или пусто
 var banner_parts := PackedStringArray(["", "", "", ""])   # что сейчас в баннере (тесты читают и без интерфейса)
@@ -3523,6 +3526,7 @@ func _show_hub_button() -> void:
 		hub_button.visible = true
 		banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
 		banner.position.y = BANNER_TOP
+		_sync_banner_ui()   # конец забега: «×» и «Журнала» нет
 
 
 # Esc вне протяжки и рамки: меню паузы (дерево сцен встаёт на паузу: бой, окно сигнала и play_time стоят).
@@ -3587,20 +3591,65 @@ func _show_banner(text: String, story := "", hint := "", title := "") -> void:
 		banner_labels[k].visible = banner_parts[k] != ""
 		any = any or banner_parts[k] != ""
 	banner_any = any
-	banner_hidden = false   # новый текст показывается, даже если прошлый скрыли клавишей H
+	banner_hidden = false   # новый текст показывается, даже если прошлый скрыли клавишей H или «×»
 	banner.visible = any and not _picking()
 	# размер по содержимому, по центру сверху: иначе после длинного текста баннер остаётся высоким
 	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
 	banner.position.y = BANNER_TOP
+	_sync_banner_ui()
 
 
-# H в передышке: скрыть или показать баннер.
+# H и «Журнал (H)»: скрыть или показать баннер — везде, где он есть, кроме экрана конца забега (итог с «В хаб» нужен).
 func _toggle_banner() -> void:
-	if wave_state != WS_RESPITE:
+	if not banner_closable():
 		return
 	banner_hidden = not banner_hidden
 	if banner != null:
 		banner.visible = banner_any and not banner_hidden and not _picking()
+	_sync_banner_ui()
+
+
+# Крест «×» по центру кнопки: две линии banner_close_cross в длину, толщиной banner_close_line, цветом текста кнопки темы (под мышью —
+# цветом наведения) с тёмным контуром темы — виден и на светлой рамке, и в тёмном окне кнопки.
+func _draw_banner_close() -> void:
+	var b := banner_close
+	var col := b.get_theme_color("font_hover_color" if b.is_hovered() else "font_color")
+	var out := b.get_theme_color("font_outline_color")
+	var c := b.size * 0.5 + (Vector2(0, b.get_theme_constant("pressed_shift", UI.BUTTON)) if b.button_pressed or b.get_draw_mode() == BaseButton.DRAW_PRESSED else Vector2.ZERO)
+	var h: float = ui_layout.banner_close_cross * 0.5
+	var w: float = ui_layout.banner_close_line
+	for d in [Vector2(h, h), Vector2(h, -h)]:
+		b.draw_line(c - d, c + d, out, w + 4.0)   # контур
+	for d in [Vector2(h, h), Vector2(h, -h)]:
+		b.draw_line(c - d, c + d, col, w)
+
+
+# «×» на баннере: скрыть, как H (до следующего текста).
+func close_banner() -> void:
+	if banner_closable() and not banner_hidden:
+		_toggle_banner()
+
+
+# Баннер можно скрыть: в нём есть текст и забег не кончился.
+func banner_closable() -> bool:
+	return banner_any and not _run_over()
+
+
+# «×» — в правом верхнем углу видимого баннера (отступ banner_close_margin), кроме экрана конца забега; «Журнал (H)» — по центру
+# на BANNER_TOP, пока баннер скрыт, а показать есть что (не на экране выбора карточек).
+func _sync_banner_ui() -> void:
+	if banner_close == null:
+		return
+	var r := banner.get_rect()
+	var m: float = ui_layout.banner_close_margin
+	banner_close.visible = banner.visible and banner_closable()
+	banner_close.reset_size()
+	banner_close.position = Vector2(r.end.x - m - banner_close.size.x, r.position.y + m)
+	banner_log.visible = banner_hidden and banner_closable() and not _picking()
+	if banner_log.visible:
+		banner_log.text = HINTS.text_of("HUD_BANNER_SHOW")
+		banner_log.reset_size()
+		banner_log.position = Vector2((get_viewport_rect().size.x - banner_log.size.x) * 0.5, BANNER_TOP)
 
 
 # Открыт экран выбора карточки: баннер итога волны ждёт выбора (не просвечивает сквозь экран).
@@ -3697,6 +3746,7 @@ func _notification(what: int) -> void:
 		if hidden and banner != null:
 			banner_hidden = true
 			banner.visible = false
+	_sync_banner_ui()   # «Журнал (H)» — на новом языке
 	if top_hud != null:
 		top_hud.refresh()
 		info_plan_for = -1   # строка разведки, подписи Клича и отрядов — заново на новом языке
@@ -5401,12 +5451,36 @@ func _setup_fps_label() -> void:
 	banner_box.add_child(hub_button)
 	banner.visible = false
 	layer.add_child(banner)
+	# задача 30: «×» в углу баннера и «Журнал (H)» на месте скрытого — поверх слоя интерфейса, не в раскладке баннера (текст не
+	# сдвигается); клики берут только сами кнопки; без фокуса — Enter и Space остаются командами боя
+	banner_close = Button.new()   # крест рисуется кодом (_draw_banner_close): «×» шрифта на 40 px в окне рамки — с точку
+	UI.frame_button(banner_close, false)
+	UI.compact_button(banner_close)
+	banner_close.custom_minimum_size = ui_layout.banner_close_size
+	banner_close.draw.connect(_draw_banner_close)
+	banner_close.focus_mode = Control.FOCUS_NONE
+	banner_close.pressed.connect(close_banner)
+	banner_close.visible = false
+	layer.add_child(banner_close)
+	banner_log = Button.new()
+	banner_log.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED   # текст — HINTS.text_of (клавиша из настроек)
+	banner_log.add_theme_font_size_override("font_size", FONTS.px(int(ui_layout.banner_log_font)))
+	UI.frame_button(banner_log, false)
+	banner_log.custom_minimum_size = ui_layout.banner_log_size
+	banner_log.focus_mode = Control.FOCUS_NONE
+	banner_log.pressed.connect(_toggle_banner)
+	banner_log.visible = false
+	banner_log.add_to_group(&"shot_hidden")   # режим съёмки: на кадрах нет
+	layer.add_child(banner_log)
+	banner.visibility_changed.connect(_sync_banner_ui)
+	banner.item_rect_changed.connect(_sync_banner_ui)
 	esc_menu = ESC_MENU.new()
 	esc_menu.before_menu = _abandon_run
 	add_child(esc_menu)
 	card_screen = CARD_PICK.new()
 	card_screen.picked.connect(choose_card)
 	card_screen.closed.connect(_on_cards_closed)
+	card_screen.visibility_changed.connect(_sync_banner_ui)   # на экране выбора карточек «Журнала» нет
 	add_child(card_screen)
 	# Выбранные карточки: справа сверху, компактным списком названий
 	cards_box = VBoxContainer.new()
