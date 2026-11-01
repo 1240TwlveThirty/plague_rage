@@ -74,7 +74,8 @@ const GIFTS_PATH := "res://data/gifts.json"   # дары: модификатор
 const MODS := preload("res://scripts/mods.gd")
 const CARDS := preload("res://scripts/cards.gd")
 const UNITS := preload("res://scripts/units.gd")   # расстояния для игрока в шагах (задача 26)
-const HINTS := preload("res://scripts/hints.gd")   # подсказки первой минуты (задача 26, data/hints.json)
+const HINTS := preload("res://scripts/hints.gd")
+const CINE := preload("res://scripts/cine.gd")   # режим съёмки (задача 31, data/cine.json)   # подсказки первой минуты (задача 26, data/hints.json)
 const CARD_PICK := preload("res://scripts/card_pick.gd")
 const ICONS := preload("res://scripts/icons.gd")   # иконки карточек (список в HUD)   # экран выбора карточки
 const CARD_RULES_PATH := "res://data/cards_rules.json"
@@ -982,6 +983,8 @@ var fx_gust_n := 0                            # номер порыва: инт�
 var fx_gust_wait := 0.0                       # с до порыва
 var fx_gust_left := 0.0                       # с до конца порыва
 var fx_gust := 0.0                            # сила порыва 0..1
+var cine: Node = null                         # режим съёмки (scripts/cine.gd); null без интерфейса (бенчи без дерева)
+var cine_on := false                          # режим съёмки включён: нарисованное поверх поля (_draw, кольцо героя) не рисуется
 var paused := false                           # активная пауза: _physics_process не выполняется, команды только меняют данные
 var split_frac := 0.5                         # деление: доля уходящих в новый отряд
 var split_mode := 0                           # кто уходит: 0 правые, 1 левые, 2 задние ряды, 3 передние ряды
@@ -1022,6 +1025,9 @@ func _ready() -> void:
 	_setup_rendering()
 	_setup_camera()
 	_setup_fps_label()
+	cine = CINE.new()   # режим съёмки: F9 (data/cine.json); только отрисовка, ввод и скорость игры
+	cine.main = self
+	add_child(cine)
 	var st := get_node_or_null("/root/Settings")
 	if st != null:
 		st.changed.connect(_on_settings_changed)   # переназначили клавишу — обновить подписи
@@ -1549,6 +1555,9 @@ func view_rect() -> Rect2:
 
 # Полоса HP ворот (всегда) и отладочные маркеры ворот и дороги (только при DEBUG_COLORS).
 func _draw() -> void:
+	if cine_on:   # режим съёмки (задача 31): цели, контуры, полоса ворот, сигналы — не рисуются
+		drawn_gate_hp = gate_hp
+		return
 	if gate_hp_max > 0.0:
 		var f := clampf(gate_hp / gate_hp_max, 0.0, 1.0)
 		var bar := Rect2(GATE_POS + Vector2(-gate_half, -22.0), Vector2(gate_half * 2.0, 6.0))
@@ -4149,6 +4158,8 @@ func hero_ring_radius() -> float:
 # Кольцо цвета маркера (Endesga 32, hero.json marker_color) с тёмной обводкой и полоса HP под ним; толщина и радиус
 # делятся на зум — на экране одного размера при любом зуме (радиус — hero_ring_radius, с героем). Рисуется под спрайтом (своя отрисовка ноды раньше дочерних).
 func _draw_hero_marker() -> void:
+	if cine_on:
+		return   # режим съёмки: кольцо и полоса HP не рисуются, спрайт героя виден
 	var z := camera.zoom.x if camera != null else 1.0
 	var r := hero_ring_radius()
 	var dark := Color("#181425")
@@ -6554,9 +6565,35 @@ var prof_acc := PackedFloat64Array([0, 0, 0, 0, 0, 0])   # мкс за теку�
 var prof_avg := PackedFloat64Array([0, 0, 0, 0, 0, 0])   # мс на тик, среднее за прошлые 60 тиков
 var prof_n := 0
 
+var tick_acc := 0.0   # задача 31: накопленная доля тика при скорости игры не 1.0 (режим съёмки)
+
+
 func _physics_process(delta: float) -> void:
 	if paused:
 		return   # активная пауза: симуляция стоит целиком
+	if Engine.time_scale == 1.0:
+		_sim_tick(delta)
+		return
+	# Задача 31, режим съёмки: шаги физики Godot идут с прежней частотой, а delta умножен на скорость. Тик симуляции — с ровным
+	# шагом, как при скорости 1.0, когда накопился целый: на 0.25 — каждый 4-й шаг физики, на 2.0 — два тика за шаг. Состояние
+	# на тике N не зависит от скорости.
+	tick_acc += Engine.time_scale
+	while tick_acc >= 1.0 and not paused:
+		tick_acc -= 1.0
+		_sim_tick(1.0 / Engine.physics_ticks_per_second)
+
+
+# Доля пути от прошлого тика к текущему для отрисовки: при скорости 1.0 — доля шага физики Godot; в замедлении режима съёмки —
+# накопленная доля тика (иначе юниты двигались бы рывком раз в несколько шагов физики).
+func tick_frac() -> float:
+	var f := Engine.get_physics_interpolation_fraction()
+	if Engine.time_scale == 1.0:
+		return f
+	return clampf(tick_acc + f * Engine.time_scale, 0.0, 1.0)
+
+
+# Один тик симуляции с шагом delta.
+func _sim_tick(delta: float) -> void:
 	var t := Time.get_ticks_usec()
 	prev_pos = pos.duplicate()   # для интерполяции в _process
 	tick_counter += 1
@@ -6640,7 +6677,7 @@ func _physics_process(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	var t := Time.get_ticks_usec()
-	_camera_frame(delta)
+	_camera_frame(delta / Engine.time_scale if Engine.time_scale > 0.0 else delta)   # задача 31: камера — в реальном времени при замедлении
 	_update_fx(delta)
 	shop_slide_step(delta)
 	ui_t -= delta
@@ -6677,7 +6714,7 @@ func _process(delta: float) -> void:
 				squad_front_row[s] = mini(squad_front_row[s], unit_slot_idx[i] / squad_width[s])
 	var now := tick_counter / float(Engine.physics_ticks_per_second)
 	var by_type := color_mode == 0
-	var frac := Engine.get_physics_interpolation_fraction()
+	var frac := tick_frac()
 	# до первого физического тика prev_pos пуст; на паузе — pos без интерполяции (доля тика продолжает меняться)
 	var have_prev := prev_pos.size() == pos.size() and not paused
 	var sprites := sprites_on and by_type   # F2-F4: все квадратами, чтобы отладочный цвет читался

@@ -260,7 +260,7 @@ func _process(_delta: float) -> void:
 	var now := Time.get_ticks_usec()
 	var dt := minf((now - last_us) / 1e6, 0.1)
 	last_us = now
-	fx_step(dt)
+	fx_step(dt * Engine.time_scale)   # задача 31: в замедлении режима съёмки анимация идёт в том же масштабе (1.0 — как было)
 
 
 # Шаг анимации на dt с (тесты и снимки зовут напрямую с ровным шагом).
