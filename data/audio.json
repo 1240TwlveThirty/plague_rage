@@ -3,7 +3,11 @@
 	"hover_min_interval_ms": 40,
 	"pitch_jitter": 0.03,
 	"battle_queue": ["battle_theme", "battle_theme_2"],
-	"future_sounds": {"war_cry": "Клич Благодати: файла звука пока нет; когда появится — перенести запись в sounds", "hero_swing": "удар героя (задача 11): в sounds временно hover.wav — самый короткий из имеющихся (не pickupCoin); заменить файлом удара"},
+	"future_sounds": {"war_cry": "Клич Благодати: файла звука пока нет; когда появится — перенести запись в sounds", "hero_swing": "удар героя (задача 11): в sounds временно hover.wav — самый короткий из имеющихся (не pickupCoin); заменить файлом удара",
+		"arrow_whoosh": "свист стрел (задача 29): выпуск стрел, не чаще whoosh_min_interval_ms из data/arrows_fx.json; файла пока нет",
+		"arrow_hit_1": "попадание стрелы (задача 29), один из трёх на выбор (ГСЧ эффектов), не чаще hit_sound_min_interval_ms; файла пока нет",
+		"arrow_hit_2": "попадание стрелы, вариант 2; файла пока нет",
+		"arrow_hit_3": "попадание стрелы, вариант 3; файла пока нет"},
 	"sounds": {
 		"main_menu": {"path": "res://music_sounds/main_menu.wav", "bus": "Music", "volume_db": -6.0, "loop": true},
 		"hub": {"path": "res://music_sounds/hub.wav", "bus": "Music", "volume_db": -6.0, "loop": true},

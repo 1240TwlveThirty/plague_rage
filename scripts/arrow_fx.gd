@@ -5,7 +5,8 @@ extends Node2D
 # Полёт — один MultiMesh (стрелы над слоями) и один MultiMesh теней (на земле, под юнитами); не больше max_visible, лишние —
 # выборка каждой N-й по номеру выстрела. Падение (событие из main._process_arrows, только при включённой отрисовке): попадание —
 # искра на 1–3 кадра, промах — воткнутая стрела, гаснет за stuck_life (кольцевой буфер max_stuck). Эффекты появляются, когда время
-# картинки дошло до тика падения. ГСЧ — свой (fx_rng). Настройки — data/arrows_fx.json.
+# картинки дошло до тика падения. ГСЧ — свой (fx_rng). Звуки выпуска и попаданий — через Audio, если запись есть в data/audio.json
+# (проверяется один раз при установке: без файлов вызовов и предупреждений нет). Настройки — data/arrows_fx.json.
 const CFG_PATH := "res://data/arrows_fx.json"
 const FPI := 12   # float на инстанс: 8 (трансформ 2D) + 4 (цвет)
 
@@ -50,6 +51,18 @@ var st_next := 0
 var stuck_n := 0
 var hits_shown := 0     # искр-попаданий создано (тесты)
 var stuck_shown := 0    # воткнутых создано (тесты)
+# Звук
+var audio: Node = null
+var snd_whoosh := ""             # "" — звука нет (нет записи в data/audio.json)
+var snd_hits: Array = []         # имена с записью
+var last_td := -1.0              # время картинки прошлого кадра (выпуски между кадрами)
+var released := 0                # стрел выпущено на экране за этот кадр
+var hits_frame := 0              # искр-попаданий за этот кадр
+var whoosh_at := -1e9            # мс последнего звука
+var hit_snd_at := -1e9
+var whoosh_wanted := 0           # кадров, где был бы свист (тесты: код звука доходит до вызова и без файлов)
+var hit_snd_wanted := 0
+var sounds_played := 0
 var air_buf := PackedFloat32Array()
 var shadow_buf := PackedFloat32Array()
 var shadow_col := Color.BLACK
@@ -67,13 +80,15 @@ static func load_cfg(path: String) -> Dictionary:
 		return {}
 	var d = JSON.parse_string(FileAccess.get_file_as_string(path))
 	var nums := ["max_visible", "shaft_px", "arc_height_rel", "launch_height_px", "shadow_alpha", "lod_min_screen_px", "view_margin_px",
-		"spark_jitter_px", "max_sparks", "stuck_fade", "stuck_len_rel", "stuck_angle_jitter_deg", "max_stuck", "max_events"]
+		"spark_jitter_px", "max_sparks", "stuck_fade", "stuck_len_rel", "stuck_angle_jitter_deg", "max_stuck", "max_events",
+		"whoosh_min_interval_ms", "hit_sound_min_interval_ms"]
 	var colors := ["shaft_color", "head_color", "outline_color", "shadow_color"]
 	var sizes := ["art_size_px", "shadow_size_px"]
 	var pairs := ["spark_count", "spark_frames", "spark_size_px", "stuck_life"]
 	var ok: bool = d is Dictionary and d.get("art_path") is String
 	for k in pairs:
 		ok = ok and d.get(k) is Array and d[k].size() == 2 and d[k].all(func(x): return x is float and x >= 0.0) and d[k][0] <= d[k][1]
+	ok = ok and d.get("sound_whoosh") is String and d.get("sound_hits") is Array and d.sound_hits.all(func(x): return x is String)
 	ok = ok and d.get("spark_colors") is Array and not d.spark_colors.is_empty() and d.spark_colors.all(func(c): return c is String and Color.html_is_valid(c))
 	for k in nums:
 		ok = ok and d.get(k) is float and d[k] >= 0.0
@@ -195,7 +210,20 @@ func setup(m: Node2D, air_z: int, ground_before: Node) -> bool:
 	ev_t.resize(ne)
 	ev_hit.resize(ne)
 	fx_rng.seed = 2909
+	setup_sound(m.get_node_or_null("/root/Audio"))
 	return true
+
+
+# Звуки, у которых есть запись в data/audio.json (has_sound); остальные не зовутся вовсе — без предупреждений на каждый вызов.
+func setup_sound(au: Node) -> void:
+	audio = au
+	snd_whoosh = ""
+	snd_hits = []
+	if au == null or not au.has_method("has_sound"):
+		return
+	if au.has_sound(cfg.sound_whoosh):
+		snd_whoosh = cfg.sound_whoosh
+	snd_hits = cfg.sound_hits.filter(func(n): return au.has_sound(n))
 
 
 # Падение стрелы (main._process_arrows, тик падения t1; только при включённой отрисовке): откуда летела, точка падения, попала ли,
@@ -218,6 +246,7 @@ func clear() -> void:
 	spark_n = 0
 	stuck_n = 0
 	st_life.fill(0.0)
+	last_td = -1.0   # снова включили — без свиста за всё, что выпущено, пока было выключено
 	spark_mm.visible_instance_count = 0
 	stuck_mm.visible_instance_count = 0
 
@@ -230,9 +259,11 @@ func frame(td: float, dt: float, view: Rect2, zoom: float) -> void:
 	if not on:
 		drawn = 0
 		in_flight = 0
-		if ev_n > 0 or spark_n > 0 or stuck_n > 0:
+		if ev_n > 0 or spark_n > 0 or stuck_n > 0 or last_td >= 0.0:
 			clear()
 		return
+	hits_frame = 0
+	released = 0
 	_land_effects(td, dt)
 	_draw_sparks()
 	_draw_stuck(dt)
@@ -241,8 +272,28 @@ func frame(td: float, dt: float, view: Rect2, zoom: float) -> void:
 		drawn = 0
 		air_mm.visible_instance_count = 0
 		shadow_mm.visible_instance_count = 0
-		return
-	_draw_flights(td, view.grow(float(cfg.view_margin_px)))
+	else:
+		_draw_flights(td, view.grow(float(cfg.view_margin_px)))
+	if dt > 0.0:
+		_sounds()
+	last_td = td
+
+
+# Свист — если за кадр стрелы сорвались с тетивы, удар — если были попадания; не чаще интервалов из данных.
+func _sounds() -> void:
+	var now := Time.get_ticks_msec()
+	if released > 0 and now - whoosh_at >= float(cfg.whoosh_min_interval_ms):
+		whoosh_at = now
+		whoosh_wanted += 1
+		if snd_whoosh != "":
+			audio.play_sfx(snd_whoosh)
+			sounds_played += 1
+	if hits_frame > 0 and now - hit_snd_at >= float(cfg.hit_sound_min_interval_ms):
+		hit_snd_at = now
+		hit_snd_wanted += 1
+		if not snd_hits.is_empty():
+			audio.play_sfx(snd_hits[fx_rng.randi() % snd_hits.size()])
+			sounds_played += 1
 
 
 # Искры старше на кадр (только не на паузе), затем эффекты падений, чей тик картинка уже показала.
@@ -278,6 +329,7 @@ func _land_effects(td: float, dt: float) -> void:
 
 func _spawn_spark(p: Vector2) -> void:
 	hits_shown += 1
+	hits_frame += 1
 	var cols: Array = cfg.spark_colors
 	var j := float(cfg.spark_jitter_px)
 	for q in fx_rng.randi_range(int(cfg.spark_count[0]), int(cfg.spark_count[1])):
@@ -396,6 +448,8 @@ func _draw_flights(td: float, view: Rect2) -> void:
 	for a in n:
 		var t1 := float(t1s[a])
 		var t0 := t0s[a]
+		if t0 > last_td and t0 <= td and last_td >= 0.0:
+			released += 1   # сорвалась с тетивы между прошлым кадром и этим
 		if td < t0 or td >= t1:
 			continue
 		fl += 1

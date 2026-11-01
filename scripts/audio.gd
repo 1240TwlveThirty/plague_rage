@@ -195,6 +195,11 @@ func _on_music_finished(i: int) -> void:
 		_next_battle()
 
 
+# Есть ли запись звука в sounds (звуки из future_sounds без файла — нет): вызывающий спрашивает один раз и молчит, без предупреждений.
+func has_sound(name: String) -> bool:
+	return sounds.has(name)
+
+
 func play_sfx(name: String) -> void:
 	var stream := _stream(name)
 	if stream == null:

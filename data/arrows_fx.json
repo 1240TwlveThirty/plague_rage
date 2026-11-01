@@ -31,5 +31,10 @@
 	"stuck_angle_jitter_deg": 12.0,
 	"max_stuck": 256,
 	"_events": "падений в очереди эффектов (ждут своего тика на экране) не больше max_events, лишние без эффекта",
-	"max_events": 2048
+	"max_events": 2048,
+	"_sound": "звуки (data/audio.json): sound_whoosh — при выпуске стрел, не чаще whoosh_min_interval_ms; sound_hits — один на выбор при попаданиях, не чаще hit_sound_min_interval_ms. Нет записи в sounds — звука нет и в лог ничего не пишется",
+	"sound_whoosh": "arrow_whoosh",
+	"sound_hits": ["arrow_hit_1", "arrow_hit_2", "arrow_hit_3"],
+	"whoosh_min_interval_ms": 150,
+	"hit_sound_min_interval_ms": 80
 }
