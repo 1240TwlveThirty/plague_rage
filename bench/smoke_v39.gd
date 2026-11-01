@@ -85,11 +85,14 @@ func _run() -> void:
 		"«%s», «%s»" % [m.split_label.text, m.split_mode_button.text])
 	# передышка: Space начинает волну
 	await key(KEY_SPACE)
+	var space_ms := Time.get_ticks_msec()
 	check("(б) Space в передышке начинает волну", m.wave_state == m.WS_BATTLE and not m.paused)
 	m.gate_hp = 1e9
 	m.gate_hp_max = 1e9
 	m._place_formation(0, Vector2(700, 250), Vector2(940, 250))   # отряд идёт: позиции меняются каждый тик
-	while m.tick_counter < 20:   # панель обновляется раз в 0.25 с
+	# панель обновляется раз в 0.25 с: ждать и 20 тиков, и 0.3 с после Space (задача 31: если старт боя дольше, тики догоняют
+	# кадры и 20-й тик наступает сразу после Space — панель ещё не обновилась)
+	while m.tick_counter < 20 or Time.get_ticks_msec() - space_ms < 300:
 		await process_frame
 	check("в бою без паузы кнопки отрядов и ползунок скрыты", not m.squad_actions.is_visible_in_tree() and not m.split_box.is_visible_in_tree())
 	# (в) пауза: буфер без интерполяции
