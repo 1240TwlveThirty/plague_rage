@@ -7998,6 +7998,8 @@ func _process_arrows() -> void:
 			if hp[best] <= 0.0:
 				kills_by_arrows += 1
 			arrows_hit += 1
+		if arrow_fx_on:   # только отрисовка (задача 29): попадание или промах — эффект в scripts/arrow_fx.gd
+			arrow_fx.land(arrow_from[a], p, arrow_tick[a], best != -1, pos[best] if best != -1 else p)
 		arrow_count -= 1
 		arrow_land[a] = arrow_land[arrow_count]
 		arrow_tick[a] = arrow_tick[arrow_count]

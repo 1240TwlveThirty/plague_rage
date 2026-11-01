@@ -16,5 +16,20 @@
 	"shadow_size_px": [3.0, 1.0],
 	"_lod": "стрела короче lod_min_screen_px пикселей экрана (длина в мире * зум) — полёт не рисуется; view_margin_px — запас вокруг вида",
 	"lod_min_screen_px": 1.0,
-	"view_margin_px": 48.0
+	"view_margin_px": 48.0,
+	"_hit": "попадание (тик урона): искра spark_count квадратов spark_size_px в точке цели (разброс spark_jitter_px), живёт spark_frames кадров; не больше max_sparks",
+	"spark_count": [1.0, 2.0],
+	"spark_frames": [1.0, 3.0],
+	"spark_size_px": [1.0, 2.0],
+	"spark_jitter_px": 1.5,
+	"spark_colors": ["#ffffff", "#fee761", "#feae34"],
+	"max_sparks": 256,
+	"_stuck": "промах: стрела воткнута в точку падения (видна часть stuck_len_rel длины, наклон ±stuck_angle_jitter_deg), живёт stuck_life с, гаснет последнюю долю stuck_fade жизни; не больше max_stuck (новая вытесняет самую старую)",
+	"stuck_life": [0.5, 1.0],
+	"stuck_fade": 0.4,
+	"stuck_len_rel": 0.6,
+	"stuck_angle_jitter_deg": 12.0,
+	"max_stuck": 256,
+	"_events": "падений в очереди эффектов (ждут своего тика на экране) не больше max_events, лишние без эффекта",
+	"max_events": 2048
 }
