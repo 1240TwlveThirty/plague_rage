@@ -11,11 +11,16 @@ extends Node
 #     открыт); --lang=ru|en — язык сцены (настройки игрока не меняются); --window=1280x720 — размер окна в пикселях экрана
 #     (--resolution Godot на экране с масштабом Windows даёт окно крупнее). Бой и передышка: --banner=show — баннер не скрывать
 #     (задача 30: баннер с кнопкой «×»).
+#   Сцены режима съёмки (задача 31, только отладочная сборка): --cine-scene=<id> или data/cine.json autostart_scene (не в тестах —
+#     у SceneTree со своим скриптом автозапуска нет) — бой сцены из data/cine_scenes.json на своём временном сохранении, режим
+#     съёмки включён. Для кадров: --cine-ticks=N — N тиков боя до кадра, --cine-speed=0.25 — скорость, --cine-pause — пауза.
 # Ничего не меняет в симуляции: сцена battle прокручивает тики так же, как обычный бой, и с --shot останавливает физику для кадра.
 signal saved(path: String)
 
 const CFG := "res://data/screenshot.json"
 const SCENES := ["battle", "respite", "pick", "hub", "menu"]
+const CINE_SCENES := preload("res://scripts/cine_scenes.gd")
+const CINE := preload("res://scripts/cine.gd")
 const HIDDEN_GROUP := &"shot_hidden"
 const DT := 1.0 / 30.0
 
@@ -54,11 +59,21 @@ func _ready() -> void:
 			shot_native = true
 		elif a == "--diary":
 			scene_opts["diary"] = true
+		elif a == "--cine-pause":
+			scene_opts["cine-pause"] = true
 		else:
-			for k in ["--hub-tab=", "--hub-scroll=", "--lang=", "--window=", "--banner="]:
+			for k in ["--hub-tab=", "--hub-scroll=", "--lang=", "--window=", "--banner=", "--cine-scene=", "--cine-ticks=", "--cine-speed="]:
 				if a.begins_with(k):
 					scene_opts[k.trim_prefix("--").trim_suffix("=")] = a.trim_prefix(k)
-	if scene_arg != "":
+	var cine_id: String = scene_opts.get("cine-scene", "")
+	if cine_id == "" and get_tree().get_script() == null:   # автозапуск — только в обычном запуске игры
+		cine_id = str(CINE.load_cfg().autostart_scene)
+	if cine_id != "":
+		if OS.is_debug_build():
+			_run_cine_scene.call_deferred(cine_id)
+		else:
+			print("CINE|сцены съёмки только в отладочной сборке: «%s» не запущена" % cine_id)
+	elif scene_arg != "":
 		if scene_arg in SCENES:
 			_run_scene.call_deferred(scene_arg)
 		else:
@@ -167,6 +182,51 @@ func _save(img: Image, path: String, down: int) -> bool:
 static func _stamp() -> String:
 	var t := Time.get_datetime_dict_from_system()
 	return "%04d%02d%02d_%02d%02d%02d_%03d" % [t.year, t.month, t.day, t.hour, t.minute, t.second, Time.get_ticks_msec() % 1000]
+
+
+# Сцена режима съёмки (задача 31): бой сцены, режим съёмки включён, камера сцены; с --shot — кадр и выход.
+func _run_cine_scene(id: String) -> void:
+	var sc := CINE_SCENES.find(id)
+	var g: Node = get_node_or_null("/root/Game")
+	if sc.is_empty() or g == null:
+		push_error("--cine-scene=%s: нет такой сцены в %s (или нет Game)" % [id, CINE_SCENES.PATH])
+		if shot_and_quit:
+			get_tree().quit(2)
+		return
+	var save := "user://cine_save.json"   # своё сохранение: прогресс игрока не меняется
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(save))
+	g.save_path = save
+	g._setup()
+	g.run_seed = int(sc.get("seed", 1))
+	var prep := func(n: Node) -> void:
+		if n.get_script() != null and n.get_script().resource_path == "res://scripts/main.gd":
+			CINE_SCENES.prepare(n, sc)
+	get_tree().node_added.connect(prep)
+	g.start_run(1)
+	await _frames(4)
+	get_tree().node_added.disconnect(prep)
+	var m: Node = get_tree().current_scene
+	CINE_SCENES.build(m, sc)
+	m.cine.set_on(true)
+	CINE_SCENES.camera(m, sc)
+	if scene_opts.has("cine-ticks"):   # бой до кадра: ровно N тиков (кадр повторяем)
+		m.set_physics_process(false)
+		var was: bool = m.paused
+		m._set_paused(false)
+		for t in int(scene_opts["cine-ticks"]):
+			m._physics_process(1.0 / Engine.physics_ticks_per_second)
+		m._set_paused(was)
+		m.set_physics_process(not shot_and_quit)
+	if scene_opts.get("cine-pause", false):
+		m._set_paused(true)
+	if scene_opts.has("cine-speed"):
+		m.cine.set_scale(float(scene_opts["cine-speed"]))
+	await _frames(int(cfg.get("scene_settle_frames", 12)))
+	print("CINE|сцена %s, seed %d, юнитов %d" % [id, int(sc.get("seed", 1)), m.count])
+	if shot_and_quit:
+		var p := await capture()
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(save))
+		get_tree().quit(0 if p != "" else 1)
 
 
 # Сцена боя добавлена: физика выключена с готовности узла, тики идут только из _run_scene.
