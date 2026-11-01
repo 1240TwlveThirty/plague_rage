@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="Plague_Rage"
+config/name="Graceless"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="Godot/app_userdata/Plague_Rage"
 config/version="0.26"
